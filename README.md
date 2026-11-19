@@ -43,6 +43,8 @@
 dist\ClickBuildServer-Setup-1.0.2.exe
 ```
 
+也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.2](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.2)。
+
 安装包已内置便携 Node（`resources\runtime\node\node.exe`），不依赖系统 Node；安装时注册 `.yxpn` 文件关联。首次运行后可在右侧“本地服务”里启动仓库自带的 MariaDB / Redis / RustFS。
 
 ### 从源码运行
