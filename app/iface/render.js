@@ -115,6 +115,10 @@ function writableFields(binding) {
   return (binding.fields || []).filter((f) => !f.pk && !f.autoIncrement && f.writable !== false);
 }
 
+function likeLiteral(value) {
+  return String(value).replace(/[\\%_]/g, '\\$&');
+}
+
 function buildWhere(binding, ctx, params) {
   const parts = [];
   const fields = (binding.fields || []).filter((f) => f.query !== false && !f.hidden);
@@ -122,8 +126,8 @@ function buildWhere(binding, ctx, params) {
   const byName = new Map(fields.map((f) => [f.name, f]));
 
   for (const key of Object.keys(q)) {
-    if (key === 'page' || key === 'pageSize' || key === 'sort' || key === 'keyword') continue;
-    const m = /^([A-Za-z0-9_]+)(?:__(gte|lte|gt|lt|like|in|between|ne))?$/.exec(key);
+    if (key === 'page' || key === 'pageSize' || key === 'sort' || key === 'keyword' || key === 'keywordRegex' || key === 'keyword_regex') continue;
+    const m = /^([A-Za-z0-9_]+?)(?:__(gte|lte|gt|lt|like|in|between|ne|regex|iregex|notregex|contains|startswith|endswith|isnull|notnull))?$/.exec(key);
     if (!m) continue;
     const field = byName.get(m[1]);
     if (!field) continue;
@@ -139,7 +143,22 @@ function buildWhere(binding, ctx, params) {
       parts.push(`${col} ${sign} ?`);
       params.push(cast(field, raw));
     } else if (op === 'like') { parts.push(`${col} LIKE ?`); params.push(`%${String(raw)}%`); }
-    else if (op === 'in') {
+    else if (op === 'regex' || op === 'iregex' || op === 'notregex') {
+      let pattern = String(raw).slice(0, 500);
+      if (op === 'iregex' && !/^\(\?/.test(pattern)) pattern = '(?i)' + pattern;
+      const neg = op === 'notregex' ? 'NOT ' : '';
+      parts.push(`${col} ${neg}REGEXP ?`);
+      params.push(pattern);
+    } else if (op === 'contains' || op === 'startswith' || op === 'endswith') {
+      const v = likeLiteral(raw);
+      parts.push(`${col} LIKE ?`);
+      params.push(op === 'contains' ? `%${v}%` : op === 'startswith' ? `${v}%` : `%${v}`);
+    } else if (op === 'isnull') {
+      const yes = /^(1|true|yes|y)$/i.test(String(raw).trim());
+      parts.push(`${col} IS ${yes ? '' : 'NOT '}NULL`);
+    } else if (op === 'notnull') {
+      parts.push(`${col} IS NOT NULL`);
+    } else if (op === 'in') {
       const list = Array.isArray(raw) ? raw : String(raw).split(',');
       const clean = list.map((v) => String(v).trim()).filter(Boolean).slice(0, 50);
       if (!clean.length) continue;
@@ -158,6 +177,12 @@ function buildWhere(binding, ctx, params) {
   if (kw && searchFields.length) {
     parts.push(`(${searchFields.map((f) => `${ident(f.name)} LIKE ?`).join(' OR ')})`);
     searchFields.forEach(() => params.push(`%${kw}%`));
+  }
+  const kwRegex = String(q.keywordRegex || q.keyword_regex || '').trim();
+  if (kwRegex && searchFields.length) {
+    const pattern = kwRegex.slice(0, 500);
+    parts.push(`(${searchFields.map((f) => `${ident(f.name)} REGEXP ?`).join(' OR ')})`);
+    searchFields.forEach(() => params.push(pattern));
   }
   return parts.length ? parts.join(' AND ') : '1 = 1';
 }

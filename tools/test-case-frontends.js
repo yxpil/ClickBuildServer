@@ -65,6 +65,14 @@ async function liveMall(dir) {
     check('全部接口健康检查', healthOk, `${health.status} ${health.text.slice(0, 160)}`);
     const consolePage = await req(base, '/console');
     check('控制台健康按钮检查全部', consolePage.status === 200 && consolePage.text.includes('/_health/interfaces') && consolePage.text.includes('检查全部'), `${consolePage.status} ${consolePage.text.length} B`);
+    check('控制台提供过滤条件输入', consolePage.status === 200 && consolePage.text.includes('id="filter"') && consolePage.text.includes('__regex'), `${consolePage.status} ${consolePage.text.length} B`);
+    const filtered = await req(base, '/api/users?role__iregex=admin&username__startswith=a&created_at__isnull=1&keywordRegex=ad');
+    let filterOk = false;
+    try {
+      const f = JSON.parse(filtered.text);
+      filterOk = filtered.status === 200 && f.ok === true && Array.isArray(f.data && f.data.rows);
+    } catch (e) { /* ignore */ }
+    check('接口过滤器支持正则/前缀/NULL', filterOk, `${filtered.status} ${filtered.text.slice(0, 160)}`);
     const home = await req(base, '/');
     check('GET / 返回案例前端', home.status === 200 && home.text.includes('MALL / CASE FRONTEND') && home.text.includes('const CASE ='), `${home.status} ${home.text.length} B`);
     const yxpp = await req(base, '/frontend/index.yxpp');

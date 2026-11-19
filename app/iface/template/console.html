@@ -44,6 +44,8 @@
       <button class="go" id="send">发送</button>
       <button class="go" id="health" title="检查全部接口：路由、表/字段、脚本语法，不发写请求">检查全部</button>
     </div>
+    <h2>过滤条件（GET / 列表）</h2>
+    <input id="filter" placeholder="status=paid&amp;name__regex=(?i)abc">
     <h2>请求体 JSON</h2>
     <textarea id="body" placeholder='{"name":"值"}'></textarea>
     <h2>响应</h2>
@@ -76,10 +78,12 @@ async function load() {
 
 async function call(method, p, body) {
   const t0 = performance.now();
+  const filter = $('filter').value.trim().replace(/^\?/, '');
+  const url = filter ? p + (p.includes('?') ? '&' : '?') + filter : p;
   try {
-    const r = await fetch(p, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body || undefined });
+    const r = await fetch(url, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body || undefined });
     const j = await r.json();
-    $('out').textContent = `${r.status} · ${Math.round(performance.now() - t0)}ms\n` + JSON.stringify(j, null, 2);
+    $('out').textContent = `${r.status} · ${Math.round(performance.now() - t0)}ms · ${url}\n` + JSON.stringify(j, null, 2);
   } catch (e) {
     $('out').textContent = '请求失败：' + e.message;
   }

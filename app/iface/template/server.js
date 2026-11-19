@@ -971,7 +971,7 @@ pre{border:1px solid #111;background:#fafafa;padding:10px;overflow:auto;white-sp
 <tr><td><code>{{columns:key}}</code></td><td>查询列，自动跳过 hidden 字段</td></tr>
 <tr><td><code>{{insertColumns:key}}</code> / <code>{{insertValues:key}}</code></td><td>INSERT 的列和参数化值</td></tr>
 <tr><td><code>{{updateSet:key}}</code></td><td>UPDATE SET，只改请求体里出现的字段</td></tr>
-<tr><td><code>{{where:key}}</code></td><td>条件：<code>field__gte</code>、<code>__lte</code>、<code>__like</code>、<code>__in</code>、<code>__between</code>、<code>keyword</code></td></tr>
+<tr><td><code>{{where:key}}</code></td><td>条件：<code>field</code> / <code>__ne</code> / <code>__gte</code> / <code>__gt</code> / <code>__lte</code> / <code>__lt</code> / <code>__like</code> / <code>__regex</code> / <code>__iregex</code> / <code>__notregex</code> / <code>__contains</code> / <code>__startswith</code> / <code>__endswith</code> / <code>__in</code> / <code>__between</code> / <code>__isnull</code> / <code>__notnull</code>；<code>keyword</code> 走 LIKE，<code>keywordRegex</code> 走 REGEXP</td></tr>
 <tr><td><code>{{orderBy:key}}</code> / <code>{{limit}}</code> / <code>{{offset}}</code></td><td>排序与分页，字段有白名单</td></tr>
 <tr><td><code>{{body.x}}</code> / <code>{{query.x}}</code> / <code>{{path.x}}</code> / <code>{{user.x}}</code></td><td>请求体、查询、路径、登录态</td></tr>
 <tr><td><code>{{onlyId}}</code> / <code>{{token}}</code> / <code>{{uuid}}</code> / <code>{{now}}</code> / <code>{{traceId}}</code></td><td>平台生成值</td></tr>
@@ -1009,6 +1009,9 @@ curl "${esc(exampleUrl)}"
 
 # 新建（按你的表字段替换 JSON）
 curl -X POST "${esc(exampleUrl)}" -H "Content-Type: application/json" -d '{"name":"test"}'
+
+# 过滤（等值 / LIKE / 正则 / 范围 / 非空）
+curl "${esc(exampleUrl)}?keyword=abc&name__startswith=A&status__in=paid,shipped&amount__gte=100&title__iregex=(?i)pro"
 
 # 健康检查（依赖 + 全部接口结构与脚本）
 curl "http://127.0.0.1:${CFG.httpPort}/_health"
