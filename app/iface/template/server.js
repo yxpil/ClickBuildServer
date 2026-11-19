@@ -252,6 +252,17 @@ function matchRoute(method, pathname) {
   return null;
 }
 
+// 路径能匹配、方法不匹配时返回 405，并带上 Allow。
+function allowedMethods(pathname) {
+  const out = new Set();
+  for (const item of TABLE) {
+    if (!item.re.test(pathname)) continue;
+    out.add(item.route.method);
+    if (item.route.method === 'GET') out.add('HEAD');
+  }
+  return [...out];
+}
+
 function send(res, status, body, extra) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
@@ -297,25 +308,33 @@ ${detailHtml}
 </main></body></html>`;
 }
 
-function sendError(req, res, status, body, title, detail) {
+function sendError(req, res, status, body, title, detail, extra) {
   if (ERR_PAGES && wantsHtml(req)) {
     res.writeHead(status, {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'access-control-allow-origin': '*',
+      ...(extra || {}),
     });
     return res.end(errorHtml(status, title || (status === 404 ? '没有找到这个页面' : '服务内部错误'), (body && body.message) || '', detail || '', body && body.traceId));
   }
-  return send(res, status, body);
+  return send(res, status, body, extra);
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let tooLarge = false;
     req.on('data', (c) => {
+      if (tooLarge) return;
       size += c.length;
-      if (size > 64 * 1024 * 1024) { reject(new Error('请求体超过 64MB')); req.destroy(); return; }
+      if (size > 64 * 1024 * 1024) {
+        tooLarge = true;
+        chunks.length = 0;
+        reject(new Error('请求体超过 64MB'));
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks)));
@@ -461,7 +480,15 @@ async function handle(req, res, item) {
 
   const query = {};
   url.searchParams.forEach((v, k) => { query[k] = v; });
-  const raw = await readBody(req);
+  let raw;
+  try {
+    raw = await readBody(req);
+  } catch (e) {
+    if (/64MB/.test(e.message)) {
+      return sendError(req, res, 413, { ok: false, error: 'BODY_TOO_LARGE', message: e.message, traceId }, '请求体过大');
+    }
+    throw e;
+  }
   let body = {};
   let file = null;
   const ct = String(req.headers['content-type'] || '');
@@ -757,7 +784,7 @@ function openapi() {
         summary: route.summary || route.name,
         description: (iface.docs && iface.docs.description) || iface.comment || '',
         operationId: `${iface.id}_${route.key}_${route.method}_${route.path}`.replace(/[^A-Za-z0-9_]/g, '_'),
-        responses: { 200: { description: 'OK' }, 400: { description: '参数/业务错误' }, 401: { description: '未授权' }, 429: { description: '限流' }, 503: { description: '熔断/时间窗' } },
+        responses: { 200: { description: 'OK' }, 400: { description: '参数/请求体错误' }, 401: { description: '未授权' }, 403: { description: '无权访问' }, 404: { description: '资源/路由不存在' }, 405: { description: '请求方法不允许' }, 409: { description: '状态冲突' }, 413: { description: '请求体过大' }, 429: { description: '限流' }, 503: { description: '熔断/时间窗/服务不可用' } },
         ...(route.auth ? { security: [{ bearer: [] }] } : {}),
         'x-clickbuild': { kind: route.key, tx: !!(route.guard && route.guard.tx), cache: route.cache },
       };
@@ -849,6 +876,10 @@ pre{border:1px solid #111;background:#fafafa;padding:10px;overflow:auto;white-sp
 <tr><td><code>/_routes</code></td><td>全部路由的机器可读列表</td></tr>
 <tr><td><code>/_health</code></td><td>MySQL / Redis / S3 健康检查</td></tr>
 <tr><td><code>/_logs</code> / <code>/_logs/stream</code></td><td>日志快照 / SSE 实时日志</td></tr>
+<tr><td><code>/_errors/404</code></td><td>404 错误页预览</td></tr>
+<tr><td><code>/_errors/405</code></td><td>405 方法不允许错误页预览</td></tr>
+<tr><td><code>/_errors/413</code></td><td>413 请求体过大错误页预览</td></tr>
+<tr><td><code>/_errors/500</code></td><td>500 错误页预览</td></tr>
 </tbody></table>
 
 <h2>2. 接口路由</h2>
@@ -926,6 +957,14 @@ const server = http.createServer(async (req, res) => {
       const traceId = crypto.randomBytes(6).toString('hex');
       return sendError(req, res, 404, { ok: false, error: 'NO_ROUTE', message: '这是 404 页面预览', traceId }, '没有找到这个页面');
     }
+    if (pathname === '/_errors/405') {
+      const traceId = crypto.randomBytes(6).toString('hex');
+      return sendError(req, res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED', message: '这是 405 页面预览', traceId }, '请求方法不允许', '', { allow: 'GET, POST, PUT, DELETE' });
+    }
+    if (pathname === '/_errors/413') {
+      const traceId = crypto.randomBytes(6).toString('hex');
+      return sendError(req, res, 413, { ok: false, error: 'BODY_TOO_LARGE', message: '这是 413 页面预览：请求体超过 64MB', traceId }, '请求体过大');
+    }
     if (pathname === '/_errors/500') throw new Error('这是 500 页面预览：模拟服务端异常');
     if (pathname === '/_health') {
       let mysqlOk = false, redisOk = false, s3Ok = false;
@@ -990,6 +1029,13 @@ const server = http.createServer(async (req, res) => {
     const item = matchRoute(req.method, pathname);
     if (!item) {
       const traceId = crypto.randomBytes(6).toString('hex');
+      const allow = allowedMethods(pathname);
+      if (allow.length) {
+        return sendError(req, res, 405, {
+          ok: false, error: 'METHOD_NOT_ALLOWED', message: `${req.method} ${pathname} 不支持，允许：${allow.join(', ')}`,
+          allow, traceId,
+        }, '请求方法不允许', '', { allow: allow.join(', ') });
+      }
       return sendError(req, res, 404, {
         ok: false, error: 'NO_ROUTE', message: `${req.method} ${pathname} 没有匹配到接口路由`,
         hint: '打开 /_routes 看全部路由，/docs 看文档', traceId,

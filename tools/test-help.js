@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const templates = require('../app/iface/templates');
 const plugins = require('../app/iface/plugins');
 const codegen = require('../app/iface/codegen');
+const spec = require('../app/iface/spec');
 
 const NODE = path.join(__dirname, '..', 'runtime', 'node', 'node.exe');
 const NODE_PATH = path.join(__dirname, '..', 'node_modules');
@@ -34,6 +35,8 @@ async function main() {
   fs.mkdirSync(DIR, { recursive: true });
   const tpl = templates.get('builtin:blog');
   const project = plugins.apply(tpl.project).project;
+  // 加一个默认新建接口，验证 CRUD 默认 404 与 405。
+  project.interfaces.push(spec.newIface('默认响应', (project.categories[0] || {}).id || 'biz'));
   codegen.writeTo(project, DIR, { port: PORT });
 
   const child = spawn(NODE, ['server.js'], {
@@ -87,6 +90,43 @@ async function main() {
       const missBody = await miss.json();
       check('业务 404 顶层带 error', miss.status === 404 && missBody.error === 'NOT_FOUND', `${miss.status} ${JSON.stringify(missBody).slice(0, 90)}`);
     }
+
+    const def = (routes.routes || []).filter((r) => r.interface === '默认响应');
+    const put = def.find((r) => r.method === 'PUT' && r.path.includes(':id'));
+    const del = def.find((r) => r.method === 'DELETE' && r.path.includes(':id'));
+    const list = def.find((r) => r.method === 'GET' && !r.path.includes(':id'));
+    if (put) {
+      const r = await fetch(BASE + put.path.replace(':id', '999999'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' });
+      const b = await r.json();
+      check('默认更新对不存在记录返回 404', r.status === 404 && b.error === 'NOT_FOUND', `${r.status} ${JSON.stringify(b).slice(0, 90)}`);
+    }
+    if (del) {
+      const r = await fetch(BASE + del.path.replace(':id', '999999'), { method: 'DELETE' });
+      const b = await r.json();
+      check('默认删除对不存在记录返回 404', r.status === 404 && b.error === 'NOT_FOUND', `${r.status} ${JSON.stringify(b).slice(0, 90)}`);
+    }
+    if (list) {
+      const r = await fetch(BASE + list.path, { method: 'PATCH' });
+      const b = await r.json();
+      check('路径存在但方法不对返回 405', r.status === 405 && b.error === 'METHOD_NOT_ALLOWED', `${r.status} ${JSON.stringify(b).slice(0, 90)}`);
+      check('405 带 Allow 响应头', /GET/.test(r.headers.get('allow') || ''), r.headers.get('allow') || '-');
+    }
+    const noRoute = await fetch(BASE + '/api/definitely-not-here');
+    const noRouteBody = await noRoute.json();
+    check('未知路由默认 404', noRoute.status === 404 && noRouteBody.error === 'NO_ROUTE', `${noRoute.status} ${noRouteBody.error}`);
+    check('/_errors/405 可预览', (await text('/_errors/405')).status === 405);
+    check('/_errors/413 可预览', (await text('/_errors/413')).status === 413);
+    if (list) {
+      const huge = 'x'.repeat(65 * 1024 * 1024);
+      const r = await fetch(BASE + list.path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: huge });
+      const b = await r.json();
+      check('超大请求体返回 413', r.status === 413 && b.error === 'BODY_TOO_LARGE', `${r.status} ${JSON.stringify(b).slice(0, 90)}`);
+    }
+
+    const openapi = await (await fetch(BASE + '/openapi.json')).json();
+    const firstOp = Object.values(openapi.paths || {}).map((p) => Object.values(p)[0]).find(Boolean);
+    check('OpenAPI 默认响应含 404', !!(firstOp && firstOp.responses && firstOp.responses[404]));
+    check('OpenAPI 默认响应含 405', !!(firstOp && firstOp.responses && firstOp.responses[405]));
   } finally {
     if (!child.killed) child.kill();
     await sleep(400);

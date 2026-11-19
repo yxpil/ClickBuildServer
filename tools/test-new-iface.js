@@ -29,6 +29,12 @@ ok('默认详情路由对不存在记录返回 404', () => {
   const detail = it.routes.find((r) => r.key === 'detail');
   assert.ok(detail.script.includes('RETURN 404'));
 });
+for (const kind of ['update', 'delete']) {
+  ok(`默认${kind}路由对不存在记录返回 404`, () => {
+    const r = it.routes.find((x) => x.key === kind);
+    assert.ok(r && r.script.includes('RETURN 404'), kind);
+  });
+}
 ok('第二个中文接口不会撞表名', () => {
   const b = spec.newIface('问候接口', 'biz');
   assert.notStrictEqual(b.tables[0].name, it.tables[0].name);
