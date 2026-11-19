@@ -48,7 +48,7 @@ dist\ClickBuildServer-Setup-1.0.6.exe
 
 也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.5](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.5)。
 
-1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。1.0.8 把生成服务改成模块化单体：一个接口一个 `src/modules/` 目录，自动加载，公共能力留在 `server.js`。
 
 安装包已内置便携 Node（`resources\runtime\node\node.exe`）与三台本地服务（`resources\services\`），不依赖系统 Node，也不要求电脑上预先装数据库；安装时注册 `.yxpn` 文件关联。运行时数据只写用户数据目录，源码和配置里不写死盘符。
 
@@ -186,6 +186,7 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 
 ## 生成出来的服务
 
+- 模块化单体：每个接口一个 `src/modules/<序号_接口名>/` 目录，`index.js` 导出表结构、路由、存储与文档；`src/modules/index.js` 按目录名自动加载，`server.js` 只保留数据库、缓存、鉴权、事务、日志这些公共运行时。
 - 多 MySQL 连接池、按连接执行 `sql/*.sql`
 - 事务 / 限流 / 时间窗 / 熔断
 - 分级日志：控制台彩色 + 内存环形 + SSE + 按等级落 `sys_log`（可换库）
@@ -193,6 +194,23 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 - 对象存储 presigned 上传、回填对象键
 - `/_health` `/_meta` `/_routes` `/_docs`(OpenAPI) `/docs`(HTML) `/help`(帮助/语法) `/_logs` `/_logs/stream`
 - `RESET_DB=1`：启动时清空本工程库，互不牵连
+
+### 扩展一个接口模块
+
+模块里直接改 `routes` 即可；需要脚本解释器表达不了的逻辑时，给路由加 `handler(ctx, api)`：
+
+```js
+module.exports.routes.push({
+  method: 'GET', path: '/orders/stat', name: '订单统计',
+  handler: async (ctx, api) => ({
+    ok: true,
+    total: (await api.db.query('SELECT COUNT(*) AS n FROM biz_order'))[0].n,
+  }),
+});
+```
+
+`handler` 和脚本路由共用鉴权、限流、时间窗、事务和 Redis 缓存；`api` 提供 `db.query / db.execute`、`redis`、`s3`、`log`。模块还可导出 `async setup(api)`，在 MySQL / Redis / S3 就绪后做索引、预热、定时任务等初始化，`setup` 里同样能用 `api.db`。新增模块只要往 `src/modules/` 放一个目录，不用改 `server.js`。
+
 
 ## 模版 / 插件 / 文档
 

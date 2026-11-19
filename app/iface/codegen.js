@@ -231,6 +231,90 @@ shelf/
 `);
 }
 
+function moduleDirName(it, idx) {
+  const label = String(it.name || it.id || 'iface').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').trim() || 'iface';
+  return `${String(idx + 1).padStart(2, '0')}_${label}`;
+}
+
+function moduleSource(it) {
+  const data = JSON.parse(JSON.stringify(it || {}));
+  return `'use strict';
+
+// 模块：${data.name || data.id || '未命名接口'}
+// 一个接口 = 一个模块。服务启动时由 src/modules/index.js 自动加载，不需要改 server.js。
+// 可直接在下面改 routes / tables，也可以在 routes 里加 handler 写自定义逻辑。
+
+module.exports = ${JSON.stringify(data, null, 2)};
+
+/*
+扩展示例：
+
+module.exports.setup = async (api) => {
+  // 数据库、Redis、对象存储都已就绪；适合建索引、预热缓存、启动定时任务
+};
+
+module.exports.routes.push({
+  id: '${data.id || 'iface'}_custom_ping',
+  key: 'custom',
+  method: 'GET',
+  path: '/ping',
+  name: '自定义 ping',
+  summary: '不走脚本，直接返回模块状态',
+  handler: async (ctx, api) => ({ ok: true, module: '${data.name || data.id || 'iface'}', at: new Date().toISOString() }),
+});
+*/
+`;
+}
+
+function moduleReadme(it) {
+  const routes = (it.routes || []).map((r) => `| ${r.method} | \`${(it.basePath || '') + (r.path || '')}\` | ${r.name || ''} | ${r.script ? '脚本' : (r.handler ? 'handler' : '—')} |`).join('\n');
+  return `# 模块：${it.name || it.id}
+
+这个目录就是一个独立接口模块，运行时由 \`src/modules/index.js\` 自动发现。
+
+## 路由
+
+| 方法 | 路径 | 名称 | 实现 |
+| --- | --- | --- | --- |
+${routes || '| - | - | - | - |'}
+
+## 扩展
+
+- 改路由：直接编辑 \`index.js\` 的 \`routes\`，服务重启后生效。
+- 自定义逻辑：给路由加 \`handler\`，返回对象即响应体；\`return { status: 201, body: {...} }\` 可指定状态码。
+- handler 可用 \`api.db.query / api.db.execute\`、\`api.redis\`、\`api.s3\`、\`api.log\`。
+- 模块初始化：导出 \`async setup(api)\`，在数据库、Redis、对象存储就绪后调用；\`api.db.query / execute\` 可直接用，默认走本模块第一张表的连接。
+- 新增模块：在 \`src/modules/\` 下新建目录并放 \`index.js\`，无需改 \`server.js\`。
+`;
+}
+
+function modulesRegistry() {
+  return `'use strict';
+
+// 模块注册表：扫描本目录下的每个子目录，加载 index.js。
+// 新增接口模块只要放一个目录进来；顺序按目录名前缀（01_、02_...）。
+const fs = require('fs');
+const path = require('path');
+
+const modules = [];
+for (const ent of fs.readdirSync(__dirname, { withFileTypes: true })) {
+  if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
+  const file = path.join(__dirname, ent.name, 'index.js');
+  if (!fs.existsSync(file)) continue;
+  const mod = require(file);
+  const m = mod && mod.default ? mod.default : mod;
+  if (!m || !m.id) {
+    console.error('[modules] 跳过无效模块', ent.name);
+    continue;
+  }
+  m.__dir = ent.name;
+  modules.push(m);
+}
+
+module.exports = modules;
+`;
+}
+
 function generate(project, options) {
   const opts = options || {};
   let p = spec.normalizeProject(project);
@@ -253,6 +337,24 @@ function generate(project, options) {
   p.interfaces.forEach((it, idx) => {
     const name = `${String(idx + 1).padStart(2, '0')}_${slug(it.name, 'iface')}.sql`;
     add(`sql/${name}`, `-- 接口：${it.name}\n-- ${it.comment || ''}\n\n${spec.ddlOf(it)}\n`);
+  });
+
+  // 模块化单体：每个接口一个目录，server.js 只负责通用运行时。
+  add('src/modules/index.js', modulesRegistry());
+  add('src/modules/README.md', [
+    '# 接口模块',
+    '',
+    '每个子目录是一个接口模块，`index.js` 导出接口定义（tables / routes / storage / docs）。',
+    '服务启动时按目录名排序自动加载；新接口由 ClickBuild 生成，也可以手写目录。',
+    '',
+    '- `handler(ctx, api)`：路由级自定义逻辑，优先于脚本执行。',
+    '- `setup(api)`：模块初始化钩子，在 MySQL / Redis / S3 就绪后执行。',
+    '- `src/modules/_` 开头的目录不会被加载，可放草稿或公共代码。',
+  ].join('\n'));
+  p.interfaces.forEach((it, idx) => {
+    const dir = moduleDirName(it, idx);
+    add(`src/modules/${dir}/index.js`, moduleSource(it));
+    add(`src/modules/${dir}/README.md`, moduleReadme(it));
   });
 
   if (p.frontend && p.frontend.project) {

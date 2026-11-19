@@ -687,6 +687,7 @@ function tabExport(it) {
       <thead><tr><th>文件</th><th>用途</th></tr></thead>
       <tbody>
         <tr><td class="mono">server.js</td><td>启动建库建表、挂路由、执行脚本</td></tr>
+        <tr><td class="mono">src/modules/*/index.js</td><td>每个接口一个模块，自动加载；可加 handler / setup</td></tr>
         <tr><td class="mono">src/script.js</td><td>脚本解释器</td></tr>
         <tr><td class="mono">src/render.js</td><td>占位符 / 参数化 SQL 引擎</td></tr>
         <tr><td class="mono">src/funcs.js</td><td>HASH / SM3 / SM4 / SUBSTR… 扩展函数</td></tr>

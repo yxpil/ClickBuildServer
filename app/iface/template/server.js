@@ -52,7 +52,21 @@ const CFG = {
 };
 
 const project = JSON.parse(fs.readFileSync(path.join(ROOT, 'interfaces.json'), 'utf8'));
-const IFACES = project.interfaces || [];
+let IFACES = [];
+try {
+  IFACES = require(path.join(ROOT, 'src', 'modules'));
+  if (!Array.isArray(IFACES)) throw new Error('src/modules 没有返回模块数组');
+  console.log(`[modules] 已加载 ${IFACES.length} 个接口模块`);
+} catch (e) {
+  console.error('[modules] 模块加载失败，回退 interfaces.json：', e.message);
+  IFACES = project.interfaces || [];
+}
+IFACES.forEach((m) => {
+  if (!m || !m.id) throw new Error('接口模块缺少 id');
+  m.routes = Array.isArray(m.routes) ? m.routes : [];
+  m.tables = Array.isArray(m.tables) ? m.tables : [];
+});
+project.interfaces = IFACES;
 const CONNS = project.connections || {};
 const LOG_CFG = project.log || {};
 const TOKEN_CFG = project.token || {};
@@ -574,7 +588,19 @@ async function handle(req, res, item) {
   const logs = [];
   let result;
   try {
-    result = await scriptEngine.runScript(parsedOf(route), {
+    if (typeof route.handler === 'function') {
+      // 模块自定义逻辑：handler 优先于脚本解释器，和脚本路由共用鉴权、限流、事务、缓存。
+      const api = {
+        project, iface, route, ctx, redis, s3,
+        db: { query: dbQuery, execute: dbExecute },
+        log: (level, message, data) => logPush({ level: level || 'INFO', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 0, ms: Date.now() - started, ip, traceId, message, data }),
+      };
+      const raw = await route.handler(ctx, api);
+      result = (raw && typeof raw === 'object' && ('status' in raw || 'body' in raw || 'logs' in raw))
+        ? { status: raw.status || 200, body: raw.body, logs: raw.logs || [] }
+        : { status: 200, body: raw };
+    } else {
+      result = await scriptEngine.runScript(parsedOf(route), {
       iface, ctx,
       vars: ctx.vars || {},
       customFuncs: FUNCS,
@@ -609,7 +635,8 @@ async function handle(req, res, item) {
         return true;
       },
       token: tokenStore,
-    });
+      });
+    }
   } catch (e) {
     if (startedTx) {
       await txRollbackAll('脚本异常');
@@ -990,6 +1017,31 @@ async function bootstrap() {
     }
     bucketReady = true;
   } catch (e) { console.error('对象存储不可用', e.message); s3 = null; }
+
+  // 模块初始化：每个接口模块可以在自己的 index.js 里导出 setup(api)
+  for (const m of IFACES) {
+    if (typeof m.setup !== 'function') continue;
+    try {
+      const defaultConn = (m.tables[0] && m.tables[0].conn) || 'main';
+      await m.setup({
+        project,
+        module: m,
+        redis,
+        s3,
+        mysql: (key) => poolFor(key || defaultConn),
+        db: {
+          query: async (sql, params, connKey) => (await (await poolFor(connKey || defaultConn)).pool.query(sql, params || []))[0],
+          execute: async (sql, params, connKey) => {
+            const [r] = await (await poolFor(connKey || defaultConn)).pool.execute(sql, params || []);
+            return { affectedRows: r.affectedRows || 0, insertId: r.insertId != null ? r.insertId : null, info: r.info || '' };
+          },
+        },
+        log: (level, message, data) => logPush({ level: level || 'INFO', ts: stamp(), iface: m.name, message, data }),
+      });
+    } catch (e) {
+      logPush({ level: 'ERROR', ts: stamp(), iface: m.name, message: `模块 setup 失败：${e.message}`, data: { stack: String(e.stack || '').split('\n').slice(0, 4) } });
+    }
+  }
 
   server.listen(CFG.httpPort, () => {
     logPush({ level: 'INFO', ts: stamp(), message: `ClickBuild 接口服务已启动 → http://127.0.0.1:${CFG.httpPort}` });

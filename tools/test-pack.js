@@ -38,5 +38,11 @@ const docs = codegen.buildOpenApi(project, 18100);
 t('OpenAPI 路径覆盖', Object.keys(docs.paths).length >= 10, Object.keys(docs.paths).length);
 t('OpenAPI 组件可解析', !!docs.info && !!docs.components, '');
 
+const gen = codegen.generate(project, { port: 18100 });
+const mods = gen.files.filter((f) => /^src\/modules\/[^/]+\/index\.js$/.test(f.path));
+t('每个接口生成一个模块', mods.length === project.interfaces.length, { mods: mods.length, ifaces: project.interfaces.length });
+t('模块注册表按目录自动加载', gen.files.some((f) => f.path === 'src/modules/index.js' && f.content.includes('readdirSync')), '');
+t('模块文件含路由定义', mods.every((f) => f.content.includes('routes')), '');
+
 console.log(`\n通过 ${ok} / ${ok + bad}${bad ? '，失败 ' + bad : '，全部通过'}`);
 process.exit(bad ? 1 : 0);

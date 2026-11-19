@@ -42,7 +42,7 @@ npm start
 默认端口 ${codegen.DEFAULT_PORTS.http}，启动后打开 \`http://127.0.0.1:${codegen.DEFAULT_PORTS.http}/\`。
 数据库、Redis、S3 连接在 \`.env\` 里改；本机没装这三样时，先在 ClickBuild 里启动内置服务。
 
-工程里的 \`server.js\` 是入口，\`src/\` 是解释器，\`sql/\` 是建表脚本，\`docs/\` 是接口文档，\`export/\` 是每条路由的 JS / Java / Go 参考实现。
+工程里的 \`server.js\` 是入口，\`src/modules/\` 每个目录是一个接口模块，\`src/\` 还有解释器，\`sql/\` 是建表脚本，\`docs/\` 是接口文档，\`export/\` 是每条路由的 JS / Java / Go 参考实现。
 `;
 }
 
