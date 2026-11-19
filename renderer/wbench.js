@@ -550,8 +550,8 @@ function render() {
 function renderRibbon() {
   const svc = S.services || { items: [], ports: {} };
   const infra = svc.items.filter((x) => x.id !== 'server');
+  const server = svc.items.find((x) => x.id === 'server');
   const up = infra.filter((x) => x.running).length;
-  const allUp = infra.length > 0 && up === infra.length;
   $('#ribbon').innerHTML = `
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('seed', 'new', '新建', '重置为示例工程')}
@@ -578,9 +578,9 @@ function renderRibbon() {
   </div><div class="lbl">脚本</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb(allUp ? 'stopAll' : 'startAll', allUp ? 'stop' : 'play', allUp ? '停止' : '启动', allUp ? '停止 MariaDB / Redis / RustFS' : '启动 MariaDB / Redis / RustFS')}
-    <div class="flex items-center gap-1 px-1 text-[10px] text-neutral-500" title="内置服务运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length}</div>
-    ${rb('console', 'console', '控制台', '打开生成服务的控制台')}
+    ${rb(server && server.running ? 'stopServer' : 'launchWeb', server && server.running ? 'stop' : 'play', server && server.running ? '停止' : '启动', server && server.running ? '停止生成服务' : '生成当前工程、启动服务并打开网页主页')}
+    <div class="flex items-center gap-1 px-1 text-[10px] text-neutral-500" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length}</div>
+    ${rb('home', 'console', '打开主页', '在浏览器打开当前工程的网页主页')}
     ${rb('microExport', 'package', '微服务', '按接口或分类导出独立服务')}
   </div><div class="lbl">服务</div></div>
 
@@ -1106,7 +1106,7 @@ function tabTest(it) {
       <select id="tRuntime" class="border border-neutral-300 px-1 py-1 mono" title="选择启动运行时">${runnerOptions()}</select>
       <label class="flex items-center gap-1 cursor-pointer" title="监听文件变化并自动重启"><input id="tHot" type="checkbox" ${S.hot ? 'checked' : ''}>热部署</label>
       <button class="btn thin" data-action="${running ? 'stopServer' : 'startServer'}">${running ? '停止服务' : '启动服务'}</button>
-      <button class="btn thin" data-action="console">打开控制台</button>
+      <button class="btn thin" data-action="console">打开主页</button>
       <button class="btn solid ml-auto" data-action="send">发送</button>
     </div>
     <div class="grid grid-cols-2 gap-2">
@@ -1148,7 +1148,7 @@ function tabExport(it) {
       <select id="eRuntime" class="border border-neutral-300 px-1 py-1 mono" title="选择启动运行时">${runnerOptions()}</select>
       <label class="flex items-center gap-1 cursor-pointer" title="监听文件变化并自动重启"><input id="eHot" type="checkbox" ${S.hot ? 'checked' : ''}>热部署</label>
       <button class="btn thin" data-action="${running ? 'stopServer' : 'startServer'}">${running ? '停止服务' : `启动服务（:${S.settings.ports.http}）`}</button>
-      <button class="btn thin" data-action="console">打开控制台</button>
+      <button class="btn thin" data-action="console">打开主页</button>
     </div>
     <div class="text-[11px] text-neutral-500">导出工程会新建一个独立目录，带 <span class="mono">.idea</span> 配置、启动配置和 <span class="mono">dev.js</span> 热部署脚本；IDEA 里 File → Open 直接打开。</div>
     <div class="mono text-[11px] break-all">${esc(S.genDir || '还没有生成')}</div>
@@ -1328,6 +1328,54 @@ function renderSearch() {
 }
 
 /* ---------------- 动作 ---------------- */
+let launchingWeb = false;
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+async function flushStudio(reason) {
+  if (!studioLoaded || !studioReady) return !studioDirty;
+  let tries = 0;
+  while (studioDirty || studioSaveBusy) {
+    if (tries++ > 4) return false;
+    if (studioSaveBusy) { await pause(250); continue; }
+    if (await saveStudioToProject(reason, true)) return true;
+    await pause(250);
+  }
+  return true;
+}
+async function launchWeb() {
+  if (launchingWeb) return toast('正在启动网页，请稍候');
+  launchingWeb = true;
+  try {
+    if (studioLoaded && (studioDirty || studioSaveBusy)) {
+      const synced = await flushStudio('启动前保存');
+      if (!synced) return toast('前端还没同步到当前工程，先处理同步失败再启动', 5000);
+    }
+    const infra = (S.services && S.services.items || []).filter((x) => x.id !== 'server');
+    const missing = infra.filter((x) => !x.running);
+    if (missing.length) {
+      toast(`正在启动 ${missing.map((x) => x.name).join(' / ')}…`, 12000);
+      const results = await Promise.all(missing.map((x) => api.startService(x.id).catch((e) => ({ ok: false, error: e.message }))));
+      const failed = missing.filter((x, i) => results[i] && results[i].ok === false);
+      if (failed.length) toast(`依赖启动失败：${failed.map((x) => x.name).join(' / ')}，仍会尝试启动网页`, 6000);
+    }
+    const g = await api.generate(S.project);
+    if (!g.ok) return toast('生成失败：' + String(g.error || '').slice(0, 160), 6000);
+    S.genDir = g.dir;
+    const prev = (S.services && S.services.items || []).find((x) => x.id === 'server');
+    if (prev && prev.running && prev.dir && prev.dir !== g.dir) await api.stopServer();
+    const r = await api.startServer(S.genDir, { runtime: S.runner, hot: S.hot });
+    if (r.ok === false) return toast(r.error || '启动失败', 6000);
+    S.services = await api.services();
+    renderRibbon(); renderSide(); renderWorkspace();
+    const svc = (S.services.items || []).find((x) => x.id === 'server');
+    if (!svc || !svc.running) return toast('服务没有监听网页端口，请打开日志排查', 6000);
+    const url = await api.console();
+    toast(`${r.already ? '服务已在运行' : '网页已启动'}，已打开主页 ${url || ''}`, 4000);
+  } catch (e) {
+    toast('启动网页失败：' + String((e && e.message) || e), 6000);
+  } finally {
+    launchingWeb = false;
+  }
+}
 async function act(name, el) {
   const it = activeIface();
   if (name === 'save') return save();
@@ -1492,19 +1540,16 @@ async function act(name, el) {
     toast(`已生成 ${g.files.length} 个文件${g.warnings && g.warnings.length ? `（插件提示 ${g.warnings.length} 条）` : ''}`, 3500);
     return;
   }
-  if (name === 'startServer') {
-    if (!S.genDir) { toast('先点“生成服务”'); return; }
-    const r = await api.startServer(S.genDir, { runtime: S.runner, hot: S.hot });
-    if (r.ok === false) toast(r.error || '启动失败');
-    else if (r.already) toast('服务已经在运行');
-    else toast(`服务已启动 :${(S.settings.ports || {}).http}${r.hot ? ' · 热部署' : ''}${r.runtime && r.runtime !== 'node' ? ' · ' + r.runtime : ''}`);
-    S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace();
-    return;
-  }
-  if (name === 'stopServer') { await api.stopServer(); S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace(); toast('已停止服务'); return; }
+  if (name === 'launchWeb' || name === 'startServer') { return launchWeb(); }
+  if (name === 'stopServer') { await api.stopServer(); S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace(); toast('已停止网页服务'); return; }
   if (name === 'startAll') { await api.startService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已启动三台服务'); return; }
   if (name === 'stopAll') { await api.stopService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已停止'); return; }
-  if (name === 'console') { await api.console(); return; }
+  if (name === 'home' || name === 'console') {
+    const svc = (S.services && S.services.items || []).find((x) => x.id === 'server');
+    if (!svc || !svc.running) return toast('网页还没启动，先点“启动”', 4000);
+    await api.console();
+    return;
+  }
   if (name === 'logs') { return showLogs(); }
   if (name === 'addFunc') {
     S.project.functions.push({ name: 'MY_FUNC', params: ['v'], body: 'UPPER(v)' });
@@ -2299,13 +2344,21 @@ function bindWindowControls() {
   api.onWinState((s) => setState(!!(s && s.maximized)));
 }
 
-/* ---------------- 前端模式（PageStudio / .yxpp） ---------------- */
+/* ---------------- 前端模式（ClickBuild 前端工坊 / .yxpp） ---------------- */
 let studioHtmlCache = '';
 let studioLoaded = false;
 let studioReady = false;
 let studioBound = null;
+let studioBlankBinding = false;
+let studioDirty = false;
+let studioSaveTimer = null;
+let studioAutoTimer = null;
+let studioSaveBusy = false;
+let studioSaveAgain = false;
 let studioSeq = 0;
+let studioLastAt = 0;
 const studioReqs = new Map();
+const STUDIO_BLANK = '__blank__';
 
 function studioFrame() { return $('#studioFrame'); }
 
@@ -2318,8 +2371,36 @@ function refreshStudioState() {
   const el = $('#studioState');
   if (!el) return;
   const f = S.project && S.project.frontend;
-  el.textContent = f ? `已绑定：${f.name || '前端工程'} · ${f.framework || 'tailwind'}` : '未绑定 .yxpp（当前为 PageStudio 示例）';
+  el.textContent = f ? `已绑定：${f.name || '前端工程'} · ${f.framework || 'tailwind'} · 自动保存` : '空白画布 · 编辑后自动绑定到当前工程';
   el.disabled = false;
+}
+
+function blankStudioProject() {
+  return {
+    name: `${S.project.name || '前端'} 前端`,
+    framework: 'tailwind',
+    page: { w: 1200, h: 900, bg: '#FFFFFF' },
+    theme: { font: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif', accent: '#0B0B0B', radius: 4, grid: 8, showGrid: true },
+    assets: [],
+    elements: [],
+  };
+}
+
+function syncStudioFromProject(force) {
+  const f = S.project && S.project.frontend;
+  if (f && f.project) {
+    if (!force && studioBound === f.project && !studioBlankBinding) return;
+    studioBound = f.project;
+    studioBlankBinding = false;
+    studioDirty = false;
+    studioLoadProject(f.project, 'bound');
+  } else {
+    if (!force && studioBound === STUDIO_BLANK) return;
+    studioBound = STUDIO_BLANK;
+    studioBlankBinding = true;
+    studioDirty = false;
+    studioLoadProject(blankStudioProject(), 'none');
+  }
 }
 
 async function ensureStudio() {
@@ -2330,15 +2411,20 @@ async function ensureStudio() {
   try {
     studioHtmlCache = await api.studioHtml();
     f.srcdoc = studioHtmlCache;
+    if (!studioAutoTimer) {
+      studioAutoTimer = setInterval(() => {
+        if (studioDirty && S.view === 'studio') saveStudioToProject('定时保存');
+      }, 20000);
+    }
   } catch (e) {
     studioLoaded = false;
-    toast('PageStudio 加载失败：' + (e.message || e), 5000);
+    toast('前端工坊加载失败：' + (e.message || e), 5000);
   }
 }
 
-function studioLoadProject(project) {
+function studioLoadProject(project, binding) {
   if (!project) return;
-  postToStudio({ type: 'cbs:yxpp:load', project });
+  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', at: studioLastAt });
 }
 
 function captureStudioProject() {
@@ -2363,20 +2449,61 @@ function downloadJson(name, data) {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
+function scheduleStudioSave(delay) {
+  clearTimeout(studioSaveTimer);
+  studioSaveTimer = setTimeout(() => { saveStudioToProject('编辑自动保存'); }, delay == null ? 1200 : delay);
+}
+
+async function saveStudioToProject(reason, force) {
+  if (!studioLoaded || !studioReady) return false;
+  if (!studioDirty && !force) return true;
+  if (studioSaveBusy) { studioSaveAgain = true; return false; }
+  studioSaveBusy = true;
+  studioDirty = false;
+  try {
+    const project = await captureStudioProject();
+    if (!project || !project.page) {
+      studioDirty = true;
+      postToStudio({ type: 'cbs:yxpp:error', message: '读取画布失败，稍后会重试' });
+      return false;
+    }
+    // 案例前端自带可交互 HTML（登录、路由试运行等）；设计编辑只更新 project，不把这段运行时脚本冲掉。
+    const old = S.project.frontend;
+    const customHtml = !!(old && old.html && /<script[\s>]/i.test(old.html));
+    const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind', html: customHtml ? old.html : '' });
+    if (!built || !built.ok) throw new Error((built && built.error) || '生成 .yxpp 失败');
+    S.project.frontend = built.yxpp;
+    await api.save(S.project);
+    studioBound = built.yxpp.project;
+    studioBlankBinding = false;
+    studioLastAt = Date.now();
+    postToStudio({ type: 'cbs:yxpp:saved', at: studioLastAt });
+    refreshStudioState();
+    if (reason === '手动同步') toast('已同步到当前工程', 2500);
+    return true;
+  } catch (e) {
+    studioDirty = true;
+    postToStudio({ type: 'cbs:yxpp:error', message: String((e && e.message) || e) });
+    if (reason === '手动同步') toast('同步失败：' + String((e && e.message) || e), 5000);
+    return false;
+  } finally {
+    studioSaveBusy = false;
+    if (studioDirty || studioSaveAgain) {
+      studioSaveAgain = false;
+      scheduleStudioSave(1000);
+    }
+  }
+}
+
 async function attachStudioToProject() {
-  const project = await captureStudioProject();
-  if (!project || !project.page) return toast('读取 PageStudio 工程失败，请先在画布上拖入元素', 4000);
-  const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind' });
-  if (!built || !built.ok) return toast('生成 .yxpp 失败：' + ((built && built.error) || ''), 5000);
-  S.project.frontend = built.yxpp;
-  await api.save(S.project);
-  refreshStudioState();
-  toast('已把前端 .yxpp 绑定到当前工程，生成服务后自动作为首页', 4500);
+  if (!studioReady) return toast('前端工坊还没加载完，稍等一下', 4000);
+  const ok = await saveStudioToProject('手动同步', true);
+  if (ok) toast('已绑定并同步到当前工程；启动后首页就是这份页面', 4500);
 }
 
 async function exportStudioYxpp() {
   const project = await captureStudioProject();
-  if (!project || !project.page) return toast('读取 PageStudio 工程失败', 4000);
+  if (!project || !project.page) return toast('读取前端工程失败', 4000);
   const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind' });
   if (!built || !built.ok) return toast('生成 .yxpp 失败', 5000);
   downloadJson(`${String(S.project.name || '前端工程').replace(/[\\/:*?"<>|]/g, '_')}.yxpp`, built.yxpp);
@@ -2392,13 +2519,17 @@ async function importStudioYxpp() {
   S.project.frontend = got.yxpp;
   await api.save(S.project);
   refreshStudioState();
+  studioLastAt = Date.now();
   studioBound = got.yxpp.project;
-  studioLoadProject(got.yxpp.project);
+  studioBlankBinding = false;
+  studioLoadProject(got.yxpp.project, 'bound');
   toast(`已导入 .yxpp「${got.yxpp.name}」`, 4000);
 }
 
 function setView(view) {
-  S.view = view === 'studio' ? 'studio' : 'api';
+  const next = view === 'studio' ? 'studio' : 'api';
+  if (S.view === 'studio' && next === 'api' && studioDirty) saveStudioToProject('切换视图');
+  S.view = next;
   const studio = S.view === 'studio';
   $('#ribbon').classList.toggle('hidden', studio);
   $('#workbenchMain').classList.toggle('hidden', studio);
@@ -2409,11 +2540,7 @@ function setView(view) {
   if (studio) {
     ensureStudio();
     refreshStudioState();
-    const fp = S.project && S.project.frontend && S.project.frontend.project;
-    if (studioReady && fp && studioBound !== fp) {
-      studioBound = fp;
-      studioLoadProject(fp);
-    }
+    if (studioReady) syncStudioFromProject(false);
   } else {
     render();
   }
@@ -2428,10 +2555,15 @@ window.addEventListener('message', (ev) => {
   }
   if (d.type === 'cbs:yxpp:ready') {
     studioReady = true;
-    if (S.project && S.project.frontend && S.project.frontend.project) {
-      studioBound = S.project.frontend.project;
-      studioLoadProject(S.project.frontend.project);
-    }
+    syncStudioFromProject(true);
+  }
+  if (d.type === 'cbs:yxpp:dirty') {
+    studioDirty = true;
+    scheduleStudioSave(d.immediate ? 0 : 1200);
+  }
+  if (d.type === 'cbs:yxpp:reload') {
+    syncStudioFromProject(true);
+    toast('已从当前工程重新载入前端', 3000);
   }
 });
 

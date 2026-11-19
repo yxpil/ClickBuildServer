@@ -3,16 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PageStudio — 网页设计工坊</title>
+<title>ClickBuild 前端工坊 — .yxpp</title>
 <link rel="icon" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230B0B0B'/%3E%3Cpath d='M6 7h20v4H6zM6 15h11v4H6zM6 23h20v2H6z' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap">
 <style>
 /* ============ 基础 ============ */
 *,*::before,*::after{box-sizing:border-box}
 :root{
   --paper:#ECECE8;--paper-2:#E2E2DD;--panel:#FFFFFF;--ink:#0B0B0B;--ink-2:#5F5F5A;--ink-3:#9A9A93;
   --line:#D4D4CE;--line-2:#EAEAE5;--r:3px;--tb:52px;--sb:26px;
-  --ui:"Space Grotesk","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --ui:"Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,sans-serif;
   --mono:"SFMono-Regular",ui-monospace,"Consolas","Noto Sans SC",monospace;
 }
 html,body{height:100%}
@@ -252,8 +251,8 @@ textarea.inp{height:auto;min-height:58px;padding:6px 7px;resize:vertical;line-he
   <header class="topbar">
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#0B0B0B"/><path d="M6 7h20v4H6zM6 15h11v4H6zM6 23h20v2H6z" fill="#fff"/></svg>
-      <span class="brand-name">PAGE<span class="slash">/</span>STUDIO</span>
-      <span class="brand-sub">网页设计工坊</span>
+      <span class="brand-name">CLICKBUILD<span class="slash">/</span>FRONTEND</span>
+      <span class="brand-sub">工程内 .yxpp · 自动保存</span>
     </div>
     <div class="tb-mid">
       <div class="seg" id="deviceSeg">
@@ -273,7 +272,7 @@ textarea.inp{height:auto;min-height:58px;padding:6px 7px;resize:vertical;line-he
       <button class="btn btn--sq" id="btnRedo" data-icon="redo" title="重做 Ctrl+Shift+Z"></button>
       <button class="btn btn--sq tb-mobile" id="btnToggleLeft" data-icon="layers" title="组件库"></button>
       <button class="btn" id="btnImportSvg" data-icon="upload">导入 SVG</button>
-      <button class="btn btn--solid" id="btnExport" data-icon="download">导出代码</button>
+      <button class="btn btn--solid" id="btnExport" data-icon="download">导出 HTML</button>
     </div>
   </header>
 
@@ -321,7 +320,7 @@ textarea.inp{height:auto;min-height:58px;padding:6px 7px;resize:vertical;line-he
         <div class="theme-presets" id="themePresets"></div>
         <div id="themeFields"></div>
         <div class="insp-actions">
-          <button class="btn" id="btnReset">重置为示例</button>
+          <button class="btn" id="btnReset">清空画布</button>
         </div>
       </div>
     </aside>
@@ -366,7 +365,7 @@ textarea.inp{height:auto;min-height:58px;padding:6px 7px;resize:vertical;line-he
     <span class="sep"></span>
     <span id="stNodes">0 个元素</span>
     <span class="grow"></span>
-    <span class="dot-live"><i></i><span id="stSave">已保存到本地</span></span>
+    <span class="dot-live"><i></i><span id="stSave">正在读取当前工程…</span></span>
     <span class="sep"></span>
     <span>Ctrl+Z 撤销 · Del 删除 · ↑↓←→ 微调</span>
   </footer>
@@ -376,7 +375,7 @@ textarea.inp{height:auto;min-height:58px;padding:6px 7px;resize:vertical;line-he
 <div class="modal" id="exportModal">
   <div class="dialog">
     <div class="dialog-head">
-      <h2>导出代码</h2>
+      <h2>导出 HTML</h2>
       <div class="seg" id="fwTabs">
         <button data-fw="tailwind" class="is-active">Tailwind</button>
         <button data-fw="bootstrap">Bootstrap</button>
@@ -417,12 +416,11 @@ textarea.inp{height:auto;min-height:58px;padding:6px 7px;resize:vertical;line-he
     </div>
     <div class="dialog-foot">
       <button class="btn" id="btnCopy">复制代码</button>
-      <button class="btn" id="btnDownload" data-icon="download">下载文件</button>
+      <button class="btn" id="btnDownload" data-icon="download">下载 HTML</button>
       <button class="btn" id="btnPreview" data-icon="external">新窗口预览</button>
       <span class="grow"></span>
-      <button class="btn" id="btnSaveProject" data-icon="file">保存项目 JSON</button>
-      <button class="btn" id="btnLoadProject" data-icon="folder">载入项目</button>
-      <input type="file" id="fileProject" accept=".json,application/json" class="hide">
+      <button class="btn" id="btnReload" data-icon="undo">从工程重新载入</button>
+      <button class="btn btn--solid" id="btnSync" data-icon="check">同步到当前工程</button>
       <input type="file" id="fileSvgInput" accept=".svg,image/svg+xml" class="hide" multiple>
     </div>
   </div>
@@ -549,7 +547,7 @@ function N(type, x, y, w, h, props, style, children) {
 /* ---- 预设区块 ---- */
 function blkNav(x, y) {
   return [
-    N('text', x, y + 12, 160, 18, { text: 'PAGE / STUDIO', size: 11, weight: 600, ls: 2.2, color: '#0B0B0B' }),
+    N('text', x, y + 12, 160, 18, { text: 'CLICKBUILD / FRONTEND', size: 11, weight: 600, ls: 2.2, color: '#0B0B0B' }),
     N('text', x + 566, y + 12, 56, 18, { text: '组件', size: 11.5, weight: 400, color: '#5F5F5A' }),
     N('text', x + 646, y + 12, 56, 18, { text: '图标', size: 11.5, weight: 400, color: '#5F5F5A' }),
     N('text', x + 726, y + 12, 56, 18, { text: '导出', size: 11.5, weight: 400, color: '#5F5F5A' }),
@@ -621,8 +619,8 @@ function blkQuote(x, y) {
 function blkFooter(x, y) {
   return [
     N('divider', x, y, 1072, 1, {}, { background: '#D4D4CE' }),
-    N('text', x, y + 22, 420, 16, { text: 'PAGESTUDIO · 2026', size: 10.5, ls: 1.4, color: '#9A9A93' }),
-    N('text', x + 672, y + 22, 400, 16, { text: '本地运行 · 无后端 · 数据存浏览器', size: 10.5, align: 'right', color: '#9A9A93' })
+    N('text', x, y + 22, 420, 16, { text: 'CLICKBUILD · 2026', size: 10.5, ls: 1.4, color: '#9A9A93' }),
+    N('text', x + 672, y + 22, 400, 16, { text: '工程内运行 · 设计稿自动保存', size: 10.5, align: 'right', color: '#9A9A93' })
   ];
 }
 
@@ -642,25 +640,24 @@ var THEME_PRESETS = [
   { id: 'gray', name: '灰阶', bg: '#F7F7F4', accent: '#2B2B28' }
 ];
 var FONT_OPTIONS = [
-  { v: '"Space Grotesk","Noto Sans SC",sans-serif', label: 'Space Grotesk' },
-  { v: '"Noto Serif SC","Songti SC",Georgia,serif', label: 'Noto Serif 宋体' },
-  { v: '-apple-system,"Segoe UI","PingFang SC",sans-serif', label: '系统无衬线' },
+  { v: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif', label: '系统无衬线' },
+  { v: '"Noto Serif SC","Songti SC",Georgia,serif', label: '宋体 / Serif' },
+  { v: '"Microsoft YaHei","PingFang SC",sans-serif', label: '微软雅黑' },
   { v: '"SFMono-Regular",Consolas,"Noto Sans SC",monospace', label: '等宽字体' }
 ];
 
 function sampleProject() {
   return {
-    name: 'PageStudio 示例页',
+    name: '空白前端',
     framework: 'tailwind',
-    page: { w: 1200, h: 880, bg: '#FFFFFF' },
-    theme: { font: '"Space Grotesk","Noto Sans SC",sans-serif', accent: '#0B0B0B', radius: 4, grid: 8, showGrid: true },
+    page: { w: 1200, h: 900, bg: '#FFFFFF' },
+    theme: { font: FONT_OPTIONS[0].v, accent: '#0B0B0B', radius: 4, grid: 8, showGrid: true },
     assets: [],
-    elements: blkNav(64, 36).concat(blkHero(64, 150), blkCards(64, 600), blkFooter(64, 800))
+    elements: []
   };
 }
 
 /* ===================== 2. 核心：状态 / 画布渲染 / 图层 / 面板 ===================== */
-var KEY = 'pagestudio.project.v2';
 var $ = function (id) { return document.getElementById(id); };
 var stage = $('stage'), stageScroll = $('stageScroll'), canvasHolder = $('canvasHolder');
 var pageFrame = $('pageFrame'), pageRoot = $('pageRoot'), overlay = $('overlay');
@@ -756,16 +753,34 @@ function countAll() {
   return c;
 }
 
-/* ---- 持久化 ---- */
+/* ---- 持久化：唯一数据源是 ClickBuild 当前工程（iframe 内不再写浏览器草稿） ---- */
 var saveTimer = null;
+var embedded = false;
+try { embedded = !!(window.parent && window.parent !== window); } catch (e) { embedded = false; }
 function snapshot() { return JSON.stringify(S.proj); }
+function notifyDirty(immediate) {
+  if (!embedded) { $('stSave').textContent = '未连接工程 · 请从 ClickBuild 打开'; return; }
+  $('stSave').textContent = immediate ? '同步到工程中…' : '待同步…';
+  try { window.parent.postMessage({ type: 'cbs:yxpp:dirty', immediate: !!immediate }, '*'); }
+  catch (e) { $('stSave').textContent = '同步失败 · 父窗口不可用'; }
+}
 function scheduleSave() {
-  $('stSave').textContent = '保存中…';
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(function () {
-    try { localStorage.setItem(KEY, snapshot()); $('stSave').textContent = '已保存到本地'; }
-    catch (e) { $('stSave').textContent = '本地存储不可用'; }
-  }, 700);
+  if (!embedded) { notifyDirty(false); return; }
+  $('stSave').textContent = '待同步…';
+  saveTimer = setTimeout(function () { notifyDirty(false); }, 650);
+}
+function saveNow() {
+  clearTimeout(saveTimer);
+  notifyDirty(true);
+}
+function markSynced(at) {
+  clearTimeout(saveTimer);
+  var t = at ? new Date(at) : new Date();
+  $('stSave').textContent = '已同步到当前工程 · ' + [t.getHours(), t.getMinutes(), t.getSeconds()].map(function (n) { return String(n).padStart(2, '0'); }).join(':');
+}
+function markSaveError(msg) {
+  $('stSave').textContent = '同步失败 · ' + String(msg || '工程未保存');
 }
 function commit() {
   var now = snapshot();
@@ -1828,7 +1843,7 @@ document.addEventListener('keydown', function (e) {
   if (meta && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (meta && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
   if (meta && e.key.toLowerCase() === 'e') { e.preventDefault(); openExport(); return; }
-  if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); try { localStorage.setItem(KEY, snapshot()); toast('已保存到本地'); } catch (err) { toast('本地存储不可用'); } return; }
+  if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); saveNow(); toast(embedded ? '正在同步到当前工程' : '请从 ClickBuild 打开前端工坊'); return; }
   if (e.key === 'Escape') { deselect(); closeExport(); return; }
   if (!S.sel) return;
   var n = findNode(S.sel);
@@ -1855,7 +1870,7 @@ $('btnImportSvg').addEventListener('click', function () { $('fileSvgInput').clic
 $('fileSvgInput').addEventListener('change', function (e) { importSvgFiles(e.target.files); });
 $('btnAssetImport').addEventListener('click', function () { $('fileSvgInput').click(); });
 $('btnReset').addEventListener('click', function () {
-  if (!confirm('重置为示例页？当前画布内容会被覆盖。')) return;
+  if (!confirm('清空当前画布？当前页面元素会被删除。')) return;
   var keep = S.proj.assets;
   S.proj = sampleProject();
   S.proj.assets = keep || [];
@@ -2011,7 +2026,7 @@ function renderNode(n, fw, ind) {
 
 function buildExport(fw) {
   var proj = S.proj, page = proj.page, theme = proj.theme;
-  var title = esc(proj.name || 'PageStudio 导出页');
+  var title = esc(proj.name || 'ClickBuild 前端页面');
   var font = String(theme.font || 'sans-serif').replace(/"/g, "'");
 
   if (fw === 'css') {
@@ -2072,7 +2087,7 @@ function buildExport(fw) {
     : fw === 'bootstrap'
       ? 'Bootstrap 5 提供按钮 / 表单等语义类，几何位置以内联样式表达，避免破坏栅格。'
       : '零依赖：所有样式都写进 <style>，双击即可打开，适合嵌进任何静态页面。';
-  var doc = '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n' + headBase + '\n<!-- 由 PageStudio 导出 · ' + FW_LABEL[fw] + ' · 绝对定位布局 -->\n' + head +
+  var doc = '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n' + headBase + '\n<!-- 由 ClickBuild 前端工坊导出 · ' + FW_LABEL[fw] + ' · 绝对定位布局 -->\n' + head +
     '\n</head>\n<body>\n' + root + '\n</body>\n</html>\n';
   return { file: FW_FILE[fw], note: note, code: doc };
 }
@@ -2153,44 +2168,20 @@ $('btnPreview').addEventListener('click', function () {
   if (S.fw === 'tailwind') toast('已在新窗口打开预览');
   else toast('预览使用 Tailwind 版本渲染');
 });
-$('btnSaveProject').addEventListener('click', function () {
-  download('pagestudio-project.json', JSON.stringify(S.proj, null, 2), 'application/json');
-  toast('项目 JSON 已保存');
+$('btnSync').addEventListener('click', function () {
+  saveNow();
+  toast('正在同步到当前工程');
 });
-$('btnLoadProject').addEventListener('click', function () { $('fileProject').click(); });
-$('fileProject').addEventListener('change', function (e) {
-  var f = e.target.files[0];
-  if (!f) return;
-  var reader = new FileReader();
-  reader.onload = function () {
-    try {
-      var obj = JSON.parse(reader.result);
-      if (!obj || !obj.page || !Array.isArray(obj.elements)) throw new Error('结构不完整');
-      S.proj = obj;
-      S.proj.assets = S.proj.assets || [];
-      S.proj.theme = S.proj.theme || { font: FONT_OPTIONS[0].v, grid: 8, accent: '#0B0B0B' };
-      S.proj.page = S.proj.page || { w: 1200, h: 880, bg: '#FFFFFF' };
-      S.sel = null;
-      S.undo.length = 0; S.redo.length = 0; S.lastSnap = snapshot();
-      renderCanvas(); renderInspector(); renderAssets(); renderTheme(); updateHistoryBtns();
-      scheduleSave();
-      toast('项目已载入');
-    } catch (err) {
-      toast('载入失败：不是有效的项目文件');
-    }
-    $('fileProject').value = '';
-  };
-  reader.readAsText(f, 'utf-8');
+$('btnReload').addEventListener('click', function () {
+  if (!embedded) { toast('请从 ClickBuild 打开前端工坊'); return; }
+  try { parent.postMessage({ type: 'cbs:yxpp:reload' }, '*'); toast('已请求从当前工程重新载入'); }
+  catch (e) { toast('重新载入失败'); }
 });
 
 /* ===================== 5. 初始化 ===================== */
 function init() {
-  var proj = null;
-  try {
-    var saved = localStorage.getItem(KEY);
-    if (saved) proj = JSON.parse(saved);
-  } catch (e) { proj = null; }
-  if (!proj || !proj.elements || !proj.page) proj = sampleProject();
+  // 嵌入 ClickBuild 时先显示空白画布，等待父窗口下发当前工程；绝不读取浏览器草稿或示例站点。
+  var proj = sampleProject();
   proj.assets = proj.assets || [];
   proj.theme = Object.assign({ font: FONT_OPTIONS[0].v, accent: '#0B0B0B', radius: 4, grid: 8, showGrid: true }, proj.theme || {});
   S.proj = proj;
@@ -2209,9 +2200,10 @@ function init() {
   renderInspector();
   updateHistoryBtns();
 
+  if (embedded) $('stSave').textContent = '正在读取当前工程…';
   window.addEventListener('resize', function () { if (!S.drag) renderCanvas(); });
   window.addEventListener('error', function (ev) { if (ev.message) toast('运行出错：' + ev.message); });
-  setTimeout(function () { toast('拖入元素开始设计，导出代码在右上角'); }, 700);
+  setTimeout(function () { toast(embedded ? '已连接当前工程 · 编辑会自动保存' : '请从 ClickBuild 打开前端工坊'); }, 700);
 }
 init();
 
@@ -2227,18 +2219,22 @@ init();
         S.proj.theme = Object.assign({ font: FONT_OPTIONS[0].v, accent: '#0B0B0B', radius: 4, grid: 8, showGrid: true }, S.proj.theme || {});
         S.sel = null; S.undo.length = 0; S.redo.length = 0; S.lastSnap = snapshot();
         renderCanvas(); renderInspector(); renderAssets(); renderTheme(); updateHistoryBtns();
-        toast('已载入当前工程的前端');
+        if (d.binding === 'none') $('stSave').textContent = '空白工程 · 编辑后自动绑定';
+        else markSynced(new Date(d.at || Date.now()).getTime());
+        toast(d.binding === 'none' ? '当前工程还没有前端，开始设计后自动保存' : '已连接当前工程的前端');
       } catch (e) { toast('前端载入失败：' + e.message); }
     }
     if (d.type === 'cbs:yxpp:get') {
       var p = snapshotNow();
       if (p) parent.postMessage({ type: 'cbs:yxpp:project', requestId: d.requestId || '', project: p, name: S.proj.name || '' }, '*');
     }
+    if (d.type === 'cbs:yxpp:saved') markSynced(d.at);
+    if (d.type === 'cbs:yxpp:error') markSaveError(d.message);
+    if (d.type === 'cbs:yxpp:flush') saveNow();
   });
   try { parent.postMessage({ type: 'cbs:yxpp:ready' }, '*'); } catch (e) {}
 })();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"2e34f2a5d2444f89ac8e99c6fdc63a1a","r":1,"spa":2}' crossorigin="anonymous"></script>
-<script>window.__CF$cv$params={r:'a5d02fb4fe15670c',t:'MTc5NTEwMTQ5NA==',u:'01a1f4630dd677d8afeae6941925fba3',ut:'5NQWbLkt_MlEyBJPWMg99kO.ChVR9ApwHlAscs60eXE-1795101494-1.2.1.1-MLKSjBCZh1fyLjPoQRp.w9qof8js7ne4xOxS9XM4HjhaSMFybvRriG_TeyAYpV8SiFn5C9ncikybnzmXSdblO5X0GNbd1We6IeJLsirRD2E',i:60};(function(){if(!document.body)return;var l=window.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/precursor/main.js?ray=a5d02fb4fe15670c',s=document.createElement('script');s.src=o?new URL(u,o).href:u;document.head.appendChild(s);})();</script></body>
+</body>
 </html>
 

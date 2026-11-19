@@ -120,7 +120,7 @@ function htmlFromProject(studioProject, meta) {
   const page = p.page || { w: 1200, h: 880, bg: '#FFFFFF' };
   const theme = p.theme || {};
   const nodes = (Array.isArray(p.elements) ? p.elements : []).map(nodeHtml).join('\n');
-  const title = esc(meta && meta.name ? meta.name : (p.name || 'PageStudio 页面'));
+  const title = esc(meta && meta.name ? meta.name : (p.name || 'ClickBuild 前端页面'));
   const font = esc(theme.font || 'system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif');
   return `<!doctype html>
 <html lang="zh-CN">
@@ -147,7 +147,7 @@ ${nodes}
 function normalizeStudioProject(input) {
   const p = input && typeof input === 'object' ? input : null;
   if (!p || !p.page || !Array.isArray(p.elements)) {
-    throw new Error('不是有效的 PageStudio 工程：需要 page 和 elements 数组');
+    throw new Error('不是有效的前端工程：需要 page 和 elements 数组');
   }
   return p;
 }

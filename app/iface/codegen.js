@@ -367,7 +367,7 @@ function generate(project, options) {
     add('frontend/index.yxpp', JSON.stringify(yxpp, null, 2));
     add('frontend/project.json', JSON.stringify(p.frontend.project, null, 2));
     add('frontend/README.md', [
-      `# ${yxpp.name}`, '', '这是随接口服务一起打包的 PageStudio 前端工程（.yxpp）。',
+      `# ${yxpp.name}`, '', '这是随接口服务一起打包的 ClickBuild 前端工程（.yxpp）。',
       '', '- 生成服务的 `/` 会优先返回该前端页面。', '- 可以在 ClickBuild 的「前端」模式里继续编辑，再导出 .yxpp。',
     ].join('\n'));
     if (p.frontend.html) add('public/index.html', p.frontend.html);

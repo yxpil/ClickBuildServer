@@ -156,8 +156,23 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && S.project.frontend.project.elements && S.project.frontend.project.elements.length > 10 && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
   await val(`setView('studio')`);
   await wait(1800);
-  t('前端模式载入案例 PageStudio 工程', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === S.project.frontend.project.elements.length);})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
-  t('前端状态栏显示已绑定案例', await val(`document.querySelector('#studioState').textContent.includes('已绑定') && document.querySelector('#studioState').textContent.includes('案例前端')`), await val(`document.querySelector('#studioState').textContent`));
+  t('前端模式载入当前工程 .yxpp', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === S.project.frontend.project.elements.length);})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
+  t('前端状态栏显示已绑定案例', await val(`document.querySelector('#studioState').textContent.includes('已绑定') && document.querySelector('#studioState').textContent.includes('案例前端') && document.querySelector('#studioState').textContent.includes('自动保存')`), await val(`document.querySelector('#studioState').textContent`));
+  t('前端工坊品牌属于 ClickBuild', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('.brand-name').textContent.includes('CLICKBUILD')&&d.querySelector('.brand-name').textContent.includes('FRONTEND');})()`));
+  const studioSrc = await val(`api.studioHtml()`);
+  t('前端页面已移除旧站品牌与浏览器草稿', !/PageStudio|PAGESTUDIO|localStorage|static\.cloudflareinsights|__CF\$cv\$params/.test(String(studioSrc || '')));
+  t('前端页面保留 ClickBuild 工程桥', /cbs:yxpp:load/.test(String(studioSrc || '')) && /cbs:yxpp:dirty/.test(String(studioSrc || '')));;
+  // 编辑画布后自动回写当前工程
+  const autoSavedBg = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FBFBFA';w.scheduleSave();return w.S.proj.page.bg;})()`);
+  await wait(3600);
+  t('前端编辑自动回写当前工程', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg==='#FBFBFA')`), await val(`S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg`));
+  t('前端状态栏显示已同步到工程', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent.includes('已同步到当前工程');})()`), await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent;})()`));
+  t('案例可交互 HTML 不被设计自动保存冲掉', await val(`!!(S.project.frontend&&/<script[\\s>]/i.test(S.project.frontend.html))`), await val(`S.project.frontend?S.project.frontend.html.length:0`));
+  const genWithFront = await val(`api.generate(S.project)`);
+  t('生成工程写入网页首页', !!(genWithFront && genWithFront.ok && await val(`api.exists(${JSON.stringify((genWithFront.dir || '') + '\\public\\index.html')})`)), genWithFront && genWithFront.dir);
+  let genHtml = '';
+  try { genHtml = fs.readFileSync((genWithFront.dir || '') + '\\public\\index.html', 'utf8'); } catch (e) { genHtml = ''; }
+  t('生成首页保留案例运行时脚本', /<script[\s>]/i.test(genHtml), genHtml.length);
   await val(`setView('api')`);
   await wait(400);
 
@@ -253,9 +268,23 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const saved = await val(`document.querySelector('#saveState').textContent`);
   t('自动保存静默且状态可见', /未保存|保存中/.test(dirty) && saved.includes('已保存'), `${dirty} → ${saved}`);
 
-  // 启动按钮要跟运行状态一起变
-  const ribbonStop = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:true}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="stopAll"]');const txt=el?el.innerText:'无';S.services=keep;renderRibbon();return txt;})()`);
-  t('全部服务运行时按钮变“停止”', /停止/.test(ribbonStop), ribbonStop);
+  // 启动按钮要跟网页服务状态一起变，并且默认入口是主页
+  const ribbonStart = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:false}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="launchWeb"]');const home=document.querySelector('#ribbon [data-action="home"]');const out={start:el?el.innerText:'无',home:home?home.innerText:'无'};S.services=keep;renderRibbon();return JSON.stringify(out);})()`);
+  const rs = JSON.parse(ribbonStart);
+  t('网页停止时启动按钮为“启动”', /启动/.test(rs.start), ribbonStart);
+  t('Ribbon 默认提供打开主页入口', /打开主页/.test(rs.home), ribbonStart);
+  const ribbonStop = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:true}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="stopServer"]');const txt=el?el.innerText:'无';S.services=keep;renderRibbon();return txt;})()`);
+  t('网页运行时按钮变“停止”', /停止/.test(ribbonStop), ribbonStop);
+
+  // 没有 .yxpp 时进入前端工坊：显示空白画布，首次编辑自动绑定并保存
+  await val(`(async()=>{S.project=await api.seed();S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;S.mode='grid';render();setView('studio');return true})()`, true);
+  await wait(1800);
+  t('无前端工程时显示空白画布而非示例站点', await val(`S.project.frontend===undefined && document.querySelector('#studioState').textContent.includes('空白画布')`), await val(`document.querySelector('#studioState').textContent`));
+  await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FAFAF8';w.scheduleSave();return true})()`);
+  await wait(3600);
+  t('空白画布首次编辑自动绑定 .yxpp', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg==='#FAFAF8'&&S.project.frontend.html)`), await val(`S.project.frontend?S.project.frontend.name:'无'`));
+  await val(`setView('api')`);
+  await wait(300);
 
   // 测试页有运行时选择与热部署
   const testTools = await val(`(()=>{S.mode='editor';S.tab='test';render();return JSON.stringify({rt:!!document.querySelector('#tRuntime'),hot:!!document.querySelector('#tHot'),checked:document.querySelector('#tHot')&&document.querySelector('#tHot').checked,opts:Array.from(document.querySelectorAll('#tRuntime option')).map(o=>o.textContent)});})()`);

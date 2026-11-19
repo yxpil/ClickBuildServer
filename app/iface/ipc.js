@@ -335,7 +335,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('iface:studioHtml', () => fs.readFileSync(path.join(__dirname, '..', '..', 'renderer', 'studio.html'), 'utf8'));
-  // .yxpp：PageStudio 工程 → 可打包的前端快照
+  // .yxpp：ClickBuild 前端工程 → 可打包的前端快照
   ipcMain.handle('iface:frontend:build', (e, payload) => {
     const p = payload || {};
     const yxpp = frontend.parseYxpp({
@@ -350,7 +350,7 @@ function registerIpc() {
   ipcMain.handle('iface:frontend:import', async () => {
     const r = await dialog.showOpenDialog({
       title: '导入 .yxpp 前端工程', properties: ['openFile'],
-      filters: [{ name: 'PageStudio 前端工程', extensions: ['yxpp', 'json'] }],
+      filters: [{ name: 'ClickBuild 前端工程', extensions: ['yxpp', 'json'] }],
     });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
     try {
