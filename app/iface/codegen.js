@@ -12,6 +12,13 @@ function slug(text, fallback) {
   return s || (fallback || 'item');
 }
 
+function pascal(text, fallback) {
+  let s = String(text || '').split(/[^a-z0-9]+/i).filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+  if (!s) s = fallback || 'Route';
+  if (!/^[A-Za-z]/.test(s)) s = 'X' + s;
+  return s;
+}
+
 function engine(name) {
   return fs.readFileSync(path.join(__dirname, name), 'utf8');
 }
@@ -72,8 +79,8 @@ ${body}
 `;
 }
 
-function exportJava(iface, route) {
-  const cls = `Iface${slug(iface.name).replace(/(^|-)(\w)/g, (_, a, b) => b.toUpperCase())}${slug(route.name).split('-').map((s) => s[0] ? s[0].toUpperCase() + s.slice(1) : '').join('')}Route`;
+function exportJava(iface, route, base) {
+  const cls = pascal(base || `${slug(iface.name, 'iface')}-${slug(route.method, 'route')}-${slug(route.path, 'path')}`, 'Route');
   const sqls = (route.script || '').split(/\r?\n/).filter((l) => /^(LET\s+\$[A-Za-z0-9_]+\s*=\s*)?(QUERY|EXEC)\s+/i.test(l.trim()));
   return `// 自动导出：${iface.name} / ${route.name} — ${route.method} ${route.path}
 // Java 侧给的是"路由 + SQL"骨架：SQL 已经按表结构生成好，接上 JdbcTemplate 即可。
@@ -100,8 +107,9 @@ ${sqls.map((l, i) => `    // ${l.trim().replace(/[`$]/g, ' ')}\n    public stati
 `;
 }
 
-function exportGo(iface, route) {
-  const fn = `Handle${slug(iface.name).split('-').map((s) => s[0] ? s[0].toUpperCase() + s.slice(1) : '').join('')}${slug(route.name).split('-').map((s) => s[0] ? s[0].toUpperCase() + s.slice(1) : '').join('')}`;
+function exportGo(iface, route, base) {
+  const suffix = pascal(base || `${slug(iface.name, 'iface')}-${slug(route.method, 'route')}-${slug(route.path, 'path')}`, 'Route');
+  const fn = `Handle${suffix}`;
   const sqls = (route.script || '').split(/\r?\n/).filter((l) => /^(LET\s+\$[A-Za-z0-9_]+\s*=\s*)?(QUERY|EXEC)\s+/i.test(l.trim()));
   return `// 自动导出：${iface.name} / ${route.name} — ${route.method} ${route.path}
 // Go 侧给的是"路由 + SQL"骨架，占位符与服务器一致，换成 database/sql 即可。
@@ -110,16 +118,16 @@ package export
 import "context"
 
 const (
-	Method = "${route.method}"
-	Path   = "${route.path}"
+	Method${suffix} = "${route.method}"
+	Path${suffix}   = "${route.path}"
 )
 
-var SqlList = []string{
+var SqlList${suffix} = []string{
 ${sqls.map((l) => `\t"${l.trim().replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/^.*?(QUERY|EXEC)\s+/i, '')}",`).join('\n')}
 }
 
 func ${fn}(ctx context.Context, params map[string]any) (map[string]any, error) {
-	// TODO 用 sqlx / database/sql 执行 SqlList，并按脚本逻辑组装结果
+	// TODO 用 sqlx / database/sql 执行 SqlList${suffix}，并按脚本逻辑组装结果
 	return map[string]any{"ok": true}, nil
 }
 `;
@@ -533,6 +541,11 @@ func main() {
 }
 `);
 
+  add('go.mod', `module clickbuild.export
+
+go 1.21
+`);
+
   add('daemon/watchdog.js', `#!/usr/bin/env node
 /* ClickBuild 守护进程：拉起 server.js，异常退出后按退避重启 */
 const { spawn } = require('child_process');
@@ -619,7 +632,7 @@ Write-Host "已创建登录自启任务：$TaskName"
     '- Node：`node server.js`，热部署 `node dev.js`',
     '- Bun：`bun server.js`，热部署 `bun dev.js`',
     '- Java 启动器（需 JDK 11+）：`java launcher/Server.java`',
-    '- Go 启动器（需 Go）：`go run launcher/main.go`',
+    '- Go 启动器（需 Go）：`go run launcher/main.go`；`export/go/` 下的 Go 路由骨架已带 `go.mod`，可 `go build ./export/go` 做编译检查',
     '',
     '## 守护进程',
     '',
@@ -627,13 +640,15 @@ Write-Host "已创建登录自启任务：$TaskName"
     '- 登录自启：`powershell -ExecutionPolicy Bypass -File daemon/install-service.ps1`（创建计划任务，名字可传参）',
   ].join('\n'));
 
+  let routeNo = 0;
   p.interfaces.forEach((it) => {
     const mainTable = ((it.tables || []).find((t) => (t.key || 'main') === 'main') || (it.tables || [])[0] || {}).name || '';
-    (it.routes || []).forEach((r, ri) => {
-      const base = `${slug(mainTable || it.name, 'iface')}-${slug(r.kind || r.name, `route-${ri + 1}`)}-${ri + 1}`;
+    (it.routes || []).forEach((r) => {
+      routeNo += 1;
+      const base = `${slug(mainTable || it.name, 'iface')}-${slug(r.kind || r.name, 'route')}-${routeNo}`;
       add(`export/js/${base}.js`, exportJs(it, r));
-      add(`export/java/${base}.java`, exportJava(it, r));
-      add(`export/go/${base}.go`, exportGo(it, r));
+      add(`export/java/${pascal(base, 'Route')}.java`, exportJava(it, r, base));
+      add(`export/go/${base}.go`, exportGo(it, r, base));
     });
   });
 
