@@ -744,7 +744,8 @@ const project = {
   theme: {
     ...base.theme, headerTitle: '社交接口库', footerText: 'ClickBuild · 预置接口库', pattern: 'none',
   },
-  updatedAt: new Date().toISOString(),
+  // 固定时间，保证重复生成得到同一份模版文件（避免每次跑测试都改 updatedAt）。
+  updatedAt: '2026-11-20T00:00:00.000Z',
 };
 
 const normalized = spec.normalizeProject(project);
