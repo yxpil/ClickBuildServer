@@ -111,6 +111,7 @@ function registerIpc() {
   ipcMain.handle('iface:delete', (e, name) => projects.remove(name));
   ipcMain.handle('iface:seed', () => spec.seedProject());
   ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz'));
+  ipcMain.handle('iface:ident', (e, name, prefix) => spec.safeIdent(name, prefix || 'tbl'));
 
   ipcMain.handle('iface:validate', (e, project) => spec.validateProject(spec.normalizeProject(project)));
   ipcMain.handle('iface:preview', (e, payload) => preview(payload));

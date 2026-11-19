@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('icb', {
   remove: (name) => invoke('iface:delete', name),
   seed: () => invoke('iface:seed'),
   blank: (opts) => invoke('iface:blank', opts || {}),
+  ident: (name, prefix) => invoke('iface:ident', name, prefix || 'tbl'),
   validate: (project) => invoke('iface:validate', project),
   preview: (payload) => invoke('iface:preview', payload),
   checkScript: (text) => invoke('iface:script:check', text),

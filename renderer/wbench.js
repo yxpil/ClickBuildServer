@@ -893,11 +893,12 @@ async function act(name, el) {
     return;
   }
   if (name === 'addTable' && it) {
-    const n = await ask('新表名字', 'new_table', '表键会自动生成，脚本里按表键引用');
+    const n = await ask('新表名字', 'new_table', '表键会自动生成，脚本里按表键引用；中文名会自动转成安全表名');
     if (!n) return;
-    let key = n.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'table';
+    const safe = await api.ident(n, 'tbl');
+    let key = safe.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'table';
     while (it.tables.some((t) => t.key === key)) key += '_2';
-    it.tables.push({ key, name: n, schema: '', comment: '', fields: defaultFields() });
+    it.tables.push({ key, name: safe, schema: '', comment: '', fields: defaultFields() });
     S.tableKey = key; S.tab = 'tables'; scheduleSave(); renderWorkspace();
     return;
   }

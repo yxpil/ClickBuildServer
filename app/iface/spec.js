@@ -114,9 +114,18 @@ function defaultFields() {
   ];
 }
 
+function safeIdent(name, prefix) {
+  const raw = String(name == null ? '' : name).toLowerCase();
+  const ascii = raw.replace(/[^a-z0-9_]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  if (/^[a-z_][a-z0-9_]{0,47}$/.test(ascii)) return ascii;
+  const hash = crypto.createHash('sha1').update(String(name || 'x')).digest('hex').slice(0, 8);
+  const p = String(prefix || 't').toLowerCase().replace(/[^a-z0-9_]/g, '') || 't';
+  return `${p}_${hash}`;
+}
+
 function keyOf(name, used) {
-  const base = String(name || 'table').toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'table';
-  let key = base.slice(0, 24);
+  const base = safeIdent(name, 'table').slice(0, 24) || 'table';
+  let key = base;
   let n = 2;
   while (used.has(key)) { key = `${base.slice(0, 20)}_${n++}`; }
   used.add(key);
@@ -124,9 +133,10 @@ function keyOf(name, used) {
 }
 
 function newTable(name, usedKeys) {
+  const safe = safeIdent(name, 'tbl');
   return {
-    key: keyOf(name || 'table', usedKeys || new Set()),
-    name: name || 'new_table',
+    key: keyOf(safe, usedKeys || new Set()),
+    name: safe,
     schema: '',
     comment: '',
     fields: defaultFields(),
@@ -155,11 +165,16 @@ function newRoute(kind, iface, index) {
 
 function newIface(name, categoryId) {
   const used = new Set();
-  const main = newTable((name || 'new').toLowerCase().replace(/\s+/g, '_'), used);
+  const id = crypto.randomUUID().slice(0, 8);
+  const base = safeIdent(name || 'new', 'iface');
+  const main = newTable(`${base}_${id}`, used);
+  // 默认路由模板统一引用 {{t:main}} / {{columns:main}}，首张表必须叫 main。
+  main.key = 'main';
+  used.add('main');
   main.fields = [...defaultFields(), { ...newField('name', 'varchar'), search: true }];
   const routes = ['list', 'detail', 'create', 'update', 'delete'].map((k) => newRoute(k, { tables: [main] }));
   return {
-    id: crypto.randomUUID().slice(0, 8),
+    id,
     name: name || '新接口',
     comment: '',
     categoryId: categoryId || 'biz',
@@ -579,6 +594,7 @@ function ddlOf(iface) {
 module.exports = {
   TYPES, TYPE_KEYS, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES,
   newField, defaultFields, newTable, newRoute, newIface, cloneIface, seedProject,
+  safeIdent,
   defaultConnections, defaultGuard,
   normalizeProject, normalizeIface, normalizeTable, normalizeRoute, validateProject, ddlOf,
 };
