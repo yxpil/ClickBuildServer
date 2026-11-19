@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "以接口为最小单位的接口工作台：多库多表、脚本 SQL、事务、缓存、文档与一键生成可运行服务",
   "main": "main.js",
   "author": "yxpil",
@@ -14,8 +14,10 @@
     "test:ui": "node tools/ui-smoke.js",
     "test:e2e": "node tools/e2e.js http://127.0.0.1:18100",
     "test:e2e:crossdb": "node tools/e2e-crossdb.js http://127.0.0.1:18300",
-    "dist": "electron-builder --win nsis",
-    "dist:dir": "electron-builder --win --dir"
+    "vendor:services": "node tools/vendor-services.js",
+    "check:services": "node tools/check-services.js",
+    "dist": "node tools/check-services.js && electron-builder --win nsis",
+    "dist:dir": "node tools/check-services.js && electron-builder --win --dir"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -46,6 +48,10 @@
       "package.json"
     ],
     "extraResources": [
+      {
+        "from": "vendor/services",
+        "to": "services"
+      },
       {
         "from": "runtime",
         "to": "runtime"

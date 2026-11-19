@@ -104,25 +104,30 @@ function deleteProject(name) {
   return true;
 }
 
-function defaultOutDir() {
-  const docs = (electronApp && typeof electronApp.getPath === 'function')
-    ? electronApp.getPath('documents')
-    : path.join(os.homedir(), 'Documents');
-  return path.join(docs, 'ClickBuildServer');
-}
-
 function readSettings() {
   const file = path.join(root(), 'settings.json');
-  if (!fs.existsSync(file)) return { outDir: defaultOutDir(), lastProject: '' };
+  const base = { lastProject: '' };
+  if (!fs.existsSync(file)) return base;
   try {
-    return { outDir: defaultOutDir(), lastProject: '', ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    // 旧版可能把服务目录、默认输出目录写死成绝对路径；现在都不落盘。
+    let changed = false;
+    if (raw && 'servicesRoot' in raw) { delete raw.servicesRoot; changed = true; }
+    if (raw && 'outDir' in raw) { delete raw.outDir; changed = true; }
+    if (changed) {
+      try { fs.writeFileSync(file, JSON.stringify({ ...base, ...raw }, null, 2), 'utf8'); } catch (e) { /* 只读也不阻塞 */ }
+    }
+    return { ...base, ...raw };
   } catch (e) {
-    return { outDir: defaultOutDir(), lastProject: '' };
+    return base;
   }
 }
 
 function writeSettings(patch) {
-  const next = { ...readSettings(), ...patch };
+  const clean = { ...(patch || {}) };
+  delete clean.servicesRoot;
+  delete clean.outDir;
+  const next = { ...readSettings(), ...clean };
   fs.writeFileSync(path.join(root(), 'settings.json'), JSON.stringify(next, null, 2), 'utf8');
   return next;
 }
@@ -131,4 +136,4 @@ function home() {
   return os.homedir();
 }
 
-module.exports = { root, listProjects, saveProject, loadProject, deleteProject, readSettings, writeSettings, defaultOutDir, slug, home, APP_ROOT, isPackaged, resourceRoot, nodeModulesRoot, defaultGeneratedRoot, bundledNode };
+module.exports = { root, listProjects, saveProject, loadProject, deleteProject, readSettings, writeSettings, slug, home, APP_ROOT, isPackaged, resourceRoot, nodeModulesRoot, defaultGeneratedRoot, bundledNode };

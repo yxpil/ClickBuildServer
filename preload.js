@@ -34,7 +34,6 @@ contextBridge.exposeInMainWorld('icb', {
   stopService: (id) => invoke('iface:services:stop', id || ''),
   logs: (id) => invoke('iface:services:logs', id),
   setPorts: (patch) => invoke('iface:ports:set', patch),
-  pickRoot: () => invoke('iface:root:pick'),
   startServer: (dir) => invoke('iface:server:start', dir),
   stopServer: () => invoke('iface:server:stop'),
   serverLogs: () => invoke('iface:server:logs'),

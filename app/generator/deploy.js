@@ -286,8 +286,8 @@ networks:
 function buildPs1(ir) {
   return `# 逐服务生成独立工程（多 jar / 多二进制）
 # 生成物本身不含生成器，所以要把 ClickBuildServer 目录告诉脚本：
-#   $env:CBS_HOME = "D:\\tools\\ClickBuildServer"; .\\build-services.ps1
-# 或：.\\build-services.ps1 -Cbs "D:\\tools\\ClickBuildServer" -Zip
+#   在 ClickBuildServer 目录运行：.\\build-services.ps1 -Cbs .
+# 或先设置环境变量 CBS_HOME 指向 ClickBuildServer 目录，再运行 .\\build-services.ps1
 param(
   [string]$Cbs = $env:CBS_HOME,
   [switch]$Zip,

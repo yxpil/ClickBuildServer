@@ -31,6 +31,18 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Restore bundled services
+        shell: pwsh
+        run: |
+          $marker = "vendor/services/MariaDB/bin/mariadbd.exe"
+          if (Test-Path $marker) { Write-Host "bundled services already present"; exit 0 }
+          $zip = Join-Path $env:RUNNER_TEMP "clickbuild-services.zip"
+          $url = "https://github.com/yxpil/ClickBuildServer/releases/download/services-v1/vendor-services.zip"
+          curl.exe -L --fail --retry 3 -o $zip $url
+          New-Item -ItemType Directory -Force vendor | Out-Null
+          tar -xf $zip -C vendor
+          node tools/check-services.js
+
       - name: Install dependencies
         run: npm ci
 

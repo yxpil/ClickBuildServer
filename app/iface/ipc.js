@@ -149,12 +149,6 @@ function registerIpc() {
   ipcMain.handle('iface:services:stop', async (e, id) => (id ? services.stopOne(id) : services.stopAll()));
   ipcMain.handle('iface:services:logs', (e, id) => services.logs(id));
   ipcMain.handle('iface:ports:set', (e, patch) => services.setPorts(patch));
-  ipcMain.handle('iface:root:pick', async () => {
-    const r = await dialog.showOpenDialog({ title: '选择三个本地服务所在的文件夹', properties: ['openDirectory'] });
-    if (r.canceled || !r.filePaths[0]) return null;
-    services.setServicesRoot(r.filePaths[0]);
-    return r.filePaths[0];
-  });
 
   ipcMain.handle('iface:server:start', async (e, dir) => services.startServer(dir));
   ipcMain.handle('iface:server:stop', async () => services.stopServer());

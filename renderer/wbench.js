@@ -232,7 +232,8 @@ function renderSide() {
   };
   $('#sideTop').innerHTML = `
   <div class="side-sect">
-    <h4>本地服务</h4>
+    <h4>内置服务</h4>
+    ${svc.bundled === false ? `<div class="text-[11px] text-red-600 mb-1">安装包缺少服务文件：${esc((svc.missing || []).join('、'))}</div>` : ''}
     ${svc.items.filter((x) => x.id !== 'server').map((it) => `
       <div class="flex items-center gap-2 py-1">
         <span class="dot ${it.running ? 'on' : 'off'}"></span>

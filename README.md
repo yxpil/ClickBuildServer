@@ -43,14 +43,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.0.5.exe
+dist\ClickBuildServer-Setup-1.0.6.exe
 ```
 
 也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.5](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.5)。
 
-1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。
 
-安装包已内置便携 Node（`resources\runtime\node\node.exe`），不依赖系统 Node；安装时注册 `.yxpn` 文件关联。首次运行后可在右侧“本地服务”里启动仓库自带的 MariaDB / Redis / RustFS。
+安装包已内置便携 Node（`resources\runtime\node\node.exe`）与三台本地服务（`resources\services\`），不依赖系统 Node，也不要求电脑上预先装数据库；安装时注册 `.yxpn` 文件关联。运行时数据只写用户数据目录，源码和配置里不写死盘符。
 
 ### 从源码运行
 
@@ -59,7 +59,13 @@ npm install
 npm start                 # Electron 界面
 ```
 
-界面右侧“本地服务”里点启动，会拉起仓库自带（或指定文件夹里的）三台测试服务：
+源码运行前先生成内置服务目录（默认从仓库旁边的 `ClickBuild` 复制，也可以用 `CBS_SERVICES_SRC` 指定源目录）：
+
+```powershell
+npm run vendor:services
+```
+
+脚本只收 MariaDB 必需 bin/lib/share、Redis 运行文件和 RustFS，产物约 432 MB，落在 `vendor/services`（不提交到 Git）。界面右侧“本地服务”里点启动，会拉起这三台内置服务：
 
 | 服务 | 默认端口 | 用途 |
 | --- | --- | --- |
@@ -71,9 +77,10 @@ npm start                 # Electron 界面
 
 ```powershell
 cd generated\iface\接口工程
-$env:NODE_PATH='C:\Users\Admin\OneDrive\Desktop\ClickBuidServer\node_modules'
+$repo = (Resolve-Path '..\..\..').Path
+$env:NODE_PATH = Join-Path $repo 'node_modules'
 $env:RESET_DB='1'
-..\..\..\runtime\node\node.exe server.js
+Join-Path $repo 'runtime\node\node.exe' server.js
 ```
 
 打开 <http://127.0.0.1:18100/> 是生成服务的控制台，`/docs` 是自动 API 文档，`/help` 是运行时帮助与脚本语法页。
@@ -192,13 +199,16 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 
 GitHub Actions 工作流在 `.github/workflows/`：
 
-- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 上 `npm ci` → 模型/模版/工程包测试 → `npm run dist:dir` 构建 unpacked 版，并校验 `dist/win-unpacked/ClickBuildServer.exe` 存在。
-- `release.yml`：推送 `v*` 标签触发；跑同一套回归测试 → `npm run dist` 构建 NSIS 安装包 → 输出 SHA256 到 Actions Summary → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe` 与 `.blockmap`。
+- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 上先还原 `vendor/services`，再 `npm ci` → 模型/模版/工程包测试 → `npm run dist:dir` 构建 unpacked 版，并校验 `dist/win-unpacked/ClickBuildServer.exe` 存在。
+- `release.yml`：推送 `v*` 标签触发；还原 `vendor/services`，跑同一套回归测试 → `npm run dist` 构建 NSIS 安装包 → 输出 SHA256 到 Actions Summary → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe` 与 `.blockmap`。
+
+`vendor/services` 不进 Git，CI 从 `services-v1` Release 的 `vendor-services.zip` 还原（约 139.5 MB）；本机构建用 `npm run vendor:services` 从旁边的 `ClickBuild` 目录收集，打包前 `npm run check:services` 会核对 MariaDB / Redis / RustFS 是否齐全。
 
 本地等价命令：
 
 ```powershell
 npm ci
+npm run vendor:services
 node tools/test-new-iface.js
 node tools/test-templates.js --gen
 node tools/test-pack.js

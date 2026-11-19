@@ -15,10 +15,20 @@ const state = {
   server: { child: null, log: [], dir: '' },
 };
 
+// 服务二进制只从安装包资源里找，不记录、不依赖任何用户目录。
+// 源码运行用仓库 vendor/services，安装版用 resources/services。
+function bundledServicesRoot() {
+  const candidates = [
+    path.join(store.resourceRoot(), 'services'),
+    path.join(store.APP_ROOT, 'vendor', 'services'),
+  ];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, 'MariaDB', 'bin', 'mariadbd.exe'))) || candidates[0];
+}
+
 function settings() {
   const s = store.readSettings();
   return {
-    servicesRoot: s.servicesRoot || 'C:\\Users\\Admin\\OneDrive\\Desktop\\ClickBuild',
+    servicesRoot: bundledServicesRoot(),
     ports: { ...PORTS, ...(s.ports || {}) },
   };
 }
@@ -77,13 +87,16 @@ async function status() {
   const s3Open = await isPortOpen(ports.s3);
   const httpOpen = await isPortOpen(ports.http);
   const bin = {
-    mariadbd: path.join(servicesRoot, 'MariaDB 13.0', 'bin', 'mariadbd.exe'),
-    installDb: path.join(servicesRoot, 'MariaDB 13.0', 'bin', 'mariadb-install-db.exe'),
-    redis: path.join(servicesRoot, 'WorkWithRedis', 'RedisService.exe'),
-    rustfs: path.join(servicesRoot, 'binaries', 'rustfs-windows-x86_64.exe'),
+    mariadbd: path.join(servicesRoot, 'MariaDB', 'bin', 'mariadbd.exe'),
+    installDb: path.join(servicesRoot, 'MariaDB', 'bin', 'mariadb-install-db.exe'),
+    redis: path.join(servicesRoot, 'Redis', 'redis-server.exe'),
+    rustfs: path.join(servicesRoot, 'RustFS', 'rustfs-windows-x86_64.exe'),
   };
+  const missing = Object.entries(bin).filter(([, v]) => !fs.existsSync(v)).map(([k]) => k);
   return {
     servicesRoot,
+    bundled: missing.length === 0,
+    missing,
     ports,
     binaries: Object.fromEntries(Object.entries(bin).map(([k, v]) => [k, { path: v, exists: fs.existsSync(v) }])),
     items: [
@@ -111,7 +124,7 @@ async function waitPort(ports, timeoutMs) {
 
 async function startMysql() {
   const { servicesRoot, ports } = settings();
-  const bin = path.join(servicesRoot, 'MariaDB 13.0', 'bin');
+  const bin = path.join(servicesRoot, 'MariaDB', 'bin');
   const datadir = path.join(runtimeRoot(), 'mariadb');
   const installDb = path.join(bin, 'mariadb-install-db.exe');
   const mariadbd = path.join(bin, 'mariadbd.exe');
@@ -128,6 +141,8 @@ async function startMysql() {
       c.on('error', (e) => resolve({ code: -1, out: e.message }));
     });
     if (r.code !== 0) return { ok: false, error: '数据目录初始化失败：' + r.out.slice(-600) };
+    // 初始化器会在数据目录写 my.ini，里面带绝对路径；运行时用 --no-defaults，不需要它。
+    try { fs.rmSync(path.join(datadir, 'my.ini'), { force: true }); } catch (e) { /* 忽略 */ }
   }
   const res = spawnSvc('mysql', mariadbd, [
     '--no-defaults',
@@ -150,7 +165,7 @@ function cygPath(p) {
 
 async function startRedis() {
   const { servicesRoot, ports } = settings();
-  const exe = path.join(servicesRoot, 'WorkWithRedis', 'redis-server.exe');
+  const exe = path.join(servicesRoot, 'Redis', 'redis-server.exe');
   if (!fs.existsSync(exe)) return { ok: false, error: `找不到 ${exe}` };
   const dir = path.join(runtimeRoot(), 'redis');
   fs.mkdirSync(dir, { recursive: true });
@@ -163,7 +178,7 @@ async function startRedis() {
 
 async function startS3() {
   const { servicesRoot, ports } = settings();
-  const exe = path.join(servicesRoot, 'binaries', 'rustfs-windows-x86_64.exe');
+  const exe = path.join(servicesRoot, 'RustFS', 'rustfs-windows-x86_64.exe');
   if (!fs.existsSync(exe)) return { ok: false, error: `找不到 ${exe}` };
   const dir = path.join(runtimeRoot(), 'rustfs');
   fs.mkdirSync(dir, { recursive: true });
@@ -259,12 +274,7 @@ function setPorts(patch) {
   return next;
 }
 
-function setServicesRoot(dir) {
-  store.writeSettings({ servicesRoot: dir });
-  return dir;
-}
-
 module.exports = {
-  PORTS, settings, status, startMysql, startRedis, startS3, startAll, stopOne, stopAll, logs, setPorts, setServicesRoot, isPortOpen, waitPort,
+  PORTS, settings, status, startMysql, startRedis, startS3, startAll, stopOne, stopAll, logs, setPorts, isPortOpen, waitPort,
   startServer, stopServer,
 };

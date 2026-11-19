@@ -5,6 +5,7 @@ dist/
 out/
 coverage/
 .cache/
+vendor/services/
 
 # 生成出来的示例工程 / 压缩包
 *.zip
