@@ -276,6 +276,17 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const ribbonStop = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:true}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="stopServer"]');const txt=el?el.innerText:'无';S.services=keep;renderRibbon();return txt;})()`);
   t('网页运行时按钮变“停止”', /停止/.test(ribbonStop), ribbonStop);
 
+  // 更新部署入口：顶部、服务组、前端工坊各一个
+  const deployUI = await val(`JSON.stringify({
+    header: !!document.querySelector('header.appbar [data-action="deployUpdate"]'),
+    ribbon: !!document.querySelector('#ribbon [data-action="deployUpdate"]'),
+    studio: !!document.querySelector('#yxppDeploy')
+  })`);
+  const du = JSON.parse(deployUI);
+  t('顶部有更新部署按钮', du.header, deployUI);
+  t('服务组有更新按钮', du.ribbon, deployUI);
+  t('前端工坊有更新部署按钮', du.studio, deployUI);
+
   // 没有 .yxpp 时进入前端工坊：显示空白画布，首次编辑自动绑定并保存
   await val(`(async()=>{S.project=await api.seed();S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;S.mode='grid';render();setView('studio');return true})()`, true);
   await wait(1800);

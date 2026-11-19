@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('icb', {
   help: () => invoke('iface:help'),
   ddl: (iface) => invoke('iface:ddl', iface),
   generate: (project, dir, opts) => invoke('iface:generate', project, dir, opts),
+  deploy: (project, opts) => invoke('iface:deploy', project, opts || {}),
   services: () => invoke('iface:services'),
   startService: (id) => invoke('iface:services:start', id || ''),
   stopService: (id) => invoke('iface:services:stop', id || ''),

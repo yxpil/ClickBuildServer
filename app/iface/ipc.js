@@ -19,6 +19,7 @@ const plugins = require('./plugins');
 const defender = require('./defender');
 const frontend = require('./frontend');
 const projectExport = require('./project-export');
+const deployer = require('./deploy');
 const store = require('../store');
 const i18n = require('../i18n');
 
@@ -154,6 +155,7 @@ function registerIpc() {
   ipcMain.handle('iface:ports:set', (e, patch) => services.setPorts(patch));
 
   ipcMain.handle('iface:server:start', async (e, dir, opts) => services.startServer(dir, opts || {}));
+  ipcMain.handle('iface:deploy', async (e, project, opts) => deployer.deploy(project, opts || {}));
   ipcMain.handle('iface:runtimes', () => services.runtimes());
   ipcMain.handle('iface:server:stop', async () => services.stopServer());
   ipcMain.handle('iface:server:logs', () => services.logs('server'));

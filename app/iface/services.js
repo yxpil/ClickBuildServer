@@ -318,7 +318,27 @@ async function stopServer() {
   return stopOne('server');
 }
 
-async function startAll() {  const out = { mysql: await startMysql(), redis: await startRedis(), s3: await startS3() };
+function serverInfo() {
+  return {
+    dir: state.server.dir || '',
+    runtime: state.server.runtime || 'node',
+    hot: !!state.server.hot,
+    child: state.server.child || null,
+    pid: state.server.pid || null,
+  };
+}
+
+async function waitPortClosed(port, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 3000);
+  while (Date.now() < deadline) {
+    if (!(await isPortOpen(port))) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return !(await isPortOpen(port));
+}
+
+async function startAll() {
+  const out = { mysql: await startMysql(), redis: await startRedis(), s3: await startS3() };
   return out;
 }
 
@@ -341,5 +361,5 @@ function setPorts(patch) {
 
 module.exports = {
   PORTS, settings, status, startMysql, startRedis, startS3, startAll, stopOne, stopAll, logs, setPorts, isPortOpen, waitPort,
-  runtimes, startServer, stopServer,
+  runtimes, startServer, stopServer, serverInfo, waitPortClosed,
 };

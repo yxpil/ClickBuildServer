@@ -51,6 +51,7 @@ jobs:
           node tools/test-new-iface.js
           node tools/test-templates.js --gen
           node tools/test-pack.js
+          node tools/test-deploy.js
 
       - name: Build unpacked app
         run: npm run dist:dir

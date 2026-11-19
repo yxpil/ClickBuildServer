@@ -525,7 +525,7 @@ function scheduleSave() {
 }
 
 async function save(silent) {
-  if (!S.project) return;
+  if (!S.project) return false;
   setSaveState('saving');
   try {
     const r = await api.save(S.project);
@@ -533,9 +533,11 @@ async function save(silent) {
     renderSide();
     setSaveState('saved', S.problems.length ? `已保存 · ${S.problems.length} 问题` : '已保存');
     if (!silent) toast(r.problems.length ? `已保存，但有 ${S.problems.length} 处问题` : '已保存');
+    return true;
   } catch (err) {
     setSaveState('error');
     toast('保存失败：' + String(err && err.message || err), 5000);
+    return false;
   }
 }
 
@@ -579,6 +581,7 @@ function renderRibbon() {
   </div><div class="lbl">脚本</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
+    ${rb('deployUpdate', 'check', '更新', '保存并重新生成前后端，重启生成服务')}
     ${rb(server && server.running ? 'stopServer' : 'launchWeb', server && server.running ? 'stop' : 'play', server && server.running ? '停止' : '启动', server && server.running ? '停止生成服务' : '生成当前工程、启动服务并打开网页主页')}
     <div class="flex items-center gap-1 px-1 text-[10px] text-neutral-500" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length}</div>
     ${rb('home', 'console', '打开主页', '在浏览器打开当前工程的网页主页')}
@@ -1343,6 +1346,54 @@ async function flushStudio(reason) {
   }
   return true;
 }
+let deployingUpdate = false;
+async function ensureInfra() {
+  const infra = (S.services && S.services.items || []).filter((x) => x.id !== 'server');
+  const missing = infra.filter((x) => !x.running);
+  if (!missing.length) return [];
+  toast(`正在启动 ${missing.map((x) => x.name).join(' / ')}…`, 12000);
+  const results = await Promise.all(missing.map((x) => api.startService(x.id).catch((e) => ({ ok: false, error: e.message }))));
+  const failed = missing.filter((x, i) => results[i] && results[i].ok === false);
+  if (failed.length) toast(`依赖启动失败：${failed.map((x) => x.name).join(' / ')}，仍会尝试继续`, 6000);
+  S.services = await api.services();
+  return failed;
+}
+async function deployUpdate() {
+  if (deployingUpdate) return toast('正在更新部署，请稍候');
+  deployingUpdate = true;
+  try {
+    if (studioLoaded && (studioDirty || studioSaveBusy)) {
+      const synced = await flushStudio('更新部署前保存');
+      if (!synced) return toast('前端还没同步到当前工程，先处理同步失败再更新', 5000);
+    }
+    if (!(await save(true))) return;
+    const v = await api.validate(S.project);
+    if (v && v.errors && v.errors.length) return toast(`还有 ${v.errors.length} 处问题，先修好再更新`, 5000);
+
+    await ensureInfra();
+    const r = await api.deploy(S.project, { runtime: S.runner, hot: S.hot, dir: S.genDir });
+    if (!r || r.ok === false) {
+      S.services = await api.services();
+      renderRibbon();
+      return toast('更新部署失败：' + String((r && r.error) || '未知错误').slice(0, 180), 6000);
+    }
+    S.genDir = r.dir;
+    S.services = await api.services();
+    if (S.view === 'studio') {
+      renderRibbon();
+      refreshStudioState();
+    } else {
+      render();
+    }
+    const state = r.restarted ? '服务已重启' : '服务已启动';
+    toast(`更新完成：${r.files.length} 个文件，${state}（:${r.port}）`, 4500);
+  } catch (e) {
+    toast('更新部署失败：' + String((e && e.message) || e), 6000);
+  } finally {
+    deployingUpdate = false;
+  }
+}
+
 async function launchWeb() {
   if (launchingWeb) return toast('正在启动网页，请稍候');
   launchingWeb = true;
@@ -1351,14 +1402,7 @@ async function launchWeb() {
       const synced = await flushStudio('启动前保存');
       if (!synced) return toast('前端还没同步到当前工程，先处理同步失败再启动', 5000);
     }
-    const infra = (S.services && S.services.items || []).filter((x) => x.id !== 'server');
-    const missing = infra.filter((x) => !x.running);
-    if (missing.length) {
-      toast(`正在启动 ${missing.map((x) => x.name).join(' / ')}…`, 12000);
-      const results = await Promise.all(missing.map((x) => api.startService(x.id).catch((e) => ({ ok: false, error: e.message }))));
-      const failed = missing.filter((x, i) => results[i] && results[i].ok === false);
-      if (failed.length) toast(`依赖启动失败：${failed.map((x) => x.name).join(' / ')}，仍会尝试启动网页`, 6000);
-    }
+    await ensureInfra();
     const g = await api.generate(S.project);
     if (!g.ok) return toast('生成失败：' + String(g.error || '').slice(0, 160), 6000);
     S.genDir = g.dir;
@@ -1542,6 +1586,7 @@ async function act(name, el) {
     toast(`已生成 ${g.files.length} 个文件${g.warnings && g.warnings.length ? `（插件提示 ${g.warnings.length} 条）` : ''}`, 3500);
     return;
   }
+  if (name === 'deployUpdate') { return deployUpdate(); }
   if (name === 'launchWeb' || name === 'startServer') { return launchWeb(); }
   if (name === 'stopServer') { await api.stopServer(); S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace(); toast('已停止网页服务'); return; }
   if (name === 'startAll') { await api.startService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已启动三台服务'); return; }
@@ -2576,6 +2621,7 @@ $('#viewSwitch').addEventListener('click', (e) => {
 $('#yxppImport').onclick = () => importStudioYxpp().catch((e) => toast(e.message, 5000));
 $('#yxppExport').onclick = () => exportStudioYxpp().catch((e) => toast(e.message, 5000));
 $('#yxppAttach').onclick = () => attachStudioToProject().catch((e) => toast(e.message, 5000));
+$('#yxppDeploy').onclick = () => deployUpdate().catch((e) => toast(e.message, 5000));
 
 /* ---------------- 启动 ---------------- */
 (async function boot() {

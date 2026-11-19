@@ -11,6 +11,8 @@
     "全局搜索：接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)": "Search: interface / table / field / route / SQL    (Ctrl+K)",
     "保存": "Save",
     "生成服务": "Generate service",
+    "更新部署": "Update & deploy",
+    "保存并重新生成前后端，重启生成服务": "Save, regenerate backend and frontend, then restart the generated service",
     "日志": "Logs",
     "帮助": "Help",
     "最小化": "Minimize",
@@ -861,6 +863,18 @@
     "运行中": "Running"
   },
   "patterns": [
+    {
+      "src": "更新完成：${0} 个文件，${1}（:${2}）",
+      "dst": "Update deployed: $1 files, $2 (:$3)"
+    },
+    {
+      "src": "更新部署失败：${0}",
+      "dst": "Update deploy failed: $1"
+    },
+    {
+      "src": "正在更新部署，请稍候",
+      "dst": "Deploying update, please wait"
+    },
     {
       "src": "已生成 ${g.files.length} 个文件，${g.warnings.length} 个警告，${g.errors.length} 个错误",
       "dst": "Generated $1 files with $2 warnings and $3 errors"
