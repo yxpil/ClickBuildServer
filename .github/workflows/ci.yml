@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-build:
+    name: Test & build (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Model, template and package tests
+        run: |
+          node tools/test-new-iface.js
+          node tools/test-templates.js --gen
+          node tools/test-pack.js
+
+      - name: Build unpacked app
+        run: npm run dist:dir
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          $exe = "dist/win-unpacked/ClickBuildServer.exe"
+          if (-not (Test-Path $exe)) { throw "Missing build output: $exe" }
+          $item = Get-Item $exe
+          "Built: $($item.FullName) ($([math]::Round($item.Length / 1MB, 1)) MB)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append

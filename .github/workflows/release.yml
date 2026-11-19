@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regression tests
+        run: |
+          node tools/test-new-iface.js
+          node tools/test-templates.js --gen
+          node tools/test-pack.js
+
+      - name: Build NSIS installer
+        run: npm run dist
+
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter "ClickBuildServer-Setup-*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Missing installer in dist/" }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          @(
+            "### Installer",
+            "",
+            "- File: ``$($exe.Name)``",
+            "- Size: $($exe.Length) bytes",
+            "- SHA256: ``$hash``"
+          ) | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/ClickBuildServer-Setup-*.exe
+            dist/ClickBuildServer-Setup-*.exe.blockmap
+          generate_release_notes: true
+          fail_on_unmatched_files: true

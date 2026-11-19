@@ -1,5 +1,8 @@
 # ClickBuildServer · 接口工作台
 
+[![CI](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml)
+[![Release](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml)
+
 > 黑白 Excel 风的“服务器制造台”：**一个接口一条线，接口里挂多张表、多个库，每条路由写一段自己的 SQL 脚本**，点一下生成可运行的服务。
 >
 > 工作中间版本，接口与数据结构仍可能调整。
@@ -185,15 +188,37 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 - 每个产物自带 `daemon/watchdog.js`（崩溃退避重启，1s→10s）、`daemon/start.ps1`、`daemon/install-service.ps1`（登录自启计划任务）。
 - 拆分后记得改 `.env` 的 `PORT`、`MYSQL_DB`、`CACHE_PREFIX`；跨服务用 `HTTP` / Redis `PUBLISH`。
 
+## CI/CD
+
+GitHub Actions 工作流在 `.github/workflows/`：
+
+- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 上 `npm ci` → 模型/模版/工程包测试 → `npm run dist:dir` 构建 unpacked 版，并校验 `dist/win-unpacked/ClickBuildServer.exe` 存在。
+- `release.yml`：推送 `v*` 标签触发；跑同一套回归测试 → `npm run dist` 构建 NSIS 安装包 → 输出 SHA256 到 Actions Summary → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe` 与 `.blockmap`。
+
+本地等价命令：
+
+```powershell
+npm ci
+node tools/test-new-iface.js
+node tools/test-templates.js --gen
+node tools/test-pack.js
+npm run dist:dir   # CI 构建
+npm run dist       # 发布安装包
+```
+
+`test-help.js` 需要本机 MariaDB / Redis / RustFS（13306 / 16379 / 19000），因此放在本地真实验收，不放进无服务的 GitHub runner。
+
 ## 测试
 
 | 套件 | 结果 |
 | --- | --- |
-| `tools/e2e.js`（真实 HTTP：注册/登录/token/CRUD/联查/回滚/限流/上传/日志/缓存） | **23/23** |
-| `tools/e2e-template.js`（商城模版真实 HTTP：商品/购物车/两表事务下单/409） | **13/13** |
-| `tools/test-templates.js`（5 套模版 + 插件 + 文档 + `--gen` 生成） | **32/32** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程：搜索/复制/导出/AI/监控/主题/模版/文档/插件/微服务） | **36/36** |
+| `tools/test-templates.js --gen`（21 套模版 + 插件 + 文档 + 每条详情 404） | **158/158** |
+| `tools/e2e-cases.js`（21 套行业案例真实 HTTP） | **106/106** |
+| `tools/test-help.js`（生成服务 `/help`、`/docs`、`/console`、业务 404） | **18/18** |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **36/36** |
 | `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **16/16** |
+| 生成服务真实验收（注册/登录/CRUD/缓存/事务/限流/上传/日志/CORS） | **30/30** |
+
 
 ## 已知限制
 
