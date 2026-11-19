@@ -456,9 +456,18 @@ npm test          # 前端 id 一致性 + 15 个生成用例 + 四套样例 self
 ```bash
 npm run test:runtime        # Node 版本，会顺带 npm install
 npm run test:runtime:go     # Go 版本，需要 PATH 里有 go
+npm run test:runtime:db     # 有 MySQL 时：真建库 → 导 SQL → 真登录 → 真增改查 → 审计 → 登出失效
 ```
 
-它断言的是**行为**而不是文件存在，共 20 项：
+数据库模式默认连 `127.0.0.1:3307 / root / root123`，也可以用参数指定：
+
+```bash
+node app/rt-test.js --db --install --db-host 127.0.0.1 --db-port 3306 --db-password 你的密码
+```
+
+它会建一个临时库、把生成物 `sql/*.sql` 全量导进去、起服务断言，跑完自动 `DROP DATABASE`，不在你机器上留东西。
+
+它断言的是**行为**而不是文件存在，无数据库时 20 项：
 
 | 断言 | 期望 | 为什么值得测 |
 |---|---|---|
@@ -475,6 +484,25 @@ npm run test:runtime:go     # Go 版本，需要 PATH 里有 go
 | `X-Frame-Options` / `X-Content-Type-Options` | `DENY` / `nosniff` | 安全头 |
 | 连打 60 次 | 出现 429 | CC 令牌桶 |
 | `node server.js --selfcheck` | 列出全部路由 | 不装依赖也能自检 |
+
+加 `--db` 之后多 12 项（合计 32 项）：
+
+| 断言 | 期望 | 为什么值得测 |
+|---|---|---|
+| 全量 SQL 导入 | 0 报错 | 建表/索引/seed 一次过，而不是"生成出来看着像对" |
+| 管理员登录 | 200 + token | 启动自举账号可用 |
+| 登录签发 LUID | `L` 开头的编号 | LUID 不只是个概念，真发出来了 |
+| `/auth/me` 带回同一 LUID | 一致 | token → LUID 服务端换取的链路通 |
+| 错误口令 | 401 | 不会把坏密码当场放行 |
+| 创建订单 | 200 + 主键 | 真写入 MySQL，雪花 ID 正常 |
+| `?keyword=<单号>` | 命中刚建的单 | 搜索索引字段与查询链路 |
+| `?order_status__eq=1` | 200 | 条件查询前缀语法 |
+| `PATCH` 条件更新 | 200 / matched 1 | 条件更新不是只支持单条改 |
+| 审计日志 | 有记录 | 登录/增改确实落 `sys_operation_log` |
+| 登出 | 200 | — |
+| 登出后旧 token | 401 | 会话真失效，不是前端假装退登 |
+
+> 这 12 项是真库断言跑出来的价值：它抓到了 4 个只有连上数据库才会暴露的问题 —— seed 已建角色时启动自举重复插角色、BIGINT 大 ID 被 mysql2 读成 double 丢精度、审计表主键没有自增、审计表列名 `module` 在 DDL 里避关键字成了 `module_x`。
 
 生成物里还留了 `npm run selfcheck`（即 `node server.js --selfcheck`），它把表数、查询数、165 条路由全打出来，适合丢进 CI 当"架构没被改坏"的守卫。
 

@@ -217,8 +217,9 @@ func guard(perm string, h func(http.ResponseWriter, *http.Request, *auth.User)) 
 
 ${hasLog ? `func logOp(r *http.Request, module, action, detail string) {
 	go func() {
-		_, _ = db.Exec(nil, "INSERT INTO sys_operation_log (module, action, user_id, username, detail, ip, created_at) VALUES (?,?,?,?,?,?,NOW())",
-			module, action, 0, "", detail, r.RemoteAddr)
+		// id 是雪花主键（无自增），module 在 DDL 里避关键字成了 module_x
+		_, _ = db.Exec(nil, "INSERT INTO sys_operation_log (id, module_x, action, user_id, username, params, ip, created_at) VALUES (?,?,?,?,?,?,?,NOW())",
+			id.Next(), module, action, 0, "", detail, r.RemoteAddr)
 	}()
 }` : ''}
 

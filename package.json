@@ -13,7 +13,8 @@
     "self-test": "node app/gen-cli.js --self-test",
     "test": "node app/check-ui.js && node app/verify.js && node app/gen-cli.js --self-test",
     "test:runtime": "node app/rt-test.js --install",
-    "test:runtime:go": "node app/rt-test.js --lang go"
+    "test:runtime:go": "node app/rt-test.js --lang go",
+    "test:runtime:db": "node app/rt-test.js --db --install"
   },
   "devDependencies": {
     "electron": "^33.2.0"

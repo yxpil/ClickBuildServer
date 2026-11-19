@@ -6,8 +6,11 @@
  *   node app/rt-test.js --lang go      # 跑 Go 版本（需要 go 工具链）
  *   node app/rt-test.js --install      # 先 npm install（首次跑 Node 工程时用）
  *   node app/rt-test.js --keep         # 保留临时工程，方便手查
+ *   node app/rt-test.js --db --install --db-port 3307 --db-password root123
+ *                                      # 建库→导 SQL→真登录→真增删改查→审计→登出失效
  *
  * 断言的是"行为"，不是"文件存在"：状态码、响应头、限流、错误信息是否泄露内网地址。
+ * --db 模式会额外建一个临时库（跑完自动删掉），把 SQL DDL / 种子数据 / 登录链路也一起验证。
  */
 const fs = require('fs');
 const os = require('os');
@@ -27,6 +30,11 @@ const LANG = String(opt('lang', 'node'));
 const PORT = Number(opt('port', 18099));
 const INSTALL = args.includes('--install');
 const KEEP = args.includes('--keep');
+const DB = args.includes('--db');
+const DB_HOST = String(opt('db-host', '127.0.0.1'));
+const DB_PORT = Number(opt('db-port', 3307));
+const DB_USER = String(opt('db-user', 'root'));
+const DB_PASS = String(opt('db-password', 'root123'));
 const NAME = 'rtdemo';
 const MODULES = 'auth,account,rbac,order,audit-log,product,media';
 
@@ -82,6 +90,50 @@ function waitPort(port, ms) {
   });
 }
 
+/**
+ * 把生成物 sql/*.sql 依次导进真实 MySQL：先建库，再按序号建表，最后 seed。
+ * 用的是生成工程自己装好的 mysql2，不额外引入依赖。
+ */
+async function importSql(proj) {
+  const mysql = require(path.join(proj, 'node_modules', 'mysql2', 'promise'));
+  const dir = path.join(proj, 'sql');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  const first = fs.readFileSync(path.join(dir, files[0]), 'utf8');
+  const m = /CREATE DATABASE(?: IF NOT EXISTS)?\s+`([^`]+)`/i.exec(first);
+  const dbName = m ? m[1] : 'click_server';
+
+  const conn = await mysql.createConnection({
+    host: DB_HOST, port: DB_PORT, user: DB_USER, password: DB_PASS, multipleStatements: true,
+  });
+  const failed = [];
+  for (const f of files) {
+    const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+    // 去掉整行 -- 注释，避免空语句触发语法错误
+    const sql = raw.split(/\r?\n/).filter((l) => !l.trim().startsWith('--')).join('\n').trim();
+    if (!sql) continue;
+    try {
+      await conn.query(sql);
+    } catch (e) {
+      failed.push(f + ': ' + e.message);
+    }
+    if (f === files[0]) await conn.query('USE `' + dbName + '`');
+  }
+  await conn.end();
+  return { dbName, failed };
+}
+
+/** 跑完删库，别在别人机器上留垃圾。 */
+async function dropDatabase(proj, dbName) {
+  try {
+    const mysql = require(path.join(proj, 'node_modules', 'mysql2', 'promise'));
+    const conn = await mysql.createConnection({ host: DB_HOST, port: DB_PORT, user: DB_USER, password: DB_PASS });
+    await conn.query('DROP DATABASE IF EXISTS `' + dbName + '`');
+    await conn.end();
+  } catch (e) {
+    console.log('  (删库失败，可手动清理 ' + dbName + ')');
+  }
+}
+
 async function main() {
   // 1. 生成工程
   const gen = spawnSync(
@@ -105,6 +157,7 @@ async function main() {
   // 3. 启动
   let cmd;
   let argv;
+  let dbName = null;
   if (LANG === 'go') {
     const bin = path.join(PROJ, 'bin');
     fs.mkdirSync(bin, { recursive: true });
@@ -127,7 +180,36 @@ async function main() {
     argv = [path.join(PROJ, 'server.js')];
   }
 
-  const env = Object.assign({}, process.env, { PORT: String(PORT), APP_PORT: String(PORT), NODE_ENV: 'test' });
+  // 3a. 有数据库模式：先建库导 SQL，再让服务连上去
+  if (DB) {
+    if (LANG !== 'node') {
+      check('--db 仅支持 node 语言', false, '当前 lang=' + LANG);
+      return;
+    }
+    try {
+      const r = await importSql(PROJ);
+      dbName = r.dbName;
+      check('SQL 导入数据库', r.failed.length === 0, r.failed.length ? r.failed[0] : dbName + ' / 全部脚本执行成功');
+      if (r.failed.length) return;
+    } catch (e) {
+      check('连接数据库', false, e.message);
+      return;
+    }
+  }
+
+  const env = Object.assign({}, process.env, {
+    PORT: String(PORT),
+    APP_PORT: String(PORT),
+    NODE_ENV: 'test',
+  });
+  if (DB) {
+    Object.assign(env, {
+      DB_HOST, DB_PORT: String(DB_PORT), DB_USER, DB_PASSWORD: DB_PASS, DB_NAME: dbName,
+      DB_CONNECT_TIMEOUT: '5000',
+      INIT_ADMIN: 'admin',
+      INIT_PASSWORD: 'Admin@123456',
+    });
+  }
   const proc = spawn(cmd, argv, { cwd: PROJ, env, stdio: ['ignore', 'pipe', 'pipe'] });
   const logs = [];
   proc.stdout.on('data', (d) => logs.push(String(d)));
@@ -187,6 +269,67 @@ async function main() {
     check('未知路由 404', nf.status === 404, 'status=' + nf.status);
     check('错误响应是 JSON', /^\{/.test(nf.text.trim()), nf.text.slice(0, 40));
 
+    // 8b. 有数据库：真登录 → LUID → 真增改查 → 审计 → 登出失效
+    if (DB) {
+      const json = { 'Content-Type': 'application/json' };
+
+      const login = await request('POST', BASE + '/auth/login', { body: { username: 'admin', password: 'Admin@123456' }, headers: json });
+      let lj = {};
+      try { lj = JSON.parse(login.text); } catch (e) { lj = {}; }
+      const token = lj.data && lj.data.token;
+      const luid = lj.data && lj.data.luid;
+      check('真库登录成功', login.status === 200 && !!token, 'status=' + login.status);
+      check('登录签发 LUID', typeof luid === 'string' && luid.startsWith('L'), 'luid=' + luid);
+      if (!token) return;
+
+      const auth = Object.assign({ Authorization: 'Bearer ' + token }, json);
+
+      const me = await request('GET', BASE + '/auth/me', { headers: auth });
+      let mj = {};
+      try { mj = JSON.parse(me.text); } catch (e) { mj = {}; }
+      check('/auth/me 带回同一 LUID', me.status === 200 && (mj.data ? (mj.data.luid || (mj.data.user && mj.data.user.luid)) : null) === luid,
+        'status=' + me.status + ' luid=' + (mj.data && mj.data.luid));
+
+      const wrong = await request('POST', BASE + '/auth/login', { body: { username: 'admin', password: 'wrong-pass' }, headers: json });
+      check('错误口令 401', wrong.status === 401, 'status=' + wrong.status);
+
+      const orderNo = 'RT' + Date.now();
+      const create = await request('POST', BASE + '/order/biz-order', {
+        body: { order_no: orderNo, buyer_id: 1001, buyer_name: 'rt', total_amount: 99.5, pay_status: 0, order_status: 1, source: 'rt-test' },
+        headers: auth,
+      });
+      let cj = {};
+      try { cj = JSON.parse(create.text); } catch (e) { cj = {}; }
+      const rowId = cj.data && (cj.data.id || cj.data.insertId);
+      check('创建订单（真写入）', create.status === 200 && !!rowId, 'status=' + create.status + ' id=' + rowId);
+
+      const list = await request('GET', BASE + '/order/biz-order?keyword=' + encodeURIComponent(orderNo) + '&page=1&pageSize=10', { headers: auth });
+      let ljson = {};
+      try { ljson = JSON.parse(list.text); } catch (e) { ljson = {}; }
+      const rows = (ljson.data && (ljson.data.list || ljson.data.rows || ljson.data)) || [];
+      check('关键词过滤命中新订单',
+        Array.isArray(rows) && rows.some((r) => String(r.order_no) === orderNo),
+        'rows=' + (Array.isArray(rows) ? rows.length : typeof rows));
+
+      const cond = await request('GET', BASE + '/order/biz-order?order_status__eq=1&sort=id:desc&page=1&pageSize=5', { headers: auth });
+      check('条件查询 200', cond.status === 200, 'status=' + cond.status + ' ' + cond.text.slice(0, 60));
+
+      const patch = await request('PATCH', BASE + '/order/biz-order', { body: { id: rowId, remark: 'rt-patched' }, headers: auth });
+      check('条件更新 PATCH 200', patch.status === 200, 'status=' + patch.status + ' ' + patch.text.slice(0, 60));
+
+      const aud = await request('GET', BASE + '/auditlog/sys-operation-log?page=1&pageSize=5', { headers: auth });
+      let aj = {};
+      try { aj = JSON.parse(aud.text); } catch (e) { aj = {}; }
+      const arows = (aj.data && (aj.data.list || aj.data.rows || aj.data)) || [];
+      check('审计日志有记录', aud.status === 200 && Array.isArray(arows) && arows.length > 0,
+        'status=' + aud.status + ' rows=' + (Array.isArray(arows) ? arows.length : typeof arows));
+
+      const out = await request('POST', BASE + '/auth/logout', { body: {}, headers: auth });
+      check('登出 200', out.status === 200, 'status=' + out.status);
+      const after = await request('GET', BASE + '/auth/me', { headers: auth });
+      check('登出后旧 token 失效', after.status === 401, 'status=' + after.status);
+    }
+
     // 9. CORS 预检
     const pre = await request('OPTIONS', BASE + '/auth/login', {
       headers: { Origin: 'http://evil.example', 'Access-Control-Request-Method': 'POST' },
@@ -218,6 +361,7 @@ async function main() {
     proc.kill();
     await new Promise((r) => setTimeout(r, 600));
     if (!KEEP) {
+      if (DB && dbName) await dropDatabase(PROJ, dbName);
       try { fs.rmSync(OUT, { recursive: true, force: true }); } catch (e) { /* Windows 上偶尔被占用，忽略 */ }
     }
   }

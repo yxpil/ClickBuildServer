@@ -87,6 +87,8 @@ const cfg = {
     poolSize: Number(env.DB_POOL || 10),
     cluster: ${JSON.stringify({ enabled: !!cluster.enabled, readHost: cluster.readHost || '', readPort: cluster.readPort || 3306 })},
     // 多库多集群：读写分离 + 权重分流 + 健康检查
+    // 只要显式设了 DB_HOST/DB_PORT/DB_NAME（容器、联调、临时库都这么干），就整体指向那一套；
+    // 没设则沿用每个集群自己的地址。
     clusters: ${JSON.stringify((ir.clusters || []).map((c) => ({
     name: c.name,
     role: c.role,
@@ -97,7 +99,14 @@ const cfg = {
     database: c.database,
     user: c.user,
     password: c.password,
-    })))},
+    })))}.map((c) => ({
+      ...c,
+      host: env.DB_HOST || c.host,
+      port: Number(env.DB_PORT || c.port),
+      database: env.DB_NAME || c.database,
+      user: env.DB_USER || c.user,
+      password: env.DB_PASSWORD || c.password,
+    })),
     routing: ${JSON.stringify(ir.project.database.routing)},
     failover: ${JSON.stringify(ir.project.database.failover)},
   },
@@ -174,6 +183,9 @@ function poolOf(c) {
       user: c.user || base.user,
       password: c.password == null ? base.password : c.password,
       database: c.database || base.database,
+      // 雪花 ID / LUID 都是 19 位大整数，默认会按 double 读回丢精度（权限 join 直接对不上）
+      supportBigNumbers: true,
+      bigNumberStrings: true,
     });
     pools.set(key, p);
   }
@@ -662,24 +674,40 @@ function requirePerm(code) {
   };
 }
 
+async function bindSuperAdmin(uid) {
+  // seed SQL 里已经有 super_admin 角色，直接复用；没有才新建
+  const role = await db.query("SELECT id FROM sys_role WHERE role_code='super_admin' LIMIT 1", [], { read: true }).catch(() => []);
+  let rid = role.length ? role[0].id : ids.next();
+  if (!role.length) {
+    await db.query(
+      'INSERT INTO sys_role (id, role_code, role_name, data_scope, remark, created_at, updated_at, deleted) VALUES (?,?,?,?,?,NOW(),NOW(),0)',
+      [rid, 'super_admin', '超级管理员', 1, '内置角色'],
+    ).catch((e) => console.error('[boot] 角色写入失败：' + e.message));
+  }
+  const bound = await db.query('SELECT id FROM sys_user_role WHERE user_id = ? AND role_id = ? LIMIT 1', [uid, rid], { read: true }).catch(() => []);
+  if (!bound.length) {
+    await db.query(
+      'INSERT INTO sys_user_role (id, user_id, role_id, created_at, updated_at, deleted) VALUES (?,?,?,NOW(),NOW(),0)',
+      [ids.next(), uid, rid],
+    ).catch((e) => console.error('[boot] 角色绑定失败：' + e.message));
+  }
+}
+
 async function bootstrap() {
   const count = await db.query('SELECT COUNT(1) AS n FROM sys_user', [], { read: true }).catch(() => [{ n: 0 }]);
-  if (Number(count[0].n) > 0) return;
+  if (Number(count[0].n) > 0) {
+    // 账号已存在（已有库 / 跑过 seed）：只补角色绑定，不重复插人
+    const rows = await db.query('SELECT id FROM sys_user WHERE username = ? LIMIT 1', [cfg.app.initAdmin.username], { read: true }).catch(() => []);
+    if (rows.length) await bindSuperAdmin(rows[0].id);
+    return;
+  }
   const hash = hashPassword(cfg.app.initAdmin.password);
   const uid = ids.next();
-  const rid = ids.next();
   await db.query(
     'INSERT INTO sys_user (id, username, password, nickname, status, created_at, updated_at, deleted) VALUES (?,?,?,?,?,NOW(),NOW(),0)',
     [uid, cfg.app.initAdmin.username, hash, '超级管理员', 1],
-  );
-  await db.query(
-    'INSERT INTO sys_role (id, role_code, role_name, data_scope, remark, created_at, updated_at, deleted) VALUES (?,?,?,?,?,NOW(),NOW(),0)',
-    [rid, 'super_admin', '超级管理员', 1, '内置角色'],
-  );
-  await db.query(
-    'INSERT INTO sys_user_role (id, user_id, role_id, created_at, updated_at, deleted) VALUES (?,?,?,NOW(),NOW(),0)',
-    [ids.next(), uid, rid],
-  );
+  ).catch((e) => console.error('[boot] 管理员写入失败：' + e.message));
+  await bindSuperAdmin(uid);
   console.log('[boot] 已初始化管理员 ' + cfg.app.initAdmin.username);
 }
 

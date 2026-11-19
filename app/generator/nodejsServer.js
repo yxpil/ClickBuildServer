@@ -280,8 +280,9 @@ async function readBody(req) {
 async function logOp(req, user, module, action, detail) {
   try {
     await db.query(
-      'INSERT INTO sys_operation_log (module, action, user_id, username, detail, ip, created_at) VALUES (?,?,?,?,?,?,NOW())',
-      [module, action, user ? user.userId : null, user ? user.username : '', String(detail || '').slice(0, 500), req.socket.remoteAddress || ''],
+      // id 是雪花主键（没有自增），module 在 DDL 里避关键字成了 module_x
+      'INSERT INTO sys_operation_log (id, module_x, action, user_id, username, params, ip, created_at) VALUES (?,?,?,?,?,?,?,NOW())',
+      [require('./src/id').next(), module, action, user ? user.userId : null, user ? user.username : '', String(detail || '').slice(0, 500), req.socket.remoteAddress || ''],
     );
   } catch { /* 日志失败不影响主流程 */ }
 }

@@ -746,7 +746,7 @@ public class OperationLogAspect {
                 HttpServletRequest req = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
                 String params = mapper.writeValueAsString(pjp.getArgs());
                 if (params.length() > 2000) params = params.substring(0, 2000);
-                jdbc.update("INSERT INTO sys_operation_log (id, trace_id, module, action, user_id, username, ip, method, path, params, result, error, cost_ms, created_at, updated_at, created_by, updated_by, deleted, version) " +
+                jdbc.update("INSERT INTO sys_operation_log (id, trace_id, module_x, action, user_id, username, ip, method, path, params, result, error, cost_ms, created_at, updated_at, created_by, updated_by, deleted, version) " +
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),?,?,0,0)",
                         ${ir.project.idStrategy === 'ulid' || ir.project.idStrategy === 'uuid' ? 'java.util.UUID.randomUUID().toString().replace("-","")' : `${ir.project.groupId}.common.IdGen.nextId()`},
                         req.getHeader("X-Trace-Id"), opLog.module(), opLog.action(),
