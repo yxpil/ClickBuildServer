@@ -113,6 +113,7 @@ function registerIpc() {
     return { file, problems: v.errors };
   });
   ipcMain.handle('iface:delete', (e, name) => projects.remove(name));
+  ipcMain.handle('iface:projects:duplicate', (e, name) => projects.duplicate(name));
   ipcMain.handle('iface:seed', () => spec.seedProject());
   ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz', opts || {}));
   ipcMain.handle('iface:ident', (e, name, prefix) => spec.safeIdent(name, prefix || 'tbl'));

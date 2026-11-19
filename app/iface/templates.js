@@ -24,9 +24,19 @@ const BUILTINS = [
     tags: ['内容', '视频', '上传', '互动'],
   },
   {
+    id: 'builtin:music', name: '音乐网站', file: 'music.json',
+    description: '用户、曲风、歌曲、评论、收藏；音频上传、封面、播放计数与收藏切换',
+    tags: ['内容', '音乐', '音频', '互动'],
+  },
+  {
     id: 'builtin:blog', name: '博客', file: 'blog.json',
     description: '作者、文章、分类、标签、评论；发布流、浏览量、标签多表联查',
     tags: ['内容', 'CMS', '标签'],
+  },
+  {
+    id: 'builtin:novel', name: '小说网站', file: 'novel.json',
+    description: '作者、小说、分类、标签、评论；发布流、阅读计数、标签多表联查',
+    tags: ['内容', '小说', 'CMS', '标签'],
   },
   {
     id: 'builtin:ticket', name: '工单', file: 'ticket.json',

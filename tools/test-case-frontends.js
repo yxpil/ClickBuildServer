@@ -1,6 +1,6 @@
 'use strict';
 
-// 全部案例前端（.yxpp）回归：22 套内置案例都必须带 PageStudio 工程与可运行 HTML，
+// 全部案例前端（.yxpp）回归：24 套内置案例都必须带 PageStudio 工程与可运行 HTML，
 // 生成产物必须写入 frontend/index.yxpp、frontend/project.json、public/index.html；
 // 最后真实启动商城案例，确认 `/` 返回前端页、`/frontend/index.yxpp` 可读。
 // 用法：node tools/test-case-frontends.js

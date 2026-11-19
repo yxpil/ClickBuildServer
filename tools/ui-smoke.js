@@ -53,6 +53,31 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   };
 
   t('页面已加载接口工作台', await val(`document.title.includes('ClickBuildServer')`), await val('document.title'));
+
+  // 启动首屏是工程历史预览，不是直接进工作台
+  t('启动先显示工程历史预览', await val(`!!document.querySelector('#projectHub') && !document.querySelector('#projectHub').classList.contains('hidden')`));
+  t('预览页有工程历史区域', await val(`!!document.querySelector('#hubSections') && document.body.innerText.includes('工程历史')`));
+  const hubCards = await val(`document.querySelectorAll('[data-hub-open]').length`);
+  t('历史工程卡片全部列出', hubCards >= 1, hubCards);
+  t('每张历史卡片有大红删除叉', await val(`document.querySelectorAll('[data-hub-open]').length === document.querySelectorAll('[data-hub-del]').length && document.querySelectorAll('[data-hub-del]').length >= 1`), await val(`document.querySelectorAll('[data-hub-del]').length`));
+  t('历史卡片显示接口/表/路由与文件路径', await val(`(()=>{const c=document.querySelector('[data-hub-open]');return !!c && /接口/.test(c.innerText) && /路由/.test(c.innerText) && /iface-projects/.test(c.innerText);})()`));
+  const hubMenuText = await val(`(()=>{const c=document.querySelector('[data-hub-open]');if(!c)return 'no-card';c.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:120,clientY:160}));return document.querySelector('#hubMenu').innerText;})()`);
+  t('右键历史卡片出现打开/复制/删除', /打开工程/.test(hubMenuText) && /复制工程/.test(hubMenuText) && /删除工程/.test(hubMenuText), hubMenuText);
+  await val(`hideHubMenu()`);
+  t('预览页直接列出模版', await val(`document.querySelectorAll('[data-hub-tpl]').length >= 24`), await val(`document.querySelectorAll('[data-hub-tpl]').length`));
+  t('音乐网站模版在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:music"]')`));
+  t('小说网站模版在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:novel"]')`));
+  t('确认框与 toast 层级高于预览页', await val(`Number(getComputedStyle(document.querySelector('#modal')).zIndex) > Number(getComputedStyle(document.querySelector('#projectHub')).zIndex) && Number(getComputedStyle(document.querySelector('#toast')).zIndex) > Number(getComputedStyle(document.querySelector('#projectHub')).zIndex)`));
+
+  // 选择历史工程后才进入工作台；没有历史时用商城模版建一个
+  if (hubCards >= 1) {
+    await val(`document.querySelector('[data-hub-open]').click()`);
+  } else {
+    await val(`document.querySelector('[data-hub-tpl="builtin:commerce"]').click()`);
+  }
+  await wait(900);
+  t('选择工程后进入工作台', await val(`!!S.project && document.querySelector('#projectHub').classList.contains('hidden')`), await val(`document.querySelector('#projectHub').classList.contains('hidden')`));
+
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
   t('Ribbon 有工程/扩展组', await val(`!!document.querySelector('[data-action="exportYxpn"]') && !!document.querySelector('[data-action="ai"]')`));
@@ -132,7 +157,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('Ribbon 有模版与插件入口', await val(`!!document.querySelector('[data-action="templates"]') && !!document.querySelector('[data-action="plugins"]')`));
   await val(`act('templates')`);
   await wait(500);
-  t('模版库列出 22 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 22`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
+  t('模版库列出 24 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 24`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
   t('社交接口库卡片统计 9 接口 / 46 表 / 86 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:social"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('9 接口') && card.innerText.includes('46 表') && card.innerText.includes('86 路由');})()`));
   t('模版卡片有接口/表统计', await val(`document.querySelector('#modal').innerText.includes('接口 ·')`));
 

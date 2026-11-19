@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.1.13",
+  "version": "1.1.14",
   "description": "以接口为最小单位的接口工作台：多库多表、脚本 SQL、事务、缓存、文档与一键生成可运行服务",
   "main": "main.js",
   "author": "yxpil",
@@ -12,6 +12,7 @@
     "test:help": "node tools/test-help.js",
     "test:pack": "node tools/test-pack.js",
     "test:deploy": "node tools/test-deploy.js",
+    "test:history": "node tools/test-history.js",
     "test:export": "node tools/test-export-runtimes.js",
     "test:ui": "node tools/ui-smoke.js",
     "test:e2e": "node tools/e2e.js http://127.0.0.1:18100",

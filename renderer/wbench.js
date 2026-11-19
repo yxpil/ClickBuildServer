@@ -1434,18 +1434,8 @@ async function act(name, el) {
     return;
   }
   if (name === 'open') {
-    const list = await api.projects();
-    if (!list.length) return toast('还没有保存过的工程');
-    modal(`<div class="p-3"><div class="font-semibold mb-2">打开工程</div>
-      ${list.map((p, i) => `<div class="py-2 border-b border-neutral-200 cursor-pointer hover:bg-neutral-50" data-open="${i}"><b>${esc(p.name)}</b><div class="text-[11px] text-neutral-500">${p.count} 接口 · ${esc((p.tables || []).slice(0, 3).join(', '))}</div></div>`).join('')}
-      </div>`, (root) => {
-      root.querySelectorAll('[data-open]').forEach((x) => {
-        x.onclick = async () => {
-          const p = await api.load(list[Number(x.dataset.open)].name);
-          if (p) { S.project = p; S.cat = p.categories[0].id; S.selId = p.interfaces[0] && p.interfaces[0].id; S.mode = 'grid'; closeModal(); render(); toast('已打开 ' + p.name); }
-        };
-      });
-    });
+    await save(true);
+    await showProjectHub();
     return;
   }
   if (name === 'newIface') {
@@ -2623,39 +2613,291 @@ $('#yxppExport').onclick = () => exportStudioYxpp().catch((e) => toast(e.message
 $('#yxppAttach').onclick = () => attachStudioToProject().catch((e) => toast(e.message, 5000));
 $('#yxppDeploy').onclick = () => deployUpdate().catch((e) => toast(e.message, 5000));
 
+/* ---------------- 工程历史预览 ---------------- */
+const HUB = { list: [], templates: [], filter: '', menuName: '' };
+
+function hubTime(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function hubFilterText(item) {
+  return [item.name, item.description, ...(item.tags || []), ...(item.tables || [])].join(' ').toLowerCase();
+}
+
+function uniqueProjectName(base) {
+  const names = new Set(HUB.list.map((x) => String(x.name || '').toLowerCase()));
+  let next = String(base || '新工程').trim() || '新工程';
+  let n = 2;
+  while (names.has(next.toLowerCase())) next = `${String(base || '新工程').trim()} ${n++}`;
+  return next;
+}
+
+function renderHubSections() {
+  const box = $('#hubSections');
+  if (!box) return;
+  const q = HUB.filter.trim().toLowerCase();
+  const projects = HUB.list.filter((p) => !q || hubFilterText(p).includes(q));
+  const templates = HUB.templates.filter((t) => !q || hubFilterText(t).includes(q));
+
+  const projectHtml = projects.length ? projects.map((p) => {
+    const tables = new Set(p.tables || []).size;
+    const current = S.project && S.project.name === p.name;
+    return `<article class="hub-project ${p.missing ? 'missing' : ''}" data-hub-open="${esc(p.name)}">
+      <button class="hub-x" data-hub-del="${esc(p.name)}" title="删除工程「${esc(p.name)}」" aria-label="删除工程">×</button>
+      <div class="hub-project-top">
+        <span class="hub-badge">${p.missing ? 'LOST' : current ? 'CURRENT' : 'PROJECT'}</span>
+        <span class="hub-time">${hubTime(p.updatedAt)}</span>
+      </div>
+      <h3>${esc(p.name)}</h3>
+      <div class="hub-project-desc">${esc(p.description || '已保存的接口工程')}</div>
+      <div class="hub-stats"><span>${p.count || 0} 接口</span><span>${tables} 表</span><span>${p.routes || 0} 路由</span></div>
+      <div class="hub-path ${p.missing ? 'missing' : ''}" title="${esc(p.missing ? '找不到文件' : p.file)}">${p.missing ? '找不到文件' : esc(p.file)}</div>
+    </article>`;
+  }).join('') : `<div class="hub-empty">${q ? '没有匹配的工程。' : '还没有历史工程，从下面的模版挑一个开始。'}</div>`;
+
+  const tplHtml = templates.length ? templates.map((t, i) => `<article class="hub-tpl" data-hub-tpl="${esc(t.id)}" title="使用模版「${esc(t.name)}」">
+      <div class="hub-tpl-top"><span class="hub-tpl-index">${String(i + 1).padStart(2, '0')}</span><span class="hub-tpl-kind">${t.kind === 'builtin' ? '内置' : '我的'}</span></div>
+      <h3>${esc(t.name)}</h3>
+      <div class="hub-tpl-meta">${t.counts.interfaces} 接口 · ${t.counts.tables} 表 · ${t.counts.routes} 路由</div>
+      <div class="hub-tpl-desc">${esc(t.description || '')}</div>
+      <div class="hub-tpl-tags">${(t.tags || []).slice(0, 4).map((x) => `<span>${esc(x)}</span>`).join('')}</div>
+    </article>`).join('') : `<div class="hub-empty">${q ? '没有匹配的模版。' : '暂时没有可用模版。'}</div>`;
+
+  box.innerHTML = `
+    <section class="hub-section">
+      <div class="hub-section-head"><h2>全部工程</h2><span class="hub-count" data-hub-count="projects">${projects.length} / ${HUB.list.length}</span><span class="hub-hint">左键打开 · 右键复制或删除 · 红叉删除</span></div>
+      <div class="hub-projects">${projectHtml}</div>
+    </section>
+    <section class="hub-section">
+      <div class="hub-section-head"><h2>从模版开始</h2><span class="hub-count" data-hub-count="templates">${templates.length} / ${HUB.templates.length}</span><span class="hub-hint">音乐网站、小说网站以及全部内置模版都在这里</span></div>
+      <div class="hub-templates">${tplHtml}</div>
+    </section>`;
+}
+
+function renderProjectHub() {
+  $('#projectHub').innerHTML = `<div class="hub-shell">
+    <div class="hub-top">
+      <div class="hub-brand">ClickBuild<span>PROJECT / HISTORY</span></div>
+      <div class="hub-top-note">先选择工程或模版</div>
+      <div class="hub-search">
+        <input id="hubSearch" placeholder="搜索工程 / 模版 / 标签…" value="${esc(HUB.filter)}" autocomplete="off">
+        <button class="btn thin" id="hubNew">新建空白工程</button>
+      </div>
+      <button class="hub-win" data-hub-win="minimize" title="最小化">—</button>
+      <button class="hub-win" data-hub-win="maximize" title="最大化">□</button>
+      <button class="hub-win close" data-hub-win="close" title="关闭">×</button>
+    </div>
+    <div class="hub-body">
+      <div class="hub-kicker">PROJECT HUB / 01</div>
+      <div class="hub-heading">工程历史</div>
+      <div class="hub-sub">打开应用先在这里选择历史工程，选中之后才进入工作台。历史文件、模版和复制入口都在这一页。</div>
+      <div id="hubSections"></div>
+    </div>
+    <div class="hub-footer"><span>CLICKBUILD / PROJECT HUB</span><span>${HUB.list.length} 个历史工程</span><span>${HUB.templates.length} 个模版</span></div>
+  </div>`;
+
+  const input = $('#hubSearch');
+  input.addEventListener('input', () => { HUB.filter = input.value; renderHubSections(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { HUB.filter = ''; input.value = ''; renderHubSections(); }
+  });
+  $('#hubNew').onclick = () => hubNewBlank();
+  $('#projectHub').querySelectorAll('[data-hub-win]').forEach((b) => {
+    b.onclick = () => api.win(b.dataset.hubWin);
+  });
+  renderHubSections();
+}
+
+async function showProjectHub() {
+  HUB.filter = '';
+  HUB.list = await api.projects();
+  S.list = HUB.list;
+  const tpl = await api.templates();
+  HUB.templates = tpl && tpl.ok ? tpl.list : [];
+  $('#projectHub').classList.remove('hidden');
+  renderProjectHub();
+}
+
+function hideProjectHub() {
+  hideHubMenu();
+  $('#projectHub').classList.add('hidden');
+}
+
+function hideHubMenu() {
+  HUB.menuName = '';
+  const menu = $('#hubMenu');
+  if (menu) menu.classList.add('hidden');
+}
+
+function showHubMenu(name, x, y) {
+  const item = HUB.list.find((p) => p.name === name);
+  if (!item) return;
+  HUB.menuName = name;
+  const menu = $('#hubMenu');
+  menu.innerHTML = `
+    <div class="hub-menu-item" data-hub-menu="open">打开工程</div>
+    <div class="hub-menu-item" data-hub-menu="duplicate">复制工程</div>
+    <div class="hub-menu-sep"></div>
+    <div class="hub-menu-item danger" data-hub-menu="delete">删除工程</div>`;
+  menu.classList.remove('hidden');
+  const w = menu.offsetWidth;
+  const h = menu.offsetHeight;
+  menu.style.left = Math.min(x, window.innerWidth - w - 8) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - h - 8) + 'px';
+}
+
+async function refreshHubList() {
+  HUB.list = await api.projects();
+  S.list = HUB.list;
+  renderHubSections();
+  const shell = $('#projectHub .hub-shell');
+  if (shell) {
+    const counts = shell.querySelectorAll('.hub-footer span');
+    if (counts[1]) counts[1].textContent = `${HUB.list.length} 个历史工程`;
+    if (counts[2]) counts[2].textContent = `${HUB.templates.length} 个模版`;
+  }
+}
+
+async function openHubProject(name) {
+  const p = await api.load(name);
+  if (!p) {
+    await refreshHubList();
+    return toast('找不到文件：' + name, 6000);
+  }
+  await enterWorkspace(p);
+  toast('已打开工程「' + p.name + '」');
+}
+
+async function deleteHubProject(name) {
+  const item = HUB.list.find((p) => p.name === name) || {};
+  const msg = item.missing
+    ? `「${name}」的文件已经找不到，仍然移除这条历史记录？`
+    : `确定删除工程「${name}」？工程 JSON 会从磁盘删除，这个操作不能撤销。`;
+  if (!(await confirmBox('删除工程', msg))) return;
+  const r = await api.remove(name);
+  if (r && r.missing) toast('找不到文件：' + name + '，已移除这条历史记录', 5000);
+  else toast('已删除工程「' + name + '」', 4000);
+  await refreshHubList();
+}
+
+async function duplicateHubProject(name) {
+  const r = await api.duplicateProject(name);
+  if (!r || r.ok === false) {
+    await refreshHubList();
+    return toast('找不到文件：' + name, 5000);
+  }
+  await refreshHubList();
+  toast(`已复制为「${r.name}」`, 4000);
+}
+
+async function hubUseTemplate(id) {
+  const got = await api.templateGet(id);
+  if (!got || got.ok === false) return toast('读取模版失败：' + ((got && got.error) || '未知错误'), 5000);
+  if (S.project && !(await confirmBox('套用模版', `用「${got.name}」新建工程并进入工作台？当前工程会先保留在历史里。`))) return;
+  const p = got.project;
+  p.name = uniqueProjectName(got.name || p.name);
+  await api.save(p);
+  await enterWorkspace(p);
+  toast(`已从模版「${got.name}」新建「${p.name}」`, 4500);
+}
+
+async function hubNewBlank() {
+  const p = await api.seed();
+  p.name = uniqueProjectName('新工程');
+  p.description = '空白工程';
+  p.interfaces = [];
+  delete p.frontend;
+  await api.save(p);
+  await enterWorkspace(p);
+  toast(`已新建「${p.name}」`);
+}
+
+async function enterWorkspace(p) {
+  if (S.view === 'studio' && studioDirty) saveStudioToProject('打开工程');
+  hideProjectHub();
+  S.project = p;
+  S.cat = (p.categories[0] || {}).id || '';
+  S.selId = (p.interfaces[0] || {}).id || '';
+  S.mode = 'grid'; S.tab = 'tables'; S.tableKey = ''; S.routeId = '';
+  S.problems = (await api.validate(p)).errors || [];
+  S.view = 'api';
+  S.studioProject = null; studioLoaded = false; studioDirty = false;
+  if (!S.help) S.help = await api.help();
+  setView('api');
+}
+
+$('#projectHub').addEventListener('click', async (e) => {
+  const win = e.target.closest('[data-hub-win]');
+  if (win) return;
+  const del = e.target.closest('[data-hub-del]');
+  if (del) { e.stopPropagation(); return deleteHubProject(del.dataset.hubDel); }
+  const tpl = e.target.closest('[data-hub-tpl]');
+  if (tpl) return hubUseTemplate(tpl.dataset.hubTpl);
+  const card = e.target.closest('[data-hub-open]');
+  if (card) return openHubProject(card.dataset.hubOpen);
+});
+
+$('#projectHub').addEventListener('contextmenu', (e) => {
+  const card = e.target.closest('[data-hub-open]');
+  if (!card) return;
+  e.preventDefault();
+  showHubMenu(card.dataset.hubOpen, e.clientX, e.clientY);
+});
+
+$('#hubMenu').addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-hub-menu]');
+  if (!item || !HUB.menuName) return;
+  const name = HUB.menuName;
+  hideHubMenu();
+  if (item.dataset.hubMenu === 'open') return openHubProject(name);
+  if (item.dataset.hubMenu === 'duplicate') return duplicateHubProject(name);
+  if (item.dataset.hubMenu === 'delete') return deleteHubProject(name);
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#hubMenu') && !e.target.closest('[data-hub-open]')) hideHubMenu();
+});
+window.addEventListener('blur', hideHubMenu);
+
 /* ---------------- 启动 ---------------- */
 (async function boot() {
   bindWindowControls();
   try {
     const b = await api.boot();
-    S.project = b.project;
     S.list = b.list;
     S.services = b.services;
     S.settings = b.settings;
     try { S.runtimes = await api.runtimes(); } catch (e) { S.runtimes = []; }
     applyTheme(S.settings.theme || {});
+    S.help = await api.help();
+
     const wanted = new URLSearchParams(location.search).get('project');
-    if (wanted && wanted !== S.project.name) {
-      const got = await api.load(wanted);
-      if (got) S.project = got;
-    }
     const openYxpn = new URLSearchParams(location.search).get('openYxpn');
+    let direct = null;
+    if (wanted) direct = await api.load(wanted);
     if (openYxpn) {
       const r = await api.importYxpnPath(openYxpn);
       if (r && r.ok) {
-        S.project = r.project;
-        await api.save(S.project);
-        toast(`已从工程包打开「${S.project.name}」`, 4000);
+        direct = r.project;
+        await api.save(direct);
+        toast(`已从工程包打开「${direct.name}」`, 4000);
       } else {
         toast('工程包打不开：' + ((r && r.error) || '未知错误'), 5000);
       }
     }
-    S.cat = (S.project.categories[0] || {}).id || '';
-    S.selId = (S.project.interfaces[0] || {}).id || '';
-    S.help = await api.help();
-    S.problems = (await api.validate(S.project)).errors || [];
-    render();
+
+    if (direct) {
+      await enterWorkspace(direct);
+    } else {
+      if (wanted) toast('找不到文件：' + wanted, 6000);
+      await showProjectHub();
+    }
+
     setInterval(async () => {
+      if (!S.project) return;
       if ($('#drawer').classList.contains('hidden')) {
         S.services = await api.services();
         renderRibbon();

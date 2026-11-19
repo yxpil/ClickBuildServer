@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('icb', {
   load: (name) => invoke('iface:load', name),
   save: (project) => invoke('iface:save', project),
   remove: (name) => invoke('iface:delete', name),
+  duplicateProject: (name) => invoke('iface:projects:duplicate', name),
   seed: () => invoke('iface:seed'),
   blank: (opts) => invoke('iface:blank', opts || {}),
   ident: (name, prefix) => invoke('iface:ident', name, prefix || 'tbl'),

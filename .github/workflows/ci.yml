@@ -52,6 +52,7 @@ jobs:
           node tools/test-templates.js --gen
           node tools/test-pack.js
           node tools/test-deploy.js
+          node tools/test-history.js
 
       - name: Build unpacked app
         run: npm run dist:dir
