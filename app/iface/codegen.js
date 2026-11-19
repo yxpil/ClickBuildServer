@@ -243,6 +243,7 @@ function generate(project, options) {
     '接口清单、参数和鉴权说明都在这里。',
     '',
     `- 运行时文档：http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/docs`,
+    `- 帮助 / 语法：http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/help`,
     `- OpenAPI：http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/_docs`,
     '', '字段注释就是文档说明，路由的 summary 会出现在文档摘要里。',
   ].join('\n'));

@@ -40,10 +40,12 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.0.3.exe
+dist\ClickBuildServer-Setup-1.0.4.exe
 ```
 
-也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.3](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.3)。
+也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.4](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.4)。
+
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。
 
 安装包已内置便携 Node（`resources\runtime\node\node.exe`），不依赖系统 Node；安装时注册 `.yxpn` 文件关联。首次运行后可在右侧“本地服务”里启动仓库自带的 MariaDB / Redis / RustFS。
 
@@ -71,7 +73,7 @@ $env:RESET_DB='1'
 ..\..\..\runtime\node\node.exe server.js
 ```
 
-打开 <http://127.0.0.1:18100/> 是生成服务的控制台，`/docs` 是自动 API 文档。
+打开 <http://127.0.0.1:18100/> 是生成服务的控制台，`/docs` 是自动 API 文档，`/help` 是运行时帮助与脚本语法页。
 
 ## 不用界面也能生成 / 测试
 
@@ -167,7 +169,7 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 - 分级日志：控制台彩色 + 内存环形 + SSE + 按等级落 `sys_log`（可换库）
 - onlyId + token（Redis，Bearer 或 cookie）
 - 对象存储 presigned 上传、回填对象键
-- `/_health` `/_meta` `/_routes` `/_docs`(OpenAPI) `/docs`(HTML) `/_logs` `/_logs/stream`
+- `/_health` `/_meta` `/_routes` `/_docs`(OpenAPI) `/docs`(HTML) `/help`(帮助/语法) `/_logs` `/_logs/stream`
 - `RESET_DB=1`：启动时清空本工程库，互不牵连
 
 ## 模版 / 插件 / 文档

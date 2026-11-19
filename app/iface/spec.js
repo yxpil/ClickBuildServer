@@ -63,6 +63,9 @@ const ROUTE_TEMPLATES = {
   ].join('\n'),
   detail: [
     'LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;',
+    'IF LEN($row.rows) == 0',
+    '  RETURN 404 { "ok": false, "error": "NOT_FOUND" };',
+    'END',
     'RETURN 200 { "row": $row.rows[0] };',
   ].join('\n'),
   create: [

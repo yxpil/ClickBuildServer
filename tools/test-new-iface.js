@@ -25,6 +25,10 @@ ok('DDL 可生成且包含安全表名', () => {
   const ddl = spec.ddlOf(it);
   assert.ok(ddl.includes(it.tables[0].name));
 });
+ok('默认详情路由对不存在记录返回 404', () => {
+  const detail = it.routes.find((r) => r.key === 'detail');
+  assert.ok(detail.script.includes('RETURN 404'));
+});
 ok('第二个中文接口不会撞表名', () => {
   const b = spec.newIface('问候接口', 'biz');
   assert.notStrictEqual(b.tables[0].name, it.tables[0].name);

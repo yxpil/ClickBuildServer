@@ -684,19 +684,130 @@ function openapi() {
   };
 }
 
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function docsHtml() {
   const spec = openapi();
   const rows = [];
   for (const iface of IFACES) {
     for (const route of iface.routes || []) {
-      rows.push(`<tr><td>${route.method}</td><td><code>${(CFG.apiPrefix + (iface.basePath || '') + route.path)}</code></td><td>${route.name}</td><td>${route.summary || ''}</td><td>${route.auth ? 'token' : '—'}</td><td>${route.guard && route.guard.tx ? '事务' : ''}${route.cache && route.cache.enabled ? ' 缓存' : ''}</td></tr>`);
+      rows.push(`<tr><td>${esc(route.method)}</td><td><code>${esc(CFG.apiPrefix + (iface.basePath || '') + route.path)}</code></td><td>${esc(route.name)}</td><td>${esc(route.summary || '')}</td><td>${route.auth ? 'token' : '—'}</td><td>${route.guard && route.guard.tx ? '事务' : ''}${route.cache && route.cache.enabled ? ' 缓存' : ''}</td></tr>`);
     }
   }
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${spec.info.title}</title>
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${esc(spec.info.title)}</title>
 <style>body{font:14px/1.6 -apple-system,Segoe UI,sans-serif;margin:32px;color:#111}h1{font-size:20px}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f5f5f5}code{font-family:ui-monospace,monospace}a{color:#111}</style>
-<h1>${spec.info.title} <small>v${spec.info.version}</small></h1><p>${spec.info.description || ''}</p>
-<p><a href="/_docs">OpenAPI JSON</a> · <a href="/_meta">元信息</a> · <a href="/_routes">路由</a></p>
+<h1>${esc(spec.info.title)} <small>v${esc(spec.info.version)}</small></h1><p>${esc(spec.info.description || '')}</p>
+<p><a href="/help">帮助 / 语法</a> · <a href="/_docs">OpenAPI JSON</a> · <a href="/_meta">元信息</a> · <a href="/_routes">路由</a> · <a href="/_health">健康</a></p>
 <table><thead><tr><th>方法</th><th>路径</th><th>名称</th><th>说明</th><th>鉴权</th><th>特性</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function helpHtml() {
+  const routeRows = [];
+  for (const iface of IFACES) {
+    for (const route of iface.routes || []) {
+      const full = CFG.apiPrefix + (iface.basePath || '') + route.path;
+      routeRows.push(`<tr><td>${esc(route.method)}</td><td><code>${esc(full)}</code></td><td>${esc(iface.name)} / ${esc(route.name)}</td><td>${esc(route.summary || '')}</td></tr>`);
+    }
+  }
+  const firstGet = TABLE.find((t) => t.route.method === 'GET');
+  const exampleUrl = firstGet ? `http://127.0.0.1:${CFG.httpPort}${CFG.apiPrefix}${(firstGet.iface.basePath || '')}${firstGet.route.path}` : `http://127.0.0.1:${CFG.httpPort}${CFG.apiPrefix}`;
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${esc(project.name)} · 帮助</title>
+<style>
+body{font:14px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;color:#111;background:#fff}
+header{padding:16px 24px;border-bottom:1px solid #111;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0}
+header a{color:#111;font-size:12px}
+main{max-width:1080px;margin:24px auto;padding:0 20px}
+h2{font-size:14px;margin:28px 0 10px;padding-bottom:5px;border-bottom:1px solid #111}
+table{border-collapse:collapse;width:100%;margin:8px 0}
+th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f5f5f5;font-weight:600}
+code,pre{font-family:Consolas,ui-monospace,monospace}
+code{font-size:12px}
+pre{border:1px solid #111;background:#fafafa;padding:10px;overflow:auto;white-space:pre-wrap}
+.note{color:#555;font-size:12px}
+.badge{display:inline-block;border:1px solid #111;padding:1px 6px;margin-right:6px;font-size:11px}
+</style>
+<header><h1>${esc(project.name)} · 帮助</h1><a href="/">控制台 / 前端</a><a href="/docs">接口文档</a><a href="/_docs">OpenAPI</a><a href="/_routes">全部路由</a><a href="/_health">健康检查</a></header>
+<main>
+<p class="note">${esc(project.description || '')}</p>
+<p><span class="badge">API 前缀 ${esc(CFG.apiPrefix)}</span><span class="badge">端口 ${CFG.httpPort}</span><span class="badge">数据库 ${esc(CFG.database)}</span><span class="badge">Redis ${esc(CFG.redisHost)}:${CFG.redisPort}</span><span class="badge">S3 ${esc(CFG.s3End)}:${CFG.s3Port}</span></p>
+
+<h2>1. 快速访问</h2>
+<table><thead><tr><th>地址</th><th>用途</th></tr></thead><tbody>
+<tr><td><code>/</code></td><td>控制台或前端页面</td></tr>
+<tr><td><code>/docs</code></td><td>本服务的接口文档</td></tr>
+<tr><td><code>/help</code></td><td>当前这页：语法、占位符、函数、示例</td></tr>
+<tr><td><code>/_docs</code> 或 <code>/openapi.json</code></td><td>OpenAPI JSON，可导入 Postman / Apifox</td></tr>
+<tr><td><code>/_routes</code></td><td>全部路由的机器可读列表</td></tr>
+<tr><td><code>/_health</code></td><td>MySQL / Redis / S3 健康检查</td></tr>
+<tr><td><code>/_logs</code> / <code>/_logs/stream</code></td><td>日志快照 / SSE 实时日志</td></tr>
+</tbody></table>
+
+<h2>2. 接口路由</h2>
+<table><thead><tr><th>方法</th><th>完整路径</th><th>接口</th><th>说明</th></tr></thead><tbody>${routeRows.join('')}</tbody></table>
+
+<h2>3. 请求约定</h2>
+<table><thead><tr><th>位置</th><th>写法</th><th>说明</th></tr></thead><tbody>
+<tr><td>路径参数</td><td><code>/xxx/:id</code></td><td>脚本里用 <code>{{id}}</code> 或 <code>{{path.id}}</code></td></tr>
+<tr><td>查询参数</td><td><code>?page=1&amp;pageSize=20&amp;keyword=abc</code></td><td>脚本里用 <code>{{query.x}}</code>；<code>{{where:main}}</code> 会自动拼条件</td></tr>
+<tr><td>请求体</td><td><code>application/json</code></td><td>脚本里用 <code>{{body.x}}</code></td></tr>
+<tr><td>登录态</td><td><code>Authorization: Bearer &lt;token&gt;</code> 或 Cookie</td><td>脚本里用 <code>{{user.x}}</code>，需路由开启 auth</td></tr>
+<tr><td>文件上传</td><td><code>multipart/form-data</code>，字段名任意</td><td>上传后可用 <code>{{objectKey}}</code> / <code>{{objectUrl}}</code></td></tr>
+</tbody></table>
+<p class="note">成功响应统一为 <code>{"ok":true,"data":...,"traceId":"..."}</code>；失败为 <code>{"ok":false,"error":"...","message":"..."}</code>。</p>
+
+<h2>4. SQL 占位符</h2>
+<table><thead><tr><th>占位符</th><th>展开</th></tr></thead><tbody>
+<tr><td><code>{{t:key}}</code> / <code>{{table:key}}</code></td><td>表名，key 是表键（首张表固定 main）</td></tr>
+<tr><td><code>{{columns:key}}</code></td><td>查询列，自动跳过 hidden 字段</td></tr>
+<tr><td><code>{{insertColumns:key}}</code> / <code>{{insertValues:key}}</code></td><td>INSERT 的列和参数化值</td></tr>
+<tr><td><code>{{updateSet:key}}</code></td><td>UPDATE SET，只改请求体里出现的字段</td></tr>
+<tr><td><code>{{where:key}}</code></td><td>条件：<code>field__gte</code>、<code>__lte</code>、<code>__like</code>、<code>__in</code>、<code>__between</code>、<code>keyword</code></td></tr>
+<tr><td><code>{{orderBy:key}}</code> / <code>{{limit}}</code> / <code>{{offset}}</code></td><td>排序与分页，字段有白名单</td></tr>
+<tr><td><code>{{body.x}}</code> / <code>{{query.x}}</code> / <code>{{path.x}}</code> / <code>{{user.x}}</code></td><td>请求体、查询、路径、登录态</td></tr>
+<tr><td><code>{{onlyId}}</code> / <code>{{token}}</code> / <code>{{uuid}}</code> / <code>{{now}}</code> / <code>{{traceId}}</code></td><td>平台生成值</td></tr>
+<tr><td><code>{{objectKey}}</code> / <code>{{objectUrl}}</code> / <code>{{filename}}</code> / <code>{{size}}</code></td><td>对象存储上传结果</td></tr>
+</tbody></table>
+
+<h2>5. 脚本语句</h2>
+<table><thead><tr><th>写法</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>LET $x = QUERY SELECT ...;</code></td><td>查询，结果在 <code>$x.rows</code></td></tr>
+<tr><td><code>LET $x = EXEC INSERT/UPDATE/DELETE ...;</code></td><td>写操作，结果在 <code>$x.insertId</code> / <code>$x.affectedRows</code></td></tr>
+<tr><td><code>LET $x = HASH('sha256', {{body.name}});</code></td><td>表达式赋值，可调用内置函数</td></tr>
+<tr><td><code>IF 条件 ... ELSEIF ... ELSE ... END</code></td><td>分支</td></tr>
+<tr><td><code>FOREACH $row IN $rows.rows ... END</code></td><td>循环，最多 500 条</td></tr>
+<tr><td><code>RETURN 200 { "x": $x };</code></td><td>返回 JSON，第二段是表达式</td></tr>
+<tr><td><code>LOG 表达式;</code></td><td>写一条请求日志</td></tr>
+<tr><td><code>TX BEGIN|COMMIT|ROLLBACK;</code></td><td>手动事务；写路由默认自动事务</td></tr>
+<tr><td><code>HTTP GET|POST 'url' { ... }</code></td><td>调用其它服务</td></tr>
+<tr><td><code>PUBLISH 'channel' 表达式;</code></td><td>向 Redis 发布消息</td></tr>
+<tr><td><code>TOKEN NEW|GET|DEL ...</code></td><td>签发 / 读取 / 删除 token 会话</td></tr>
+</tbody></table>
+
+<h2>6. 内置函数</h2>
+<table><thead><tr><th>分类</th><th>函数</th></tr></thead><tbody>
+<tr><td>哈希 / 加密</td><td><code>HASH(algo,v)</code> <code>MD5(v)</code> <code>SHA1(v)</code> <code>SHA256(v)</code> <code>SM3(v)</code> <code>SM4_ENC(v,key)</code> <code>SM4_DEC(v,key)</code></td></tr>
+<tr><td>字符串</td><td><code>SUBSTR</code> <code>LEFT</code> <code>RIGHT</code> <code>LEN</code> <code>UPPER</code> <code>LOWER</code> <code>TRIM</code> <code>CONCAT</code> <code>REPLACE</code> <code>SPLIT</code> <code>JOIN</code> <code>MASK</code> <code>URL_ENC</code> <code>URL_DEC</code></td></tr>
+<tr><td>数字</td><td><code>INT</code> <code>FLOAT</code> <code>ROUND</code> <code>ABS</code> <code>RAND_INT</code></td></tr>
+<tr><td>时间 / ID</td><td><code>NOW()</code> <code>TODAY()</code> <code>UUID()</code></td></tr>
+<tr><td>JSON</td><td><code>JSON_GET(obj,'a.b')</code> <code>JSON_STR(v)</code></td></tr>
+<tr><td>逻辑</td><td><code>IF(cond,a,b)</code> <code>IN(v,arr)</code> <code>CONTAINS</code> <code>START_WITH</code> <code>END_WITH</code> <code>COALESCE</code></td></tr>
+</tbody></table>
+
+<h2>7. 直接试一下</h2>
+<pre># 列表
+curl "${esc(exampleUrl)}"
+
+# 新建（按你的表字段替换 JSON）
+curl -X POST "${esc(exampleUrl)}" -H "Content-Type: application/json" -d '{"name":"test"}'
+
+# 健康检查
+curl "http://127.0.0.1:${CFG.httpPort}/_health"</pre>
+<p class="note">注意：所有接口默认前缀是 <code>${esc(CFG.apiPrefix)}</code>；如果路径带 <code>:id</code>，请求时换成真实 ID。数据库 / Redis / S3 地址在生成目录的 <code>.env</code> 里改，重启服务生效。</p>
+</main></html>`;
 }
 
 // ---------------- 启动 ----------------
@@ -735,6 +846,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/_docs' || pathname === '/openapi.json') return send(res, 200, openapi());
     if (pathname === '/docs') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(docsHtml()); }
+    if (pathname === '/help' || pathname === '/help/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(helpHtml()); }
     if (pathname === '/_logs') {
       const tail = Math.min(Number(url.searchParams.get('tail') || 50), 500);
       return send(res, 200, { ok: true, logs: RING.slice(-tail) });

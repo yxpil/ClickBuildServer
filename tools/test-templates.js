@@ -35,6 +35,8 @@ for (const t of list.filter((x) => x.kind === 'builtin')) {
     const dir = path.join(outRoot, String(t.name));
     const g = codegen.writeTo(ap.project, dir, { port: 18999 });
     check(`模版「${t.name}」生成产物`, g.files.length > 20 && fs.existsSync(path.join(dir, 'server.js')), `${g.files.length} 文件`);
+    const srv = fs.readFileSync(path.join(dir, 'server.js'), 'utf8');
+    check(`模版「${t.name}」生成服务带 /help`, srv.includes("pathname === '/help'") && srv.includes('function helpHtml'));
     const openapi = JSON.parse(fs.readFileSync(path.join(dir, 'docs', 'openapi.json'), 'utf8'));
     check(`模版「${t.name}」OpenAPI 带接口文档`, !!openapi.info.description);
   }

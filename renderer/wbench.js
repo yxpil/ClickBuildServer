@@ -733,6 +733,10 @@ function renderHelp() {
     <button class="btn thin" data-action="grid">← 表格</button>
     <b>帮助 · 脚本语法</b>
     <span class="text-neutral-500 text-[11px]">生成的服务器里跑的就是这一套解释器</span>
+    <span class="ml-auto flex gap-1">
+      <button class="btn thin" data-action="openHelpUrl">打开服务 /help</button>
+      <button class="btn thin" data-action="openDocsUrl">打开 /docs</button>
+    </span>
   </div>
   <div class="flex-1 overflow-auto p-4 text-[12px] leading-6">
     <div class="help-h">1. 一条路由 = 一段脚本</div>
@@ -942,6 +946,12 @@ async function act(name, el) {
   }
   if (name === 'grid') { S.mode = 'grid'; render(); return; }
   if (name === 'help') { S.mode = 'help'; if (!S.help) S.help = await api.help(); render(); return; }
+  if (name === 'openHelpUrl' || name === 'openDocsUrl') {
+    const svc = (S.services.items || []).find((x) => x.id === 'server');
+    if (!svc || !svc.running) return toast('先生成并启动服务，再打开帮助页');
+    await api.openUrl(`http://127.0.0.1:${svc.port}${name === 'openHelpUrl' ? '/help' : '/docs'}`);
+    return;
+  }
   if (name === 'test') { if (it) { S.mode = 'editor'; S.tab = 'test'; renderWorkspace(); } return; }
   if (name === 'check') {
     S.problems = (await api.validate(S.project)).errors;
