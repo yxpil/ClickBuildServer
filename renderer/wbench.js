@@ -233,6 +233,8 @@ function renderRibbon() {
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('templates', 'page', '模版库', '内置商城/视频/博客/工单/预约，一键套用')}
     ${rb('saveTemplate', 'save', '存模版', '把当前工程存成自己的模版')}
+    ${rb('ifaceLib', 'field', '接口库', '内置/自存接口，一键插入当前工程')}
+    ${rb('saveIface', 'save', '存接口', '把当前接口存入接口库，同名会被拒绝')}
     ${rb('plugins', 'field', '插件', '插件启停、安装、信任目录')}
   </div><div class="lbl">模版与插件</div></div>
 
@@ -1218,6 +1220,8 @@ async function act(name, el) {
   if (name === 'microExport') return showMicroExport();
   if (name === 'templates') return showTemplates();
   if (name === 'saveTemplate') return showSaveTemplate();
+  if (name === 'ifaceLib') return showIfaceLibrary();
+  if (name === 'saveIface') return showSaveIface();
   if (name === 'plugins') return showPlugins();
   if (name === 'monitor') return showMonitor();
   if (name === 'theme') return showTheme();
@@ -1346,6 +1350,97 @@ async function showSaveTemplate() {
   const r = await api.templateSave({ name, project: S.project, description: `${S.project.interfaces.length} 个接口的自定义模版` });
   if (!r.ok) return toast('保存失败：' + String(r.error || '').slice(0, 160), 5000);
   toast(`已保存模版「${r.name}」`);
+}
+
+/* ---------------- 接口库（单个接口） ---------------- */
+async function showSaveIface() {
+  const it = activeIface();
+  if (!it) return toast('当前没有可保存的接口');
+  const name = await ask('存入接口库', it.name, '只保存当前接口（表、路由、文档、脚本）；接口库内不允许重名');
+  if (!name) return;
+  const desc = it.docs && (it.docs.summary || it.docs.description) || `${it.tables.length} 表 · ${it.routes.length} 路由`;
+  const r = await api.ifaceLibrarySave({ name, iface: it, sourceProject: S.project.name, description: desc, tags: [S.project.name] });
+  if (!r.ok) return toast('保存失败：' + String(r.error || '').slice(0, 180), 6500);
+  toast(`已存入接口库「${r.name}」`);
+}
+
+async function showIfaceLibrary() {
+  const r = await api.ifaceLibrary();
+  if (!r.ok) return toast('读取接口库失败：' + r.error);
+  const row = (x) => {
+    const kind = x.kind === 'builtin' ? '内置' : '我的';
+    const source = x.source || '接口库';
+    return `<div class="lib-row flex items-center gap-3 p-2 border-b border-neutral-200" data-lib-row data-kind="${x.kind}" data-name="${esc(x.name)}" data-source="${esc(source)}">
+      <div class="w-8 h-8 shrink-0 border border-neutral-900 flex items-center justify-center mono text-[10px]">${kind}</div>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2"><b class="text-[12px]">${esc(x.name)}</b>
+          <span class="text-[10px] text-neutral-500 mono">${x.counts.tables} 表 · ${x.counts.routes} 路由</span></div>
+        <div class="text-[10px] text-neutral-500 truncate">${esc(source)}${x.description ? ' · ' + esc(x.description) : ''}</div>
+      </div>
+      <button class="btn thin shrink-0" data-lib-add="${esc(x.id)}">插入</button>
+      ${x.kind === 'user' ? `<button class="btn thin shrink-0" data-lib-del="${esc(x.id)}">删除</button>` : ''}
+    </div>`;
+  };
+  modal(`<div class="p-4">
+    <div class="flex items-center gap-2 mb-3"><b class="text-[13px]">接口库</b>
+      <span class="pill">${r.list.length} 个接口</span>
+      <span class="text-[11px] text-neutral-500">内置 ${r.list.filter((x) => x.kind === 'builtin').length} 个 · 自存不重名</span>
+      <button class="btn thin ml-auto" id="libSave">存当前接口</button>
+      <button class="btn thin" id="libClose">关闭</button></div>
+    <div class="flex items-center gap-2 mb-2">
+      <input id="libQ" class="border border-neutral-300 px-2 py-1 text-[12px] w-64" placeholder="搜接口名 / 来源">
+      <button class="btn thin" data-lib-kind="all">全部</button>
+      <button class="btn thin" data-lib-kind="builtin">内置</button>
+      <button class="btn thin" data-lib-kind="user">我的</button>
+      <span id="libCount" class="text-[11px] text-neutral-500 ml-auto"></span>
+    </div>
+    <div id="libList" class="border border-neutral-300 max-h-[64vh] overflow-auto">
+      ${r.list.map(row).join('')}
+    </div>
+    <div class="text-[11px] text-neutral-500 mt-2">插入只追加到当前工程，不覆盖已有接口；同名接口、表名、basePath 会自动加序号避重。</div>
+  </div>`, (root) => {
+    let kind = 'all';
+    const apply = () => {
+      const q = String(root.querySelector('#libQ').value || '').trim().toLowerCase();
+      let shown = 0;
+      root.querySelectorAll('[data-lib-row]').forEach((el) => {
+        const hitKind = kind === 'all' || el.dataset.kind === kind;
+        const hay = `${el.dataset.name} ${el.dataset.source}`.toLowerCase();
+        const hit = hitKind && (!q || hay.includes(q));
+        el.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      });
+      root.querySelector('#libCount').textContent = `显示 ${shown} / ${r.list.length}`;
+    };
+    root.querySelector('#libClose').onclick = closeModal;
+    root.querySelector('#libSave').onclick = () => { closeModal(); showSaveIface(); };
+    root.querySelector('#libQ').oninput = apply;
+    root.querySelectorAll('[data-lib-kind]').forEach((b) => {
+      b.onclick = () => { kind = b.dataset.libKind; apply(); };
+    });
+    root.querySelectorAll('[data-lib-add]').forEach((b) => {
+      b.onclick = async () => {
+        const got = await api.ifaceLibraryInsert(S.project, b.dataset.libAdd);
+        if (!got.ok) return toast('插入失败：' + String(got.error || '').slice(0, 200), 6500);
+        S.project = got.project;
+        S.cat = got.category;
+        S.selId = got.ifaceId;
+        S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
+        await api.save(S.project);
+        closeModal(); render();
+        toast(`已插入「${got.name}」${got.renamed ? '（同名，已自动加序号）' : ''}`);
+      };
+    });
+    root.querySelectorAll('[data-lib-del]').forEach((b) => {
+      b.onclick = async () => {
+        if (!(await confirmBox('删除接口', '确定从接口库删除这个自存接口？不影响当前工程。'))) return;
+        const d = await api.ifaceLibraryRemove(b.dataset.libDel);
+        if (!d.ok) return toast(d.error || '删除失败');
+        closeModal(); showIfaceLibrary();
+      };
+    });
+    apply();
+  });
 }
 
 /* ---------------- 插件 / Defender ---------------- */

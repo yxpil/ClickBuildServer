@@ -53,21 +53,25 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   };
 
   t('页面已加载接口工作台', await val(`document.title.includes('ClickBuildServer')`), await val('document.title'));
+  await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
+  await wait(300);
   t('Ribbon 有工程/扩展组', await val(`!!document.querySelector('[data-action="exportYxpn"]') && !!document.querySelector('[data-action="ai"]')`));
   t('表格有接口行', await val(`document.querySelectorAll('#workspace tr[data-iface]').length >= 1`), await val(`document.querySelectorAll('#workspace tr[data-iface]').length`));
   t('分类 sheet 存在', await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length >= 2`), await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length`));
 
   // 全局搜索
-  await val(`document.querySelector('#search').value='订单'; document.querySelector('#search').dispatchEvent(new Event('input'))`);
+  const firstName = await val(`S.project.interfaces[0].name`);
+  await val(`document.querySelector('#search').value=${JSON.stringify(firstName)}; document.querySelector('#search').dispatchEvent(new Event('input'))`);
   await wait(300);
   t('全局搜索有结果', await val(`document.querySelectorAll('#searchPanel [data-res]').length > 0`), await val(`document.querySelector('#searchPanel').innerText.slice(0,80)`));
   await val(`document.querySelector('#search').value=''; document.querySelector('#search').dispatchEvent(new Event('input'))`);
 
   // 复制接口（自动编号）
+  const firstTable = await val(`S.project.interfaces[0].tables[0].name`);
   await val(`S.selId = S.project.interfaces[0].id; act('dupIface')`);
   await wait(600);
-  t('复制接口生成 订单2', await val(`S.project.interfaces.some(i=>i.name==='订单2')`), await val(`S.project.interfaces.map(i=>i.name)`));
-  t('复制后表名带 _2', await val(`!!S.project.interfaces.find(i=>i.name==='订单2').tables.find(t=>t.name==='biz_order_2')`));
+  t('复制接口生成副本', await val(`S.project.interfaces.some(i=>i.name===${JSON.stringify(firstName + '2')})`), await val(`S.project.interfaces.map(i=>i.name)`));
+  t('复制后表名带 _2', await val(`!!S.project.interfaces.find(i=>i.name===${JSON.stringify(firstName + '2')}).tables.find(t=>t.name===${JSON.stringify(firstTable + '_2')})`));
 
   // 导出 .yxpn（接口 + 文件落盘）
   const exp = await val(`api.exportYxpn(S.project)`);
@@ -82,7 +86,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('导出工程返回成功', !!(eproj && eproj.ok), eproj);
   t('导出工程带 .idea 模块', !!(eproj && eproj.ok && await val(`api.exists(${JSON.stringify((eproj.dir || '') + '\\.idea\\modules.xml')})`)), eproj && eproj.dir);
   t('导出工程带 IDEA 运行配置', !!(eproj && eproj.ok && await val(`api.exists(${JSON.stringify((eproj.dir || '') + '\\.run\\启动接口服务.run.xml')})`)), eproj && eproj.dir);
-  if (eproj && eproj.ok && eproj.dir) fs.rmSync(eproj.dir, { recursive: true, force: true });
+  if (eproj && eproj.ok && eproj.dir) console.log('  · 导出工程目录 ' + eproj.dir);
 
   // AI 对话框：填需求 → 生成
   await val(`act('ai')`);
@@ -131,6 +135,18 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('模版库列出 22 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 22`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
   t('社交接口库卡片统计 9 接口 / 46 表 / 86 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:social"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('9 接口') && card.innerText.includes('46 表') && card.innerText.includes('86 路由');})()`));
   t('模版卡片有接口/表统计', await val(`document.querySelector('#modal').innerText.includes('接口 ·')`));
+
+  // 单接口库
+  t('Ribbon 有接口库/存接口入口', await val(`!!document.querySelector('[data-action="ifaceLib"]') && !!document.querySelector('[data-action="saveIface"]')`));
+  await val(`act('ifaceLib')`);
+  await wait(500);
+  t('接口库内置接口不少于 63 个', await val(`document.querySelectorAll('[data-lib-row][data-kind="builtin"]').length >= 63`), await val(`document.querySelectorAll('[data-lib-row][data-kind="builtin"]').length`));
+  t('接口库搜索能过滤', await val(`(()=>{const q=document.querySelector('#libQ');q.value='账户';q.dispatchEvent(new Event('input'));const shown=Array.from(document.querySelectorAll('[data-lib-row]')).filter(x=>x.style.display!='none').length;const all=document.querySelectorAll('[data-lib-row]').length;q.value='';q.dispatchEvent(new Event('input'));return shown>0 && shown<all;})()`));
+  t('接口库有全部/内置/我的筛选', await val(`document.querySelectorAll('[data-lib-kind]').length === 3`));
+  await val(`closeModal()`);
+
+  await val(`act('templates')`);
+  await wait(400);
   await val(`document.querySelector('[data-tpl-apply="builtin:blog"]').click()`);
   await wait(300);
   await val(`document.querySelector('#cYes').click()`);

@@ -14,6 +14,7 @@ const projects = require('./project-store');
 const pkg = require('./package');
 const ai = require('./ai');
 const templates = require('./templates');
+const ifaceLibrary = require('./iface-library');
 const plugins = require('./plugins');
 const defender = require('./defender');
 const frontend = require('./frontend');
@@ -275,6 +276,22 @@ function registerIpc() {
   });
   ipcMain.handle('iface:templates:remove', (e, id) => {
     try { return { ok: true, ...templates.remove(id), list: templates.list() }; } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('iface:library:list', () => {
+    try { return { ok: true, list: ifaceLibrary.list() }; } catch (e) { return { ok: false, error: e.message, list: [] }; }
+  });
+  ipcMain.handle('iface:library:get', (e, id) => {
+    try { return { ok: true, ...ifaceLibrary.get(id) }; } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('iface:library:save', (e, payload) => {
+    try { return { ok: true, ...ifaceLibrary.save(payload), list: ifaceLibrary.list() }; } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('iface:library:remove', (e, id) => {
+    try { return { ok: true, ...ifaceLibrary.remove(id), list: ifaceLibrary.list() }; } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('iface:library:insert', (e, project, id) => {
+    try { return { ok: true, ...ifaceLibrary.insert(project, id) }; } catch (e) { return { ok: false, error: e.message }; }
   });
 
   ipcMain.handle('iface:plugins:list', () => ({ ok: true, list: plugins.list(), repoDir: plugins.repoPluginsDir(), userDir: plugins.userPluginsDir() }));

@@ -144,6 +144,12 @@ function templateDir() {
   return dir;
 }
 
+// 模版名唯一：内置与自定义一起比较，避免模版库出现同名条目。
+function nameTaken(name) {
+  const key = String(name || '').trim().normalize('NFKC').toLowerCase();
+  return list().some((t) => String(t.name || '').trim().normalize('NFKC').toLowerCase() === key);
+}
+
 function list() {
   const builtins = BUILTINS.map((t) => {
     try {
@@ -181,6 +187,7 @@ function get(id) {
 
 function saveAs(name, project, opts) {
   const clean = String(name || '').trim() || '未命名模版';
+  if (nameTaken(clean)) throw new Error(`模版名已存在：${clean}`);
   const id = `${store.slug(clean)}-${crypto.randomUUID().slice(0, 6)}`;
   const data = {
     name: clean,
