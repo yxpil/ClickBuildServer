@@ -53,6 +53,7 @@ jobs:
           node tools/test-pack.js
           node tools/test-deploy.js
           node tools/test-history.js
+          node tools/test-ai.js
 
       - name: Build unpacked app
         run: npm run dist:dir

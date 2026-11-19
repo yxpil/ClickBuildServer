@@ -2114,36 +2114,188 @@ function showTheme() {
 
 /* ---------------- AI 生成 ---------------- */
 function showAi() {
+  const savedAi = (S.settings && S.settings.ai) || {};
+  const aiCfg = {
+    provider: savedAi.provider || 'ollama',
+    endpoint: savedAi.endpoint || (savedAi.provider === 'openai' ? 'https://api.openai.com/v1' : 'http://127.0.0.1:11434'),
+    model: savedAi.model || '',
+    apiKey: savedAi.apiKey || '',
+    timeout: Number(savedAi.timeout || 180000),
+    temperature: savedAi.temperature == null ? 0.2 : Number(savedAi.temperature),
+    maxTokens: Number(savedAi.maxTokens || 4096),
+    fallbackMock: !!savedAi.fallbackMock,
+  };
+  const ctx = {
+    name: S.project.name || '接口工程',
+    interfaces: S.project.interfaces.length,
+    tables: S.project.interfaces.reduce((n, it) => n + it.tables.length, 0),
+    routes: S.project.interfaces.reduce((n, it) => n + it.routes.length, 0),
+    selected: (S.project.interfaces.find((it) => it.id === S.selId) || {}).name || '未选中',
+    frontend: S.project.frontend ? `${S.project.frontend.name || '前端工程'}（${(S.project.frontend.project && S.project.frontend.project.elements || []).length} 个元素）` : '无',
+  };
   modal(`<div class="p-4">
-    <div class="flex items-center gap-2 mb-2"><b>AI 生成接口工程</b><span class="pill">模拟 API</span>
-      <span class="text-[11px] text-neutral-500 ml-2">说清楚要做哪些业务，表、SQL、路由都会生成</span></div>
-    <div id="aiLog" class="border border-neutral-300 bg-neutral-50 p-2 h-[220px] overflow-auto text-[12px] mb-2"></div>
-    <textarea id="aiPrompt" class="w-full h-[84px] border border-neutral-900 p-2 mono text-[12px]" placeholder="例如：做一个订单服务，主表订单、明细表，支持增删改查和多表联查；再加用户注册登录，密码用 SM4 存"></textarea>
+    <div class="flex items-center gap-2 mb-2"><b>AI 生成接口工程</b><span class="pill" id="aiPill">检测中…</span>
+      <span class="text-[11px] text-neutral-500 ml-2">模型会读取当前工程，生成前不会改动工程</span></div>
+    <div id="aiCfg" class="border border-neutral-300 p-2 mb-2 text-[12px]">
+      <div class="ai-row"><label>接口</label>
+        <select id="aiProvider">
+          <option value="ollama">Ollama（本机）</option>
+          <option value="openai">OpenAI 兼容</option>
+          <option value="mock">本地模拟</option>
+        </select>
+        <label>地址</label><input id="aiEndpoint" class="mono" placeholder="http://127.0.0.1:11434">
+      </div>
+      <div class="ai-row"><label>模型</label>
+        <input id="aiModel" class="mono" list="aiModels" placeholder="qwen3.8:27b">
+        <datalist id="aiModels"></datalist>
+        <button class="btn thin" id="aiTest">测试连接</button>
+        <label>超时</label><input id="aiTimeout" type="number" min="3" step="1" class="w-[72px]"><span class="text-neutral-500">秒</span>
+      </div>
+      <div class="ai-row"><label>API Key</label>
+        <input id="aiKey" type="password" class="mono" placeholder="Ollama 可留空">
+        <label class="flex items-center gap-1"><input type="checkbox" id="aiFallback"> 失败时退回本地模拟</label>
+      </div>
+      <div id="aiStatus" class="text-[11px] text-neutral-600 mt-1">正在检测本机服务…</div>
+    </div>
+    <div id="aiCtxLine" class="text-[11px] text-neutral-600 mb-1">当前工程：<b>${esc(ctx.name)}</b> · ${ctx.interfaces} 接口 / ${ctx.tables} 表 / ${ctx.routes} 路由 · 选中 ${esc(ctx.selected)} · 前端 ${esc(ctx.frontend)}</div>
+    <textarea id="aiPrompt" class="w-full h-[84px] border border-neutral-900 p-2 mono text-[12px]" placeholder="例如：当前已有会员表和订单表，只追加一个优惠券接口，包含列表、创建、停用；不要重复会员和订单"></textarea>
     <div class="flex items-center gap-2 mt-2">
-      <span class="text-[11px] text-neutral-500">会覆盖当前工程，先保存就不用怕</span>
+      <select id="aiMode" class="border border-neutral-300 px-1 py-1 text-[12px]">
+        <option value="replace">替换接口（保留工程名 / 前端 / 连接设置）</option>
+        <option value="append">追加到当前工程</option>
+      </select>
+      <label class="text-[11px] flex items-center gap-1"><input type="checkbox" id="aiUseCtx" checked> 携带当前工程上下文</label>
       <button class="btn thin ml-auto" id="aiClose">关闭</button>
       <button class="btn solid" id="aiGo">生成</button>
     </div>
+    <div id="aiLog" class="border border-neutral-300 bg-neutral-50 p-2 h-[200px] overflow-auto text-[12px] mt-2"></div>
   </div>`, (root) => {
     const log = (s) => { const d = root.querySelector('#aiLog'); d.innerHTML += `<div class="border-b border-neutral-200 py-1">${esc(s)}</div>`; d.scrollTop = d.scrollHeight; };
+    const provider = root.querySelector('#aiProvider');
+    const endpoint = root.querySelector('#aiEndpoint');
+    const model = root.querySelector('#aiModel');
+    const timeout = root.querySelector('#aiTimeout');
+    const key = root.querySelector('#aiKey');
+    const fallback = root.querySelector('#aiFallback');
+    const mode = root.querySelector('#aiMode');
+    const useCtx = root.querySelector('#aiUseCtx');
+    const pill = root.querySelector('#aiPill');
+    const statusEl = root.querySelector('#aiStatus');
+    const models = root.querySelector('#aiModels');
+    const go = root.querySelector('#aiGo');
+    provider.value = aiCfg.provider;
+    endpoint.value = aiCfg.endpoint;
+    model.value = aiCfg.model;
+    key.value = aiCfg.apiKey;
+    timeout.value = Math.round(aiCfg.timeout / 1000);
+    fallback.checked = aiCfg.fallbackMock;
+
+    const readCfg = () => ({
+      provider: provider.value,
+      endpoint: endpoint.value.trim(),
+      model: model.value.trim(),
+      apiKey: key.value.trim(),
+      timeout: Math.max(3000, Number(timeout.value || 180) * 1000),
+      temperature: aiCfg.temperature,
+      maxTokens: aiCfg.maxTokens,
+      fallbackMock: fallback.checked,
+    });
+    const persist = async () => {
+      const cfg = readCfg();
+      aiCfg.provider = cfg.provider; aiCfg.endpoint = cfg.endpoint; aiCfg.model = cfg.model;
+      aiCfg.apiKey = cfg.apiKey; aiCfg.timeout = cfg.timeout; aiCfg.fallbackMock = cfg.fallbackMock;
+      S.settings.ai = cfg;
+      try { await api.saveSettings({ ai: cfg }); } catch (e) { /* 设置保存失败不阻断生成 */ }
+      return cfg;
+    };
+    const setPill = (text, cls) => { pill.textContent = text; pill.className = `pill ${cls || ''}`; };
+    const showStatus = async (silent) => {
+      const cfg = readCfg();
+      if (cfg.provider === 'mock') {
+        setPill('本地模拟', '');
+        statusEl.textContent = '本地模拟：按关键词生成固定模板，不会调用真实模型。';
+        return { ok: true, models: [] };
+      }
+      setPill('检测中…', '');
+      statusEl.textContent = `正在连接 ${cfg.endpoint || '（未填写地址）'} …`;
+      const st = await api.aiStatus(cfg);
+      if (!st.ok) {
+        setPill('未连接', 'pill-bad');
+        statusEl.textContent = `连接失败：${st.error || '未知错误'}${cfg.provider === 'ollama' ? '。请确认 Ollama 已启动。' : ''}`;
+        return st;
+      }
+      setPill(st.provider === 'ollama' ? 'Ollama 已连接' : '接口已连接', 'pill-ok');
+      models.innerHTML = (st.models || []).map((m) => `<option value="${esc(m.name)}"></option>`).join('');
+      const names = (st.models || []).map((m) => m.name);
+      if (!model.value && names.length) {
+        model.value = names.find((n) => /qwen3\.8|qwen3/i.test(n)) || names.find((n) => /qwen2\.5|phi4/i.test(n)) || names[0];
+        await persist();
+      }
+      statusEl.textContent = `${st.message || '已连接'}${names.length ? ` · 当前模型 ${model.value || '未选择'}` : ''}`;
+      if (!silent) log(`连接成功：${st.message || '已连接'}${names.length ? `，${names.length} 个模型` : ''}`);
+      return st;
+    };
+
+    provider.onchange = async () => {
+      if (provider.value === 'ollama' && /api\.openai|openai\.com/i.test(endpoint.value)) endpoint.value = 'http://127.0.0.1:11434';
+      if (provider.value === 'openai' && /11434|ollama/i.test(endpoint.value)) endpoint.value = 'https://api.openai.com/v1';
+      if (provider.value === 'mock') { setPill('本地模拟', ''); statusEl.textContent = '本地模拟：按关键词生成固定模板，不会调用真实模型。'; }
+      else await showStatus(true);
+      await persist();
+    };
+    endpoint.onchange = () => { model.value = ''; showStatus(true).then(persist); };
+    root.querySelector('#aiTest').onclick = async () => { log('测试连接…'); const st = await showStatus(false); if (st.ok) await persist(); };
+    useCtx.onchange = () => {
+      if (!useCtx.checked && mode.value === 'append') mode.value = 'replace';
+      root.querySelector('#aiCtxLine').innerHTML = useCtx.checked
+        ? `当前工程：<b>${esc(ctx.name)}</b> · ${ctx.interfaces} 接口 / ${ctx.tables} 表 / ${ctx.routes} 路由 · 选中 ${esc(ctx.selected)} · 前端 ${esc(ctx.frontend)}`
+        : '未携带当前工程上下文：模型只会按需求生成，不会知道已有接口和表。';
+    };
     root.querySelector('#aiClose').onclick = closeModal;
-    root.querySelector('#aiGo').onclick = async () => {
+
+    go.onclick = async () => {
       const prompt = root.querySelector('#aiPrompt').value.trim();
       if (!prompt) return log('先写一句要做什么');
+      const cfg = await persist();
+      if (cfg.provider !== 'mock' && !cfg.endpoint) return log('失败：没有填写 AI 接口地址，当前工程未改动。');
+      if (cfg.provider !== 'mock' && !cfg.model) return log('失败：没有选择模型，当前工程未改动。');
+      const applyMode = useCtx.checked ? mode.value : 'replace';
+      if (applyMode === 'append' && !useCtx.checked) return log('失败：追加模式必须携带当前工程上下文。');
       log(`你：${prompt}`);
+      log(`模式：${applyMode === 'append' ? '追加' : '替换'} · ${cfg.provider === 'mock' ? '本地模拟' : `${cfg.provider} / ${cfg.model}`} · 上下文 ${useCtx.checked ? `「${ctx.name}」${ctx.interfaces} 接口` : '未携带'}`);
       log('AI 正在生成…');
-      const r = await api.ai(prompt);
-      if (r.error) return log(`失败：${r.error}`);
-      log(`AI（${r.mode}）：${r.reply}`);
+      go.disabled = true;
+      const t0 = Date.now();
+      let r;
+      try { r = await api.ai({ prompt, project: useCtx.checked ? S.project : null, selectedId: useCtx.checked ? S.selId : '', applyMode, config: cfg }); }
+      catch (e) { r = { error: e.message || String(e) }; }
+      go.disabled = false;
+      if (!r || r.error) {
+        setPill('生成失败', 'pill-bad');
+        log(`失败：${(r && r.error) || '没有返回结果'}。当前工程未改动。`);
+        return;
+      }
+      const sec = ((r.elapsedMs || Date.now() - t0) / 1000).toFixed(1);
+      const providerText = r.provider === 'mock' ? '本地模拟' : `${r.provider === 'ollama' ? 'Ollama' : 'AI'} / ${r.model}`;
+      setPill(r.provider === 'mock' ? '本地模拟' : '生成成功', r.provider === 'mock' ? '' : 'pill-ok');
+      log(`AI（${providerText}，${sec}s）：${r.reply || '已生成'}`);
+      if (r.contextUsed && r.context) log(`已读取上下文：工程「${r.context.projectName}」${r.context.interfaces} 接口 / ${r.context.tables} 表${r.context.selected ? `，选中「${r.context.selected.name}」` : ''}`);
+      if (r.fallback) log(`注意：真实 AI 调用失败（${r.error}），已按设置回退到本地模拟。`);
       S.project = r.project;
       S.cat = (r.project.categories[0] || {}).id || '';
       S.selId = (r.project.interfaces[0] || {}).id || '';
       S.mode = 'grid';
-      await api.save(r.project);
+      let saved = {};
+      try { saved = await api.save(r.project); }
+      catch (e) { log(`保存失败：${e.message || e}。工程已在内存中更新，可直接重试保存。`); setPill('保存失败', 'pill-bad'); return; }
+      S.problems = (saved && saved.problems) || [];
       render();
-      log('已替换当前工程并保存。点“生成服务”就能跑。');
+      log(`已${r.applyMode === 'append' ? '追加' : '替换'}并保存「${r.project.name}」：${r.project.interfaces.length} 接口 / ${r.project.interfaces.reduce((n, it) => n + it.tables.length, 0)} 表。`);
+      if (S.problems.length) log(`保存后仍有 ${S.problems.length} 个校验问题：${S.problems.slice(0, 3).join('；')}`);
+      else log('工程校验通过。点“生成服务”就能跑。');
     };
-  });
+    showStatus(true).catch((e) => { setPill('未连接', 'pill-bad'); statusEl.textContent = `连接失败：${e.message || e}`; });
+  }, { width: 780, maxHeight: '90vh' });
 }
 
 /* ---------------- 实时监控 ---------------- */

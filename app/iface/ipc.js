@@ -237,11 +237,17 @@ function registerIpc() {
     return { ok: true, openapi: codegen.buildOpenApi(p, services.settings().ports.http), html: codegen.docsPage(p, services.settings().ports.http) };
   });
 
-  ipcMain.handle('iface:ai', async (e, prompt) => {
+  ipcMain.handle('iface:ai', async (e, payload) => {
     try {
       const conf = (store.readSettings().ai) || {};
-      return await ai.complete(prompt, conf);
+      const p = payload && typeof payload === 'object' ? payload : { prompt: payload };
+      return await ai.complete(p, { ...conf, ...(p.config || {}) });
     } catch (err) { return { error: err.message }; }
+  });
+
+  ipcMain.handle('iface:ai:status', async (e, cfg) => {
+    const stored = (store.readSettings().ai) || {};
+    return ai.status({ ...stored, ...(cfg || {}) });
   });
 
   ipcMain.handle('iface:monitor', async (e, tail) => {

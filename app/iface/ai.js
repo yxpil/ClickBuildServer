@@ -1,9 +1,480 @@
 'use strict';
 
-// AI 生成接口工程：优先调用用户配置的 OpenAI 兼容接口（/v1/chat/completions），
-// 没配或失败就退回本地模拟（离线可用，方便演示与测试）。
+// AI 生成接口工程：支持本机 Ollama、OpenAI 兼容接口与本地模拟。
+// 关键约束：真实模型失败必须作为错误返回，绝不静默用本地模拟替换当前工程。
 
 const spec = require('./spec');
+const script = require('./script');
+
+const DEFAULT_AI = {
+  provider: 'ollama', // ollama | openai | mock
+  endpoint: 'http://127.0.0.1:11434',
+  model: '',
+  apiKey: '',
+  timeout: 180000,
+  temperature: 0.2,
+  maxTokens: 4096,
+  think: false,
+  fallbackMock: false,
+};
+
+const trimBase = (s) => String(s || '').trim().replace(/\/+$/, '');
+const providerOf = (cfg) => {
+  const p = String((cfg && cfg.provider) || '').toLowerCase();
+  if (['ollama', 'openai', 'mock'].includes(p)) return p;
+  return /11434|ollama/i.test(String((cfg && cfg.endpoint) || '')) ? 'ollama' : 'openai';
+};
+
+function ollamaRoot(endpoint) {
+  return trimBase(endpoint)
+    .replace(/\/api\/chat$/i, '')
+    .replace(/\/api\/tags$/i, '')
+    .replace(/\/v1\/chat\/completions$/i, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/v1$/i, '')
+    .replace(/\/api$/i, '');
+}
+
+function openAiUrl(endpoint) {
+  const base = trimBase(endpoint);
+  if (!base) throw new Error('没有配置 AI 接口地址');
+  if (/\/chat\/completions$/i.test(base)) return base;
+  if (/\/v\d+$/i.test(base)) return `${base}/chat/completions`;
+  return `${base}/v1/chat/completions`;
+}
+
+function errorText(e) {
+  if (!e) return '未知错误';
+  if (e.name === 'TimeoutError' || e.name === 'AbortError') return '请求超时';
+  if (e.cause && e.cause.code === 'ECONNREFUSED') return '连接被拒绝（服务没有启动？）';
+  return e.message || String(e);
+}
+
+function jsonObject(text) {
+  let s = String(text == null ? '' : text).replace(/^\uFEFF/, '').trim();
+  if (!s) throw new Error('模型没有返回内容');
+  const fence = /```(?:json|JSON)?\s*([\s\S]*?)```/.exec(s);
+  if (fence) s = fence[1].trim();
+  try {
+    const v = JSON.parse(s);
+    if (v && typeof v === 'object') return v;
+  } catch { /* 继续按括号扫描 */ }
+
+  // 只截取平衡的顶层对象，避免贪婪正则把解释文字或第二个 JSON 一起吞掉。
+  const candidates = [];
+  for (let i = 0; i < s.length; i += 1) {
+    if (s[i] !== '{') continue;
+    let depth = 0;
+    let quote = '';
+    let escaped = false;
+    for (let j = i; j < s.length; j += 1) {
+      const ch = s[j];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === quote) quote = '';
+        continue;
+      }
+      if (ch === '"') { quote = ch; continue; }
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(s.slice(i, j + 1));
+          i = j;
+          break;
+        }
+      }
+    }
+  }
+  for (const c of candidates) {
+    try {
+      const v = JSON.parse(c);
+      if (v && typeof v === 'object' && (v.project || v.interfaces)) return v;
+    } catch { /* 试下一个 */ }
+  }
+  throw new Error('模型返回不是有效 JSON（可能被截断或夹带说明文字）');
+}
+
+function contextOf(project, selectedId) {
+  if (!project || typeof project !== 'object' || !Array.isArray(project.interfaces)) return null;
+  const p = spec.normalizeProject(project);
+  const selected = p.interfaces.find((it) => it.id === selectedId) || null;
+  const interfaces = p.interfaces.map((it) => ({
+    id: it.id,
+    name: it.name,
+    comment: it.comment,
+    category: (p.categories.find((c) => c.id === it.categoryId) || {}).name || it.categoryId,
+    basePath: it.basePath || '',
+    tables: it.tables.map((t) => ({
+      key: t.key,
+      name: t.name,
+      comment: t.comment,
+      fields: t.fields.map((f) => ({ name: f.name, type: f.type, pk: !!f.pk, comment: f.comment })),
+    })),
+    routes: it.routes.map((r) => ({ key: r.key, name: r.name, method: r.method, path: r.path, auth: !!r.auth })),
+  }));
+  const front = p.frontend;
+  return {
+    name: p.name,
+    description: p.description,
+    categories: p.categories.map((c) => ({ id: c.id, name: c.name })),
+    functions: p.functions.map((f) => f.name),
+    interfaces,
+    frontend: front ? {
+      name: front.name,
+      framework: front.framework,
+      elements: Array.isArray(front.project && front.project.elements) ? front.project.elements.length : 0,
+      htmlLength: String(front.html || '').length,
+    } : null,
+    selected: selected ? { id: selected.id, name: selected.name } : null,
+    stats: {
+      interfaces: p.interfaces.length,
+      tables: p.interfaces.reduce((n, it) => n + it.tables.length, 0),
+      routes: p.interfaces.reduce((n, it) => n + it.routes.length, 0),
+    },
+  };
+}
+
+function systemPrompt() {
+  return [
+    '你是 ClickBuildServer 的接口工程生成器。只输出一个 JSON 对象，不要输出解释、Markdown 围栏或多个 JSON。',
+    '顶层结构：{"project":{"name":"工程名","description":"说明","categories":[{"id":"biz","name":"业务表格"}],"interfaces":[...],"functions":[{"name":"FUNC","params":["v"],"body":"..."}]},"reply":"给用户看的简短中文说明"}',
+    '每个 interface：{"name":"接口名","comment":"说明","categoryId":"biz","tables":[{"key":"main","name":"biz_order","comment":"主表","fields":[{"name":"id","type":"bigint","pk":true,"autoIncrement":true,"comment":"主键"}]}],"routes":[{"key":"list","name":"列表","method":"GET","path":"/orders","summary":"分页列表"}]}。',
+    `字段 type 只能是：${spec.TYPE_KEYS.join(', ')}。表名、字段名只用小写字母、数字、下划线，且以字母或下划线开头。`,
+    '路由优先使用内置 key：list、detail、create、update、delete；省略 script 时平台会自动套用对应模板。自定义路由（注册、登录、统计等）必须给出 script，脚本使用 LET、QUERY、EXEC、RETURN 语法，表占位符用 {{t:表key}}，请求体用 {{body.字段}}，查询参数用 {{query.字段}}。',
+    '当前工程上下文只用于理解已有命名、分类、表结构和选中项。replace 模式生成完整的新接口集合；append 模式只生成需要新增的接口，不得重复已有接口名或表名。',
+  ].join('\n');
+}
+
+function userPrompt(payload, ctx) {
+  const mode = payload.applyMode === 'append' ? 'append' : 'replace';
+  return [
+    `生成模式：${mode}（${mode === 'append' ? '保留当前接口，只追加新接口' : '替换接口集合，但工程名、前端、连接、主题由系统保留'}）`,
+    ctx ? `当前工程上下文：\n${JSON.stringify(ctx)}` : '当前没有可用的工程上下文，请仅按需求生成。',
+    payload.selectedId && ctx && ctx.selected ? `当前选中接口：${ctx.selected.name}` : '',
+    `用户需求：\n${String(payload.prompt || '').trim()}`,
+  ].filter(Boolean).join('\n\n');
+}
+
+async function chatOllama(payload, conf, ctx) {
+  const root = ollamaRoot(conf.endpoint);
+  if (!root) throw new Error('没有配置 Ollama 地址');
+  if (!conf.model) throw new Error('没有选择 Ollama 模型');
+  const timeout = Math.max(3000, Number(conf.timeout || DEFAULT_AI.timeout));
+  const url = `${root}/api/chat`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(conf.apiKey ? { authorization: `Bearer ${conf.apiKey}` } : {}) },
+    body: JSON.stringify({
+      model: conf.model,
+      messages: [
+        { role: 'system', content: systemPrompt() },
+        { role: 'user', content: userPrompt(payload, ctx) },
+      ],
+      stream: false,
+      format: 'json',
+      think: conf.think === true,
+      options: {
+        temperature: Number(conf.temperature == null ? DEFAULT_AI.temperature : conf.temperature),
+        num_predict: Math.max(256, Number(conf.maxTokens || DEFAULT_AI.maxTokens)),
+        num_ctx: Math.max(4096, Number(conf.numCtx || 8192)),
+      },
+    }),
+    signal: AbortSignal.timeout(timeout),
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* 下面统一报错 */ }
+  if (!res.ok) {
+    const msg = (data && (data.error || data.message)) || text.slice(0, 240) || res.statusText;
+    throw new Error(`Ollama HTTP ${res.status}：${msg}`);
+  }
+  if (!data) throw new Error('Ollama 返回的不是 JSON');
+  if (data.error) throw new Error(`Ollama：${data.error}`);
+  const content = data.message && data.message.content;
+  if (!content) throw new Error('Ollama 模型没有返回内容（可能被截断或只返回了思考内容）');
+  return {
+    text: content,
+    usage: data.prompt_eval_count || data.eval_count ? {
+      prompt: data.prompt_eval_count || 0,
+      completion: data.eval_count || 0,
+    } : null,
+  };
+}
+
+async function chatOpenAi(payload, conf, ctx) {
+  if (!conf.model) throw new Error('没有填写模型名称');
+  const url = openAiUrl(conf.endpoint);
+  const timeout = Math.max(3000, Number(conf.timeout || DEFAULT_AI.timeout));
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(conf.apiKey ? { authorization: `Bearer ${conf.apiKey}` } : {}) },
+    body: JSON.stringify({
+      model: conf.model,
+      messages: [
+        { role: 'system', content: systemPrompt() },
+        { role: 'user', content: userPrompt(payload, ctx) },
+      ],
+      temperature: Number(conf.temperature == null ? DEFAULT_AI.temperature : conf.temperature),
+      max_tokens: Math.max(256, Number(conf.maxTokens || DEFAULT_AI.maxTokens)),
+    }),
+    signal: AbortSignal.timeout(timeout),
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* 下面统一报错 */ }
+  if (!res.ok) {
+    const msg = (data && data.error && (data.error.message || data.error)) || text.slice(0, 240) || res.statusText;
+    throw new Error(`AI 接口 HTTP ${res.status}：${typeof msg === 'string' ? msg : JSON.stringify(msg)}`);
+  }
+  if (!data) throw new Error('AI 接口返回的不是 JSON');
+  const msg = data.choices && data.choices[0] && data.choices[0].message;
+  const content = msg && (msg.content || (Array.isArray(msg.content) ? msg.content.map((c) => c.text || '').join('') : ''));
+  if (!content) throw new Error('AI 接口没有返回内容（choices[0].message.content 为空）');
+  return { text: content, usage: data.usage || null };
+}
+
+function normalizeAiProject(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('AI 返回缺少 project');
+  if (!Array.isArray(raw.interfaces) || !raw.interfaces.length) throw new Error('AI 返回的 project.interfaces 为空');
+  for (const [i, it] of raw.interfaces.entries()) {
+    if (!it || typeof it !== 'object') throw new Error(`第 ${i + 1} 个接口不是对象`);
+    if (!it.name) throw new Error(`第 ${i + 1} 个接口没有名称`);
+    if (!Array.isArray(it.tables) || !it.tables.length) throw new Error(`接口「${it.name}」没有表`);
+    for (const t of it.tables) {
+      if (!t || !t.name) throw new Error(`接口「${it.name}」有表缺少表名`);
+      if (!Array.isArray(t.fields) || !t.fields.length) throw new Error(`表「${t.name}」没有字段`);
+    }
+  }
+  // 模型可能把上下文里的函数名抄回来却给出坏表达式；函数是可选增强，坏的就丢弃。
+  const functions = (Array.isArray(raw.functions) ? raw.functions : []).filter((f) => {
+    if (!f || !f.name || !f.body) return false;
+    try { script.parseExpr(String(f.body)); return true; } catch { return false; }
+  });
+  const p = spec.normalizeProject({ ...raw, functions });
+  const v = spec.validateProject(p);
+  if (v.errors.length) throw new Error(`AI 生成的工程未通过校验：${v.errors.slice(0, 5).join('；')}`);
+  return p;
+}
+
+function uniqueId(used, base) {
+  let id = base;
+  let n = 2;
+  while (used.has(id)) { id = `${base}${n}`; n += 1; }
+  used.add(id);
+  return id;
+}
+
+function mergeAiProject(current, generated, applyMode) {
+  if (!current) {
+    return { project: generated, skipped: [], note: '' };
+  }
+  const base = spec.normalizeProject(current);
+  const mode = applyMode === 'append' ? 'append' : 'replace';
+  if (mode === 'append') {
+    const skipped = [];
+    const names = new Set(base.interfaces.map((it) => it.name));
+    const tableNames = new Set(base.interfaces.flatMap((it) => it.tables.map((t) => t.name)));
+    const catIds = new Set(base.categories.map((c) => c.id));
+    const catNames = new Set(base.categories.map((c) => c.name));
+    const newCats = [];
+    for (const c of generated.categories) {
+      if (!catIds.has(c.id) && !catNames.has(c.name)) {
+        newCats.push(c); catIds.add(c.id); catNames.add(c.name);
+      }
+    }
+    const newIfaces = [];
+    for (const it of generated.interfaces) {
+      const dupName = names.has(it.name);
+      const dupTable = it.tables.some((t) => tableNames.has(t.name));
+      if (dupName || dupTable) {
+        skipped.push(it.name);
+        continue;
+      }
+      let cat = it.categoryId;
+      if (!catIds.has(cat)) {
+        const c = { id: cat || `ai${newCats.length + 1}`, name: cat || 'AI 新增' };
+        newCats.push(c); catIds.add(c.id); catNames.add(c.name);
+        cat = c.id;
+      }
+      it.categoryId = cat;
+      it.id = uniqueId(new Set([...base.interfaces.map((x) => x.id), ...newIfaces.map((x) => x.id)]), it.id);
+      newIfaces.push(it);
+      names.add(it.name);
+      it.tables.forEach((t) => tableNames.add(t.name));
+    }
+    if (!newIfaces.length) throw new Error(`AI 生成的接口与当前工程重复：${skipped.join('、')}；没有可追加的新接口`);
+    const functions = [...base.functions];
+    for (const f of generated.functions) {
+      if (!functions.some((x) => x.name === f.name)) functions.push(f);
+    }
+    const merged = spec.normalizeProject({
+      ...base,
+      categories: [...base.categories, ...newCats],
+      interfaces: [...base.interfaces, ...newIfaces],
+      functions,
+      updatedAt: new Date().toISOString(),
+    });
+    const v = spec.validateProject(merged);
+    if (v.errors.length) throw new Error(`追加后工程未通过校验：${v.errors.slice(0, 5).join('；')}`);
+    return {
+      project: merged,
+      skipped,
+      note: skipped.length ? `（已跳过同名/同表接口：${skipped.join('、')}）` : '',
+    };
+  }
+
+  const functions = [...base.functions];
+  for (const f of generated.functions) {
+    if (!functions.some((x) => x.name === f.name)) functions.push(f);
+  }
+  const merged = spec.normalizeProject({
+    ...generated,
+    name: base.name,
+    description: base.description || generated.description,
+    functions,
+    connections: base.connections,
+    log: base.log,
+    token: base.token,
+    docs: base.docs,
+    errors: base.errors,
+    services: base.services,
+    theme: base.theme,
+    isolation: base.isolation,
+    frontend: base.frontend || generated.frontend,
+    updatedAt: new Date().toISOString(),
+  });
+  const v = spec.validateProject(merged);
+  if (v.errors.length) throw new Error(`生成工程未通过校验：${v.errors.slice(0, 5).join('；')}`);
+  return { project: merged, skipped: [], note: '' };
+}
+
+function parseResult(text, payload, context) {
+  const parsed = jsonObject(text);
+  const raw = parsed.project || parsed.Project;
+  if (!raw) throw new Error('AI 返回缺少 project 字段');
+  const generated = normalizeAiProject(raw);
+  const mode = payload.applyMode === 'append' ? 'append' : 'replace';
+  const merge = mergeAiProject(payload.project, generated, mode);
+  const reply = String(parsed.reply == null ? '' : parsed.reply).trim() || `已生成 ${generated.interfaces.length} 个接口。`;
+  return {
+    project: merge.project,
+    reply: `${reply}${merge.note}`,
+    applyMode: mode,
+    contextUsed: !!context,
+    context: context ? {
+      projectName: context.name,
+      interfaces: context.stats.interfaces,
+      tables: context.stats.tables,
+      selected: context.selected,
+    } : null,
+    skipped: merge.skipped,
+  };
+}
+
+async function complete(input, cfg) {
+  const conf = { ...DEFAULT_AI, ...(cfg || {}) };
+  const explicitCfg = !!cfg && typeof cfg === 'object' && Object.keys(cfg).length > 0;
+  const payload = typeof input === 'string' ? { prompt: input } : (input && typeof input === 'object' ? input : {});
+  const prompt = String(payload.prompt || '').trim();
+  if (!prompt) throw new Error('请输入生成需求');
+  const provider = providerOf(conf);
+  const context = payload.project ? contextOf(payload.project, payload.selectedId) : null;
+  const started = Date.now();
+
+  if (!payload.project && payload.applyMode === 'append') {
+    throw new Error('追加模式需要当前工程上下文');
+  }
+  if (provider === 'mock' || !explicitCfg || (!trimBase(conf.endpoint) && !conf.model)) {
+    const mock = mockReply(prompt);
+    const merged = payload.project && payload.project.interfaces ? mergeAiProject(payload.project, mock.project, payload.applyMode) : { project: mock.project, skipped: [], note: '' };
+    return {
+      ...mock,
+      project: merged.project,
+      reply: `${mock.reply}${merged.note}\n（当前为本地模拟，没有调用真实模型。）`,
+      provider: 'mock',
+      model: '',
+      elapsedMs: Date.now() - started,
+      contextUsed: !!context,
+      context: context ? { projectName: context.name, interfaces: context.stats.interfaces, tables: context.stats.tables, selected: context.selected } : null,
+      skipped: merged.skipped,
+    };
+  }
+
+  try {
+    const out = provider === 'ollama' ? await chatOllama(payload, conf, context) : await chatOpenAi(payload, conf, context);
+    const parsed = parseResult(out.text, payload, context);
+    return {
+      ...parsed,
+      mode: 'api',
+      provider,
+      model: conf.model,
+      elapsedMs: Date.now() - started,
+      usage: out.usage,
+    };
+  } catch (e) {
+    const msg = errorText(e);
+    if (conf.fallbackMock) {
+      const mock = mockReply(prompt);
+      const merged = payload.project && payload.project.interfaces ? mergeAiProject(payload.project, mock.project, payload.applyMode) : { project: mock.project, skipped: [], note: '' };
+      return {
+        ...mock,
+        project: merged.project,
+        reply: `${mock.reply}${merged.note}\n（真实 AI 调用失败：${msg}；已按设置回退到本地模拟。）`,
+        provider: 'mock',
+        mode: 'mock',
+        model: conf.model || '',
+        elapsedMs: Date.now() - started,
+        fallback: true,
+        error: msg,
+        contextUsed: !!context,
+        skipped: merged.skipped,
+      };
+    }
+    throw new Error(`AI 调用失败：${msg}`);
+  }
+}
+
+async function status(cfg) {
+  const conf = { ...DEFAULT_AI, ...(cfg || {}) };
+  const provider = providerOf(conf);
+  if (provider === 'mock') return { ok: true, provider: 'mock', models: [], message: '本地模拟，不需要连接' };
+  const base = trimBase(conf.endpoint);
+  if (!base) return { ok: false, provider, error: '没有配置接口地址' };
+  const timeout = Math.min(10000, Math.max(2000, Number(conf.timeout || 10000)));
+  try {
+    if (provider === 'ollama') {
+      const root = ollamaRoot(base);
+      const res = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(timeout) });
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch { /* 下面报错 */ }
+      if (!res.ok) throw new Error(`HTTP ${res.status}${data && data.error ? `：${data.error}` : ''}`);
+      const models = (data && data.models ? data.models : []).map((m) => ({
+        name: m.name,
+        size: m.size,
+        family: (m.details && m.details.family) || '',
+        parameter: (m.details && m.details.parameter_size) || '',
+        capabilities: m.capabilities || [],
+      }));
+      return { ok: true, provider, endpoint: root, models, message: `Ollama 已连接，找到 ${models.length} 个模型` };
+    }
+    const url = `${trimBase(openAiUrl(base).replace(/\/chat\/completions$/i, ''))}/models`;
+    const res = await fetch(url, {
+      headers: conf.apiKey ? { authorization: `Bearer ${conf.apiKey}` } : {},
+      signal: AbortSignal.timeout(timeout),
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { /* 下面报错 */ }
+    if (!res.ok) throw new Error(`HTTP ${res.status}${data && data.error ? `：${JSON.stringify(data.error)}` : ''}`);
+    const models = (data && data.data ? data.data : []).map((m) => ({ name: m.id }));
+    return { ok: true, provider, endpoint: base, models, message: `OpenAI 兼容接口已连接，找到 ${models.length} 个模型` };
+  } catch (e) {
+    return { ok: false, provider, endpoint: base, models: [], error: errorText(e) };
+  }
+}
 
 function mockReply(prompt) {
   const p = String(prompt || '');
@@ -19,7 +490,7 @@ function mockReply(prompt) {
 
   if (wantsOrder || !wantsUser) {
     const order = spec.newIface('订单', 'biz');
-    order.comment = '订单主表 + 明细表（AI 生成）';
+    order.comment = '订单主表 + 明细表（本地模拟）';
     const fields = [
       { ...spec.newField('id', 'bigint'), pk: true, autoIncrement: true, nullable: false, query: false, writable: false, comment: '主键' },
       { ...spec.newField('order_no', 'varchar'), search: true, comment: '订单号' },
@@ -60,7 +531,7 @@ function mockReply(prompt) {
 
   if (wantsUser) {
     const user = spec.newIface('用户注册', 'sys');
-    user.comment = '注册 / 登录 / 当前用户（AI 生成）';
+    user.comment = '注册 / 登录 / 当前用户（本地模拟）';
     user.tables = [{
       key: 'main', name: 'sys_user', schema: '', comment: '用户表',
       fields: [
@@ -131,41 +602,4 @@ function mockReply(prompt) {
   };
 }
 
-async function callOpenAi(prompt, cfg) {
-  const base = String(cfg.endpoint || '').replace(/\/$/, '');
-  if (!base) throw new Error('没有配置 AI 接口');
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(cfg.apiKey ? { authorization: `Bearer ${cfg.apiKey}` } : {}) },
-    body: JSON.stringify({
-      model: cfg.model || 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: '你是 ClickBuild 的接口工程生成器。只输出 JSON：{ project: {...}, reply: "..." }。project 里每个接口包含 tables 与 routes，route.script 使用 LET/EXEC/QUERY/RETURN 语法。' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-    }),
-    signal: AbortSignal.timeout(Number(cfg.timeout || 30000)),
-  });
-  if (!res.ok) throw new Error(`AI 接口 ${res.status}`);
-  const data = await res.json();
-  const text = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
-  const m = /\{[\s\S]*\}/.exec(text);
-  if (!m) throw new Error('AI 返回里没有 JSON');
-  const parsed = JSON.parse(m[0]);
-  if (!parsed.project) throw new Error('AI 返回缺少 project');
-  return { project: spec.normalizeProject(parsed.project), reply: parsed.reply || '已生成', mode: 'api' };
-}
-
-async function complete(prompt, cfg) {
-  const conf = cfg || {};
-  if (conf.endpoint) {
-    try { return await callOpenAi(prompt, conf); } catch (e) {
-      const mock = mockReply(prompt);
-      return { ...mock, reply: `${mock.reply}\n（外部 AI 调用失败：${e.message}，已用本地模拟）` };
-    }
-  }
-  return mockReply(prompt);
-}
-
-module.exports = { complete, mockReply };
+module.exports = { complete, mockReply, status, contextOf, DEFAULT_AI };

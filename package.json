@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "description": "以接口为最小单位的接口工作台：多库多表、脚本 SQL、事务、缓存、文档与一键生成可运行服务",
   "main": "main.js",
   "author": "yxpil",
@@ -20,7 +20,9 @@
     "vendor:services": "node tools/vendor-services.js",
     "check:services": "node tools/check-services.js",
     "dist": "node tools/check-services.js && electron-builder --win nsis",
-    "dist:dir": "node tools/check-services.js && electron-builder --win --dir"
+    "dist:dir": "node tools/check-services.js && electron-builder --win --dir",
+    "test:ai": "node tools/test-ai.js",
+    "test:ai:ollama": "node tools/test-ai-ollama.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",

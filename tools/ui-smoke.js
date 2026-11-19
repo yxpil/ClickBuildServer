@@ -113,14 +113,30 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('导出工程带 IDEA 运行配置', !!(eproj && eproj.ok && await val(`api.exists(${JSON.stringify((eproj.dir || '') + '\\.run\\启动接口服务.run.xml')})`)), eproj && eproj.dir);
   if (eproj && eproj.ok && eproj.dir) console.log('  · 导出工程目录 ' + eproj.dir);
 
-  // AI 对话框：填需求 → 生成
+  // AI 对话框：先切本地模拟，验证上下文、替换保存和失败不破坏工程
+  const aiBefore = await val(`JSON.stringify({name:S.project.name,n:S.project.interfaces.length,f:S.project.frontend?S.project.frontend.name:'',id:S.project.interfaces[0].id})`);
+  const aiBeforeObj = JSON.parse(aiBefore);
+  await val(`api.saveSettings({ai:{provider:'mock',endpoint:'http://127.0.0.1:11434',model:'',timeout:180000,fallbackMock:false}}).then(t=>{S.settings.ai=t.ai;return true})`, true);
   await val(`act('ai')`);
-  await wait(300);
+  await wait(400);
   t('AI 弹窗出现', await val(`!!document.querySelector('#aiPrompt')`));
-  await val(`document.querySelector('#aiPrompt').value='做一个订单服务，带明细表，再加用户注册登录，密码用 SM4'; document.querySelector('#aiGo').click()`);
+  t('AI 弹窗显示模型配置与上下文摘要', await val(`!!document.querySelector('#aiProvider') && !!document.querySelector('#aiModel') && !!document.querySelector('#aiTest') && document.querySelector('#aiCtxLine').innerText.includes(${JSON.stringify(aiBeforeObj.name)})`), await val(`document.querySelector('#aiCtxLine').innerText`));
+  const aiCtxText = await val(`document.querySelector('#aiCtxLine').innerText`);
+  t('AI 上下文摘要含接口/表/选中项', new RegExp(`${aiBeforeObj.n} 接口`).test(aiCtxText) && /表/.test(aiCtxText) && /选中/.test(aiCtxText), aiCtxText);
+  await val(`(()=>{const p=document.querySelector('#aiProvider');p.value='mock';p.dispatchEvent(new Event('change'));document.querySelector('#aiPrompt').value='做一个订单服务，带明细表，再加用户注册登录，密码用 SM4';document.querySelector('#aiMode').value='replace';document.querySelector('#aiGo').click();})()`);
   await wait(1500);
-  t('AI 生成后工程被替换', await val(`S.project.interfaces.some(i=>i.name==='用户注册')`), await val(`S.project.interfaces.map(i=>i.name)`));
-  t('AI 对话记录有内容', await val(`document.querySelector('#aiLog').innerText.includes('AI')`), await val(`document.querySelector('#aiLog').innerText.slice(-80)`));
+  t('AI 生成后接口被替换', await val(`S.project.interfaces.some(i=>i.name==='用户注册')`), await val(`S.project.interfaces.map(i=>i.name)`));
+  t('AI 替换保留原工程名', await val(`S.project.name===${JSON.stringify(aiBeforeObj.name)}`), await val(`S.project.name`));
+  t('AI 替换保留原前端绑定', await val(`(S.project.frontend?S.project.frontend.name:'')===${JSON.stringify(aiBeforeObj.f)}`), await val(`S.project.frontend?S.project.frontend.name:'无'`));
+  t('AI 对话记录显示本地模拟与保存结果', await val(`/本地模拟/.test(document.querySelector('#aiLog').innerText) && /已替换并保存/.test(document.querySelector('#aiLog').innerText)`), await val(`document.querySelector('#aiLog').innerText.slice(-120)`));
+  // 失败路径：连接一个必然拒绝的端口，工程不能被改动
+  const failBefore = await val(`JSON.stringify({name:S.project.name,ids:S.project.interfaces.map(i=>i.id)})`);
+  await val(`(()=>{const p=document.querySelector('#aiProvider');p.value='openai';p.dispatchEvent(new Event('change'));document.querySelector('#aiEndpoint').value='http://127.0.0.1:1';document.querySelector('#aiModel').value='no-model';document.querySelector('#aiTimeout').value='3';document.querySelector('#aiGo').click();})()`);
+  await wait(1200);
+  const failAfter = await val(`JSON.stringify({name:S.project.name,ids:S.project.interfaces.map(i=>i.id)})`);
+  const aiLogText = await val(`document.querySelector('#aiLog').innerText`);
+  t('AI 连接失败明确显示错误', /失败/.test(aiLogText) && /当前工程未改动/.test(aiLogText), aiLogText.slice(-100));
+  t('AI 连接失败不改动当前工程', failBefore === failAfter, `${failBefore} -> ${failAfter}`);
   await val(`closeModal()`);
 
   // 监控抽屉
