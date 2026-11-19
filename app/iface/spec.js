@@ -186,27 +186,58 @@ function newRoute(kind, iface, index) {
   };
 }
 
-function newIface(name, categoryId) {
+function newIface(name, categoryId, opts) {
+  const o = opts || {};
   const used = new Set();
   const id = crypto.randomUUID().slice(0, 8);
   const base = safeIdent(name || 'new', 'iface');
-  const main = newTable(`${base}_${id}`, used);
+  const tableName = o.tableName ? safeIdent(o.tableName, 'tbl') : `${base}_${id}`;
+  const main = newTable(tableName, used);
   // 默认路由模板统一引用 {{t:main}} / {{columns:main}}，首张表必须叫 main。
   main.key = 'main';
+  main.comment = String(o.tableComment || '');
   used.add('main');
-  main.fields = [...defaultFields(), { ...newField('name', 'varchar'), search: true }];
-  const routes = ['list', 'detail', 'create', 'update', 'delete'].map((k) => newRoute(k, { tables: [main] }));
+  const initialFields = Array.isArray(o.fields)
+    ? o.fields
+    : [{ name: 'name', type: 'varchar', comment: '名称' }];
+  const reserved = new Set(['id', 'created_at', 'updated_at']);
+  const custom = initialFields.map((f) => {
+    const key = String((f && f.name) || '').trim().toLowerCase();
+    if (!/^[a-z_][a-z0-9_]{0,47}$/.test(key) || reserved.has(key)) return null;
+    const type = TYPE_KEYS.includes(String(f.type || '').toLowerCase()) ? String(f.type).toLowerCase() : 'varchar';
+    return {
+      ...newField(key, type),
+      comment: String(f.comment || ''),
+      search: ['varchar', 'char', 'text'].includes(type),
+    };
+  }).filter(Boolean);
+  main.fields = [...defaultFields(), ...custom];
+  const allowedKinds = ['list', 'detail', 'create', 'update', 'delete'];
+  const wantedKinds = Array.isArray(o.routeKinds) && o.routeKinds.length
+    ? o.routeKinds.filter((k) => allowedKinds.includes(k))
+    : allowedKinds;
+  const kinds = wantedKinds.length ? Array.from(new Set(wantedKinds)) : allowedKinds;
+  const routes = kinds.map((k) => newRoute(k, { tables: [main] }));
+  let basePath = String(o.basePath || '').trim();
+  if (basePath) {
+    if (!basePath.startsWith('/')) basePath = '/' + basePath;
+    basePath = basePath.replace(/\/+$/, '');
+  }
+  const authMode = o.authMode === 'all' || o.authMode === 'write' ? o.authMode : 'none';
+  routes.forEach((r) => {
+    r.auth = authMode === 'all' || (authMode === 'write' && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(r.method));
+  });
   return {
     id,
     name: name || '新接口',
-    comment: '',
+    comment: String(o.comment || ''),
     categoryId: categoryId || 'biz',
-    basePath: '',
+    basePath,
     tables: [main],
     routes,
     storage: { enabled: true, bucket: 'clickbuild', bindField: 'file_key' },
     page: { size: 20 },
-    docs: { summary: '', description: '', owner: '', version: '1.0.0', tags: [], requestExample: '', responseExample: '', notes: '' },
+    docs: { summary: String(o.comment || ''), description: '', owner: '', version: '1.0.0', tags: [], requestExample: '', responseExample: '', notes: '' },
   };
 }
 

@@ -40,4 +40,47 @@ ok('第二个中文接口不会撞表名', () => {
   assert.notStrictEqual(b.tables[0].name, it.tables[0].name);
 });
 
+const guided = spec.newIface('商品', 'biz', {
+  tableName: 'guide_product',
+  tableComment: '引导创建商品表',
+  basePath: 'v1/catalog',
+  comment: '创建引导测试',
+  fields: [
+    { name: 'title', type: 'varchar', comment: '标题' },
+    { name: 'price', type: 'decimal', comment: '价格' },
+    { name: 'status', type: 'tinyint', comment: '状态' },
+  ],
+  routeKinds: ['list', 'detail', 'create', 'delete'],
+  authMode: 'write',
+});
+ok('引导配置使用指定主表名与注释', () => {
+  assert.strictEqual(guided.tables[0].name, 'guide_product');
+  assert.strictEqual(guided.tables[0].comment, '引导创建商品表');
+});
+ok('引导配置补齐路径前缀与说明', () => {
+  assert.strictEqual(guided.basePath, '/v1/catalog');
+  assert.strictEqual(guided.comment, '创建引导测试');
+  assert.strictEqual(guided.docs.summary, '创建引导测试');
+});
+ok('引导配置保留 id/时间戳并加入业务字段', () => {
+  const names = guided.tables[0].fields.map((f) => f.name);
+  assert.deepStrictEqual(names, ['id', 'created_at', 'updated_at', 'title', 'price', 'status']);
+});
+ok('引导配置只生成选中的四条路由', () => {
+  assert.deepStrictEqual(guided.routes.map((r) => r.key), ['list', 'detail', 'create', 'delete']);
+});
+ok('引导配置按写操作开启鉴权', () => {
+  assert.deepStrictEqual(guided.routes.map((r) => r.auth), [false, false, true, true]);
+  const byKey = Object.fromEntries(guided.routes.map((r) => [r.key, r.auth]));
+  assert.strictEqual(byKey.list, false);
+  assert.strictEqual(byKey.detail, false);
+  assert.strictEqual(byKey.create, true);
+  assert.strictEqual(byKey.delete, true);
+});
+ok('引导创建工程校验无错误', () => {
+  const p = spec.seedProject();
+  p.interfaces.push(guided);
+  assert.deepStrictEqual(spec.validateProject(spec.normalizeProject(p)).errors, []);
+});
+
 console.log(`通过 ${pass} / ${pass}`);

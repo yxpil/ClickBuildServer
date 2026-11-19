@@ -161,6 +161,30 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`setView('api')`);
   await wait(400);
 
+  // 新建接口先走创建引导，未确认前不能新增
+  const guideBefore = await val(`S.project.interfaces.length`);
+  await val(`(()=>{act('newIface'); return 'opened';})()`);
+  await wait(500);
+  t('新建接口打开创建引导且不提前创建', await val(`S.project.interfaces.length === ${guideBefore} && document.querySelector('#modal').innerText.includes('创建引导')`), await val(`S.project.interfaces.length + ' / ' + (document.querySelector('#modal') ? document.querySelector('#modal').innerText.split('\\n')[0] : '无弹窗')`));
+  await val(`document.querySelector('#guideClose').click()`);
+  await wait(300);
+  t('取消创建引导不改工程', await val(`S.project.interfaces.length === ${guideBefore}`), await val(`S.project.interfaces.length`));
+  await val(`(()=>{act('newIface'); return 'opened';})()`);
+  await wait(500);
+  await val(`(()=>{const set=(id,v)=>{const e=document.querySelector(id);e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));};set('#guideName','引导测试接口');set('#guidePrefix','v1/guide');set('#guideComment','UI 引导创建');document.querySelector('#guideNext').click();})()`);
+  await wait(300);
+  await val(`(()=>{const set=(id,v)=>{const e=document.querySelector(id);e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));};set('#guideTable','guide_ui_table');set('#guideFields','title varchar 标题\\nprice decimal 价格');document.querySelector('#guideNext').click();})()`);
+  await wait(300);
+  t('创建引导第二步可配置主表与字段', await val(`document.querySelector('#guideBody').innerText.includes('第三步 · 路由') && document.querySelector('#guideBody').innerText.includes('/api/v1/guide/guide_ui_table')`));
+  await val(`(()=>{const u=document.querySelector('[data-guide-route][value="update"]');u.checked=false;u.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#guideAuth').value='write';document.querySelector('#guideAuth').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#guideNext').click();})()`);
+  await wait(300);
+  t('创建引导预览确认页', await val(`document.querySelector('#guideBody').innerText.includes('第四步 · 确认创建') && document.querySelector('#guideBody').innerText.includes('guide_ui_table') && !document.querySelector('#guideCreate').classList.contains('hidden')`));
+  await val(`document.querySelector('#guideCreate').click()`);
+  await wait(1200);
+  const newGuide = await val(`(()=>{const i=S.project.interfaces.find(x=>x.name==='引导测试接口');return i?JSON.stringify({n:S.project.interfaces.length,table:i.tables[0].name,fields:i.tables[0].fields.map(f=>f.name),routes:i.routes.map(r=>r.method+' '+r.path),auth:i.routes.map(r=>r.auth),base:i.basePath}):'';})()`);
+  const ng = newGuide ? JSON.parse(newGuide) : {};
+  t('创建引导确认后写入工程', ng.n === guideBefore + 1 && ng.table === 'guide_ui_table' && ng.base === '/v1/guide' && ng.fields.includes('title') && ng.fields.includes('price') && ng.routes.length === 4 && ng.auth.slice(2).every(Boolean), newGuide);
+
   // 接口文档页
   await val(`S.mode='editor'; S.selId=S.project.interfaces[0].id; S.tab='docs'; render()`);
   await wait(300);

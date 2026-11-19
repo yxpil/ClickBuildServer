@@ -68,10 +68,13 @@ function toast(msg, ms) {
   toast._t = setTimeout(() => el.classList.add('hidden'), ms || 2200);
 }
 
-function modal(html, mount) {
+function modal(html, mount, opts) {
   const box = $('#modal');
+  const o = opts || {};
+  const width = Number(o.width) || 640;
+  const maxHeight = o.maxHeight || '80vh';
   box.classList.remove('hidden');
-  box.innerHTML = `<div class="bg-white border border-neutral-900 w-[640px] max-h-[80vh] overflow-auto">${html}</div>`;
+  box.innerHTML = `<div class="bg-white border border-neutral-900 overflow-auto" style="width:${width}px;max-width:96vw;max-height:${maxHeight}">${html}</div>`;
   if (mount) mount(box.firstElementChild);
   return box;
 }
@@ -113,6 +116,369 @@ function confirmBox(title, text) {
       root.querySelector('#cNo').onclick = () => { closeModal(); resolve(false); };
       root.querySelector('#cYes').onclick = () => { closeModal(); resolve(true); };
     });
+  });
+}
+
+const GUIDE_STEPS = [
+  { title: '基础信息', hint: '名字、分类、路径前缀' },
+  { title: '主表', hint: '表名与初始业务字段' },
+  { title: '路由', hint: '选择要生成的基础路由' },
+  { title: '确认', hint: '检查后才会写入工程' },
+];
+const GUIDE_ROUTE_DEFS = [
+  { key: 'list', name: '列表', method: 'GET', path: '/:table', desc: '分页查询，支持搜索与缓存' },
+  { key: 'detail', name: '详情', method: 'GET', path: '/:table/:id', desc: '按主键查询单条记录' },
+  { key: 'create', name: '新建', method: 'POST', path: '/:table', desc: '插入记录，事务保护' },
+  { key: 'update', name: '更新', method: 'PUT', path: '/:table/:id', desc: '按主键更新记录' },
+  { key: 'delete', name: '删除', method: 'DELETE', path: '/:table/:id', desc: '按主键删除记录' },
+];
+const GUIDE_PRESETS = [
+  { name: 'name', type: 'varchar', comment: '名称' },
+  { name: 'title', type: 'varchar', comment: '标题' },
+  { name: 'status', type: 'tinyint', comment: '状态' },
+  { name: 'amount', type: 'decimal', comment: '金额' },
+  { name: 'remark', type: 'text', comment: '备注' },
+];
+
+function guideFields(text) {
+  const fields = [];
+  const errors = [];
+  const seen = new Set();
+  const reserved = new Set(['id', 'created_at', 'updated_at']);
+  const types = ['bigint', 'int', 'smallint', 'tinyint', 'bool', 'decimal', 'float', 'double', 'varchar', 'char', 'text', 'longtext', 'datetime', 'date', 'json'];
+  String(text || '').split(/\r?\n/).forEach((line, i) => {
+    const raw = line.trim();
+    if (!raw) return;
+    const m = raw.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:[\s,，]+([A-Za-z]+))?(?:[\s,，]+(.+))?$/);
+    if (!m) { errors.push(`第 ${i + 1} 行格式不对，应为「字段名 类型 注释」`); return; }
+    const name = m[1].toLowerCase();
+    if (reserved.has(name)) { errors.push(`字段 ${name} 由系统自动创建，不用重复填写`); return; }
+    if (seen.has(name)) { errors.push(`字段 ${name} 重复`); return; }
+    const type = (m[2] || 'varchar').toLowerCase();
+    if (!types.includes(type)) { errors.push(`字段 ${name} 的类型 ${type} 不支持`); return; }
+    seen.add(name);
+    fields.push({ name, type, comment: (m[3] || '').trim() });
+  });
+  return { fields, errors };
+}
+
+function guideBasePath(value) {
+  let s = String(value || '').trim();
+  if (!s) return '';
+  if (!s.startsWith('/')) s = '/' + s;
+  return s.replace(/\/+$/, '');
+}
+
+function newIfaceGuide(initialCat) {
+  const cats = (S.project.categories || []).slice();
+  const state = {
+    step: 0,
+    name: '',
+    categoryId: initialCat || S.cat || (cats[0] && cats[0].id) || 'biz',
+    prefix: '',
+    comment: '',
+    tableName: '',
+    tableComment: '',
+    fieldText: 'name varchar 名称',
+    routeKinds: GUIDE_ROUTE_DEFS.map((r) => r.key),
+    authMode: 'none',
+    fields: [],
+  };
+  return new Promise((resolve) => {
+    let done = false;
+    const shell = `<div class="flex flex-col text-[12px]" style="height:620px;max-height:82vh">
+      <div class="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-neutral-300 bg-white">
+        <div>
+          <div class="text-[14px] font-semibold">新建接口 · 创建引导</div>
+          <div class="text-[11px] text-neutral-500 mt-0.5">先配置，最后确认；取消不会改动当前工程</div>
+        </div>
+        <button class="ml-auto btn thin" id="guideClose">关闭</button>
+      </div>
+      <div class="flex-1 min-h-0 flex">
+        <div id="guideRail" class="w-[176px] shrink-0 border-r border-neutral-300 bg-neutral-50"></div>
+        <div id="guideBody" class="flex-1 min-w-0 overflow-auto p-5"></div>
+      </div>
+      <div class="shrink-0 flex items-center gap-2 px-4 py-3 border-t border-neutral-300 bg-white">
+        <span id="guideErr" class="text-[11px] text-red-700 flex-1 min-w-0"></span>
+        <span id="guidePos" class="text-[11px] text-neutral-500 mono"></span>
+        <button class="btn thin" id="guidePrev">上一步</button>
+        <button class="btn solid" id="guideNext">下一步</button>
+        <button class="btn solid" id="guideCreate">确认创建</button>
+      </div>
+    </div>`;
+    modal(shell, mount, { width: 780, maxHeight: '84vh' });
+
+    function mount(root) {
+      const rail = root.querySelector('#guideRail');
+      const body = root.querySelector('#guideBody');
+      const err = root.querySelector('#guideErr');
+      const pos = root.querySelector('#guidePos');
+      const prev = root.querySelector('#guidePrev');
+      const next = root.querySelector('#guideNext');
+      const create = root.querySelector('#guideCreate');
+
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', onKey);
+        closeModal();
+        resolve(value);
+      };
+      const fail = (msg) => { err.textContent = msg || ''; };
+      const clear = () => fail('');
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+      };
+      document.addEventListener('keydown', onKey);
+
+      function read() {
+        const g = (id) => root.querySelector('#' + id);
+        if (g('guideName')) {
+          state.name = g('guideName').value.trim();
+          state.categoryId = g('guideCat').value;
+          state.prefix = g('guidePrefix').value.trim();
+          state.comment = g('guideComment').value.trim();
+        }
+        if (g('guideTable')) {
+          state.tableName = g('guideTable').value.trim();
+          state.tableComment = g('guideTableComment').value.trim();
+          state.fieldText = g('guideFields').value;
+          const parsed = guideFields(state.fieldText);
+          state.fields = parsed.fields;
+          state.fieldErrors = parsed.errors;
+        }
+        if (root.querySelector('[data-guide-route]')) {
+          state.routeKinds = Array.from(root.querySelectorAll('[data-guide-route]:checked')).map((x) => x.value);
+          state.authMode = g('guideAuth').value;
+        }
+      }
+
+      function tableError() {
+        const name = state.tableName;
+        if (!name) return '';
+        if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name)) return '主表名只能使用字母、数字和下划线，且不能以数字开头';
+        const low = name.toLowerCase();
+        const owner = S.project.interfaces.find((it) => it.tables.some((t) => String(t.name).toLowerCase() === low));
+        if (owner) return `表名 ${name} 已被接口「${owner.name}」使用`;
+        return '';
+      }
+
+      function validate(step) {
+        if (step === 0) {
+          if (!state.name) return '请填写接口名称';
+          if (S.project.interfaces.some((it) => String(it.name).trim().toLowerCase() === state.name.toLowerCase())) return `接口名「${state.name}」已存在`;
+          if (state.prefix && !/^[A-Za-z0-9_./-]+$/.test(guideBasePath(state.prefix))) return '路径前缀只能使用字母、数字、下划线、斜杠、点和短横线';
+        }
+        if (step === 1) {
+          const te = tableError();
+          if (te) return te;
+          const parsed = guideFields(state.fieldText);
+          if (parsed.errors.length) return parsed.errors[0];
+        }
+        if (step === 2 && !state.routeKinds.length) return '至少保留一条路由，否则接口没有可用入口';
+        return '';
+      }
+
+      function routePath(def) {
+        return def.path.replace(':table', state.tableName || '主表名');
+      }
+
+      function renderRail() {
+        rail.innerHTML = GUIDE_STEPS.map((s, i) => {
+          const active = i === state.step;
+          const passed = i < state.step;
+          return `<div class="px-3 py-3 border-b border-neutral-200 ${active ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-700'}">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 inline-flex items-center justify-center border ${active ? 'border-white' : 'border-neutral-400'} ${passed ? 'bg-neutral-200 text-neutral-900' : ''} text-[10px] mono">${passed ? '✓' : i + 1}</span>
+              <span class="font-semibold">${s.title}</span>
+            </div>
+            <div class="mt-1 pl-7 text-[10px] ${active ? 'text-neutral-300' : 'text-neutral-500'}">${s.hint}</div>
+          </div>`;
+        }).join('');
+      }
+
+      function fieldPreview() {
+        const p = guideFields(state.fieldText);
+        if (p.errors.length) return `<div class="text-[11px] text-red-700 mt-2">${esc(p.errors[0])}</div>`;
+        if (!p.fields.length) return `<div class="text-[11px] text-neutral-500 mt-2">不填业务字段：只保留 id、created_at、updated_at。</div>`;
+        return `<div class="mt-2 flex flex-wrap gap-1">${p.fields.map((f) => `<span class="px-1.5 py-0.5 border border-neutral-300 bg-neutral-50 mono text-[10px]">${esc(f.name)} · ${esc(f.type)}</span>`).join('')}</div>`;
+      }
+
+      function renderBody() {
+        if (state.step === 0) {
+          body.innerHTML = `
+            <div class="text-[13px] font-semibold">第一步 · 基础信息</div>
+            <div class="text-[11px] text-neutral-500 mt-1 mb-4">这些内容会出现在接口列表、文档和生成的路由前缀里。</div>
+            <label class="block mb-1 font-medium">接口名称 <span class="text-red-700">*</span></label>
+            <input id="guideName" class="w-full border border-neutral-900 px-2 py-1.5 mb-1" value="${esc(state.name)}" placeholder="例如：商品、订单、会员">
+            <div class="text-[10px] text-neutral-500 mb-4">当前工程里不能重名。</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block mb-1 font-medium">分类</label>
+                <select id="guideCat" class="w-full border border-neutral-900 px-2 py-1.5">${cats.map((c) => `<option value="${esc(c.id)}" ${c.id === state.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium">路径前缀</label>
+                <div class="flex items-stretch border border-neutral-900">
+                  <span class="px-2 py-1.5 bg-neutral-100 text-neutral-500 border-r border-neutral-300 mono text-[11px]">/api</span>
+                  <input id="guidePrefix" class="flex-1 min-w-0 px-2 py-1.5 mono" value="${esc(state.prefix)}" placeholder="/v1/products">
+                </div>
+              </div>
+            </div>
+            <div class="text-[10px] text-neutral-500 mt-1 mb-4">前缀可留空；最终地址 = /api + 前缀 + 路由路径。</div>
+            <label class="block mb-1 font-medium">一句话说明</label>
+            <input id="guideComment" class="w-full border border-neutral-900 px-2 py-1.5" value="${esc(state.comment)}" placeholder="例如：商品的上架、库存与价格维护">
+          `;
+          const name = body.querySelector('#guideName');
+          name.focus();
+          name.select();
+          const sync = () => read();
+          body.querySelectorAll('#guideName,#guidePrefix,#guideComment').forEach((el) => el.addEventListener('input', sync));
+          body.querySelector('#guideCat').addEventListener('change', sync);
+        } else if (state.step === 1) {
+          body.innerHTML = `
+            <div class="text-[13px] font-semibold">第二步 · 主表</div>
+            <div class="text-[11px] text-neutral-500 mt-1 mb-4">接口会自动带上一张主表，表键固定为 main。</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block mb-1 font-medium">主表名</label>
+                <input id="guideTable" class="w-full border border-neutral-900 px-2 py-1.5 mono" value="${esc(state.tableName)}" placeholder="留空自动生成">
+                <div class="text-[10px] text-neutral-500 mt-1">表名要全局唯一，只能用字母、数字、下划线。</div>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium">表注释</label>
+                <input id="guideTableComment" class="w-full border border-neutral-900 px-2 py-1.5" value="${esc(state.tableComment)}" placeholder="例如：商品主表">
+              </div>
+            </div>
+            <div class="mt-4">
+              <label class="block mb-1 font-medium">初始业务字段</label>
+              <div class="text-[10px] text-neutral-500 mb-2">每行一个，格式：字段名 类型 注释。系统已自动加入 id、created_at、updated_at。</div>
+              <textarea id="guideFields" rows="7" class="w-full border border-neutral-900 px-2 py-1.5 mono" placeholder="title varchar 标题&#10;price decimal 价格">${esc(state.fieldText)}</textarea>
+              <div id="guideFieldPreview">${fieldPreview()}</div>
+              <div class="flex flex-wrap gap-1 mt-2">${GUIDE_PRESETS.map((p, i) => `<button type="button" class="btn thin" data-guide-preset="${i}">+ ${esc(p.comment)}</button>`).join('')}</div>
+            </div>
+          `;
+          const ta = body.querySelector('#guideFields');
+          ta.addEventListener('input', () => {
+            state.fieldText = ta.value;
+            body.querySelector('#guideFieldPreview').innerHTML = fieldPreview();
+          });
+          body.querySelectorAll('[data-guide-preset]').forEach((b) => {
+            b.onclick = () => {
+              const p = GUIDE_PRESETS[Number(b.dataset.guidePreset)];
+              const parsed = guideFields(ta.value);
+              if (parsed.fields.some((f) => f.name === p.name)) { fail(`字段 ${p.name} 已在列表里`); return; }
+              clear();
+              ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + `${p.name} ${p.type} ${p.comment}`;
+              state.fieldText = ta.value;
+              body.querySelector('#guideFieldPreview').innerHTML = fieldPreview();
+            };
+          });
+          body.querySelector('#guideTable').addEventListener('input', read);
+          body.querySelector('#guideTableComment').addEventListener('input', read);
+        } else if (state.step === 2) {
+          const t = state.tableName || '主表名';
+          body.innerHTML = `
+            <div class="text-[13px] font-semibold">第三步 · 路由</div>
+            <div class="text-[11px] text-neutral-500 mt-1 mb-4">选择要生成的基础路由，创建后仍可逐条修改脚本和路径。</div>
+            <div class="border border-neutral-300 divide-y divide-neutral-200">
+              ${GUIDE_ROUTE_DEFS.map((r) => `<label class="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-neutral-50">
+                <input type="checkbox" data-guide-route value="${r.key}" ${state.routeKinds.includes(r.key) ? 'checked' : ''}>
+                <span class="w-14 shrink-0 mono text-[10px] px-1 py-0.5 border border-neutral-400 text-center">${r.method}</span>
+                <span class="flex-1 min-w-0">
+                  <span class="font-medium">${r.name}</span>
+                  <span class="mono text-[11px] text-neutral-500 ml-2">${esc('/api' + guideBasePath(state.prefix) + routePath(r).replace(':table', t))}</span>
+                  <span class="block text-[10px] text-neutral-500 mt-0.5">${r.desc}</span>
+                </span>
+              </label>`).join('')}
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-4">
+              <div>
+                <label class="block mb-1 font-medium">接口鉴权</label>
+                <select id="guideAuth" class="w-full border border-neutral-900 px-2 py-1.5">
+                  <option value="none" ${state.authMode === 'none' ? 'selected' : ''}>公开，不校验 token</option>
+                  <option value="write" ${state.authMode === 'write' ? 'selected' : ''}>写操作需要 token</option>
+                  <option value="all" ${state.authMode === 'all' ? 'selected' : ''}>全部需要 token</option>
+                </select>
+              </div>
+              <div class="border border-neutral-300 bg-neutral-50 p-2 text-[11px] text-neutral-600">
+                已选 <b id="guideRouteCount">${state.routeKinds.length}</b> 条路由；列表与详情默认启用 60 秒缓存。
+              </div>
+            </div>
+          `;
+          body.querySelectorAll('[data-guide-route]').forEach((cb) => {
+            cb.addEventListener('change', () => {
+              read();
+              const el = body.querySelector('#guideRouteCount');
+              if (el) el.textContent = state.routeKinds.length;
+            });
+          });
+          body.querySelector('#guideAuth').addEventListener('change', read);
+        } else {
+          const parsed = guideFields(state.fieldText);
+          const authText = state.authMode === 'all' ? '全部路由需要 token' : state.authMode === 'write' ? '写操作需要 token' : '公开';
+          const category = cats.find((c) => c.id === state.categoryId);
+          const base = guideBasePath(state.prefix);
+          body.innerHTML = `
+            <div class="text-[13px] font-semibold">第四步 · 确认创建</div>
+            <div class="text-[11px] text-neutral-500 mt-1 mb-4">下面只是预览，点「确认创建」之前不会写入工程。</div>
+            <div class="border border-neutral-900">
+              <div class="grid grid-cols-[120px_1fr] text-[12px]">
+                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">接口</div><div class="px-3 py-2 border-b border-neutral-300 font-medium">${esc(state.name)}</div>
+                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">分类</div><div class="px-3 py-2 border-b border-neutral-300">${esc(category ? category.name : state.categoryId)}</div>
+                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">路径前缀</div><div class="px-3 py-2 border-b border-neutral-300 mono">${esc(base || '（无）')}</div>
+                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">主表</div><div class="px-3 py-2 border-b border-neutral-300 mono">${esc(state.tableName || '自动生成')} · main</div>
+                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">业务字段</div><div class="px-3 py-2 border-b border-neutral-300 mono text-[11px]">${parsed.fields.length ? parsed.fields.map((f) => esc(f.name)).join(' / ') : '无（仅 id 与时间戳）'}</div>
+                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">路由</div><div class="px-3 py-2 border-b border-neutral-300">${state.routeKinds.length} 条 · ${esc(authText)}</div>
+                <div class="px-3 py-2 bg-neutral-100 border-r border-neutral-300 text-neutral-600">示例地址</div><div class="px-3 py-2 mono text-[11px]">${esc('/api' + base + (state.routeKinds.includes('list') ? '/' + (state.tableName || '主表名') : '/...'))}</div>
+              </div>
+            </div>
+            <div class="mt-4 border border-neutral-300 bg-neutral-50 p-3 text-[11px] text-neutral-600">
+              创建后会自动打开接口编辑器；主表、字段、路由和文档都可以继续修改。取消或关闭窗口不会产生任何改动。
+            </div>
+          `;
+        }
+        pos.textContent = `${state.step + 1} / ${GUIDE_STEPS.length}`;
+        prev.style.visibility = state.step === 0 ? 'hidden' : 'visible';
+        next.classList.toggle('hidden', state.step === GUIDE_STEPS.length - 1);
+        create.classList.toggle('hidden', state.step !== GUIDE_STEPS.length - 1);
+        err.textContent = '';
+        renderRail();
+      }
+
+      function go(delta) {
+        read();
+        if (delta > 0) {
+          const msg = validate(state.step);
+          if (msg) { fail(msg); return; }
+        }
+        if (state.step === 1 && state.tableName) state.tableName = state.tableName.toLowerCase();
+        state.step = Math.max(0, Math.min(GUIDE_STEPS.length - 1, state.step + delta));
+        renderBody();
+        if (state.step === 1 && body.querySelector('#guideTable')) body.querySelector('#guideTable').focus();
+      }
+
+      prev.onclick = () => go(-1);
+      next.onclick = () => go(1);
+      root.querySelector('#guideClose').onclick = () => finish(null);
+      create.onclick = () => {
+        read();
+        const msg = validate(0) || validate(1) || validate(2);
+        if (msg) { fail(msg); return; }
+        finish({
+          name: state.name,
+          categoryId: state.categoryId,
+          basePath: guideBasePath(state.prefix),
+          comment: state.comment,
+          tableName: state.tableName,
+          tableComment: state.tableComment,
+          fields: guideFields(state.fieldText).fields,
+          routeKinds: state.routeKinds.slice(),
+          authMode: state.authMode,
+        });
+      };
+      renderBody();
+    }
   });
 }
 
@@ -990,11 +1356,11 @@ async function act(name, el) {
   }
   if (name === 'newIface') {
     const cat = S.project.categories.find((c) => c.id === S.cat) || S.project.categories[0];
-    const n = await ask('新接口名字', '新接口', '会自动生成一张主表和 5 条基础路由');
-    if (!n) return;
-    const blank = await api.blank({ name: n, categoryId: cat.id });
-    S.project.interfaces.push(blank); S.cat = cat.id; S.selId = blank.id;
-    openIface(blank.id); scheduleSave(); toast('已新建接口');
+    const cfg = await newIfaceGuide(cat.id);
+    if (!cfg) return;
+    const blank = await api.blank(cfg);
+    S.project.interfaces.push(blank); S.cat = blank.categoryId; S.selId = blank.id;
+    openIface(blank.id); scheduleSave(); toast(`已创建接口「${blank.name}」`);
     return;
   }
   if (name === 'dupIface' && it) {
