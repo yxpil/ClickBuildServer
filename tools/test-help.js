@@ -45,7 +45,7 @@ async function main() {
       PORT: String(PORT),
       MYSQL_DB: 'clickbuild_help_test',
       RESET_DB: '1',
-      CACHE_PREFIX: 'icb:cache:help-test',
+      CACHE_PREFIX: `icb:cache:help-test:${Date.now()}`,
     },
   });
   const log = [];
@@ -78,6 +78,15 @@ async function main() {
     check('/console 返回 200', consolePage.status === 200, String(consolePage.status));
     check('/console 有 /help 入口', consolePage.body.includes('href="/help"'));
     check('/console 有 /docs 入口', consolePage.body.includes('href="/docs"'));
+
+    const routes = await (await fetch(BASE + '/_routes')).json();
+    const detail = (routes.routes || []).find((r) => r.method === 'GET' && r.path.includes(':id'));
+    check('存在详情路由用于错误响应测试', !!detail, detail && detail.path);
+    if (detail) {
+      const miss = await fetch(BASE + detail.path.replace(':id', '999999'));
+      const missBody = await miss.json();
+      check('业务 404 顶层带 error', miss.status === 404 && missBody.error === 'NOT_FOUND', `${miss.status} ${JSON.stringify(missBody).slice(0, 90)}`);
+    }
   } finally {
     if (!child.killed) child.kill();
     await sleep(400);

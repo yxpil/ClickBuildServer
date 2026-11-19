@@ -40,12 +40,12 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.0.4.exe
+dist\ClickBuildServer-Setup-1.0.5.exe
 ```
 
-也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.4](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.4)。
+也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.5](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.5)。
 
-1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。
 
 安装包已内置便携 Node（`resources\runtime\node\node.exe`），不依赖系统 Node；安装时注册 `.yxpn` 文件关联。首次运行后可在右侧“本地服务”里启动仓库自带的 MariaDB / Redis / RustFS。
 

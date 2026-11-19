@@ -630,8 +630,11 @@ async function handle(req, res, item) {
   const ms = Date.now() - started;
   logPush({ level: status >= 500 ? 'ERROR' : status >= 400 ? 'WARN' : 'INFO', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status, ms, ip, traceId, message: `${status} ${route.name}`, data: logs.length ? logs : null });
 
+  const outBody = result.body && typeof result.body === 'object' ? result.body : {};
+  const failed = status >= 400 || outBody.ok === false;
   return send(res, status, {
-    ok: status < 400,
+    ok: !failed,
+    ...(failed ? { error: outBody.error || 'ERROR', message: outBody.message || undefined } : {}),
     data: result.body,
     cached: false,
     ms,

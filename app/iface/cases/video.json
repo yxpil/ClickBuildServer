@@ -728,7 +728,7 @@
               "cooldown": 30
             }
           },
-          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nIF LEN($row.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NOT_FOUND\" };\nEND\nRETURN 200 { \"row\": $row.rows[0] };",
           "cache": {
             "enabled": true,
             "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",

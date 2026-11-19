@@ -28,6 +28,9 @@ for (const t of list.filter((x) => x.kind === 'builtin')) {
   const p = spec.normalizeProject(got.project);
   const v = spec.validateProject(p);
   check(`模版「${t.name}」模型校验`, v.ok, v.ok ? `${p.interfaces.length} 接口 / ${t.counts.routes} 路由` : v.errors.slice(0, 3).join(' | '));
+  const details = p.interfaces.flatMap((i) => i.routes.filter((r) => r.key === 'detail'));
+  const badDetails = details.filter((r) => !String(r.script).includes('RETURN 404'));
+  check(`模版「${t.name}」详情缺失返回 404`, badDetails.length === 0, `${details.length} 条详情，${badDetails.length} 条缺 404`);
   const ap = plugins.apply(p);
   check(`模版「${t.name}」插件应用无报错`, ap.warnings.filter((w) => !/已存在/.test(w)).length === 0, ap.warnings.join(' | '));
   check(`模版「${t.name}」注入插件函数`, ap.project.functions.some((f) => f.name === 'REQ_TAG'));
