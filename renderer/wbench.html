@@ -38,6 +38,7 @@
   .winbtn:hover { background: #ececec; }
   .winbtn.close:hover { background: #111; color: #fff; }
   .winbtn svg { pointer-events: none; }
+  #winControls { padding-right: 6px; }
   .icon { width: 16px; height: 16px; }
   .tabbtn { padding: 4px 12px; border-bottom: 2px solid transparent; cursor: pointer; color: #555; }
   .tabbtn.on { border-bottom-color: #111; color: #111; font-weight: 600; }
@@ -84,7 +85,7 @@
     <button class="btn thin" data-action="save">保存</button>
     <button class="btn solid" data-action="generate">生成服务</button>
     <select id="langSel" class="border border-neutral-300 px-1 py-1 text-[11px]" title="语言 / Language" aria-label="语言 / Language"></select>
-    <div class="no-drag flex items-center h-12 -mr-3 border-l border-neutral-200">
+    <div id="winControls" class="no-drag flex items-center h-12 -mr-3 border-l border-neutral-200">
       <button id="winMin" class="winbtn" title="最小化" aria-label="最小化"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg></button>
       <button id="winMax" class="winbtn" title="最大化" aria-label="最大化"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
       <button id="winClose" class="winbtn close" title="关闭" aria-label="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2"/></svg></button>
