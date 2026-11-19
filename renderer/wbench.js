@@ -398,15 +398,25 @@ function tabTables(it) {
     .map((k) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}</option>`).join('');
   return `
   <div class="h-full flex flex-col">
-    <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-neutral-200 overflow-x-auto">
-      ${it.tables.map((x) => `<div class="pill cursor-pointer ${x.key === t.key ? 'bg-neutral-900 text-white' : 'bg-white'}" data-table="${x.key}">${esc(x.key)} · ${esc(x.name)}</div>`).join('')}
-      <button class="btn thin" data-action="addTable">＋ 表</button>
-      <span class="ml-auto flex items-center gap-2 text-[11px]">
-        表名 <input id="tName" class="border border-neutral-300 px-1 py-0.5 mono w-44" value="${esc(t.name)}">
-        库 <input id="tSchema" class="border border-neutral-300 px-1 py-0.5 mono w-28" placeholder="留空=默认库" value="${esc(t.schema)}">
-        注释 <input id="tComment" class="border border-neutral-300 px-1 py-0.5 w-40" value="${esc(t.comment)}">
-        <button class="btn thin" data-action="delTable">删表</button>
-      </span>
+    <div class="shrink-0 border-b border-neutral-200">
+      <div class="flex items-center gap-2 px-2 py-1.5 min-w-0">
+        <div id="tableTabs" class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 py-0.5" title="表多时可横向滚动，滚轮也可">
+          ${it.tables.map((x) => `<div class="pill shrink-0 cursor-pointer truncate ${x.key === t.key ? 'bg-neutral-900 text-white' : 'bg-white'}" style="max-width:210px" title="${esc(x.key)} · ${esc(x.name)}" data-table="${x.key}">${esc(x.key)} · ${esc(x.name)}</div>`).join('')}
+        </div>
+        <div class="shrink-0 flex items-center gap-2">
+          <span class="text-[11px] text-neutral-500 mono">${it.tables.length} 表</span>
+          <select id="tSelect" class="border border-neutral-300 px-1 py-0.5 text-[11px] mono" style="max-width:190px" title="快速切表">
+            ${it.tables.map((x) => `<option value="${x.key}" ${x.key === t.key ? 'selected' : ''}>${esc(x.key)} · ${esc(x.name)}</option>`).join('')}
+          </select>
+          <button class="btn thin" data-action="addTable">＋ 表</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 border-t border-neutral-200" style="flex-wrap:wrap">
+        <span class="text-[11px]">表名 <input id="tName" class="border border-neutral-300 px-1 py-0.5 mono w-44" value="${esc(t.name)}"></span>
+        <span class="text-[11px]">库 <input id="tSchema" class="border border-neutral-300 px-1 py-0.5 mono w-28" placeholder="留空=默认库" value="${esc(t.schema)}"></span>
+        <span class="text-[11px]">注释 <input id="tComment" class="border border-neutral-300 px-1 py-0.5 w-40" value="${esc(t.comment)}"></span>
+        <button class="btn thin ml-auto" data-action="delTable">删表</button>
+      </div>
     </div>
     <div class="flex-1 overflow-auto">
       <table class="gt">
@@ -440,6 +450,20 @@ function tabTables(it) {
 function bindTables(it) {
   const t = tableOfIface(it, S.tableKey);
   $$('[data-table]').forEach((el) => { el.onclick = () => { S.tableKey = el.dataset.table; renderWorkspace(); }; });
+  const sel = $('#tSelect');
+  if (sel) sel.onchange = () => { S.tableKey = sel.value; renderWorkspace(); };
+  const bar = $('#tableTabs');
+  if (bar) {
+    bar.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { bar.scrollLeft += e.deltaY; e.preventDefault(); }
+    }, { passive: false });
+    const on = bar.querySelector('.bg-neutral-900');
+    if (on) {
+      const br = bar.getBoundingClientRect();
+      const ar = on.getBoundingClientRect();
+      bar.scrollLeft += ar.left - br.left - (bar.clientWidth - ar.width) / 2;
+    }
+  }
   const name = $('#tName'); if (name) name.oninput = (e) => { t.name = e.target.value; scheduleSave(); };
   const sc = $('#tSchema'); if (sc) sc.oninput = (e) => { t.schema = e.target.value; scheduleSave(); };
   const cm = $('#tComment'); if (cm) cm.oninput = (e) => { t.comment = e.target.value; scheduleSave(); };
@@ -906,7 +930,11 @@ async function act(name, el) {
     if (!n) return;
     const safe = await api.ident(n, 'tbl');
     let key = safe.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'table';
-    while (it.tables.some((t) => t.key === key)) key += '_2';
+    if (it.tables.some((t) => t.key === key)) {
+      const base = key.replace(/(?:_\d+)+$/, '') || 'table';
+      let i = 2;
+      do { key = `${base}_${i++}`; } while (it.tables.some((t) => t.key === key));
+    }
     it.tables.push({ key, name: safe, schema: '', comment: '', fields: defaultFields() });
     S.tableKey = key; S.tab = 'tables'; scheduleSave(); renderWorkspace();
     return;

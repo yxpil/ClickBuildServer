@@ -166,6 +166,33 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const dl = await val(`api.defenderList()`);
   t('Defender 设置可读', dl && (dl.ok || dl.error), dl && (dl.error || ''));
 
+  // 多表：12 张表时标签栏可滚动，当前标签和右侧控件不能越界
+  const layout = await val(`(()=>{
+    const it=S.project.interfaces[0];
+    const base=JSON.parse(JSON.stringify(it.tables[0]));
+    while(it.tables.length<12){
+      const i=it.tables.length+1;
+      const c=JSON.parse(JSON.stringify(base));
+      c.key='ui_table_'+i; c.name='ui_table_'+i; it.tables.push(c);
+    }
+    S.selId=it.id; S.mode='editor'; S.tab='tables'; S.tableKey=it.tables[it.tables.length-1].key; render();
+    const bar=document.querySelector('#tableTabs');
+    const active=bar.querySelector('.bg-neutral-900');
+    const row2=document.querySelector('#tName').closest('.flex');
+    return {
+      tables:it.tables.length,
+      scrollable:bar.scrollWidth>bar.clientWidth,
+      activeVisible:active.getBoundingClientRect().right<=bar.getBoundingClientRect().right+1,
+      select:document.querySelector('#tSelect').value,
+      row2:row2.getBoundingClientRect().bottom<=innerHeight,
+      row2Left:row2.getBoundingClientRect().left>=0,
+    };
+  })()`);
+  t('12 张表标签栏可横向滚动', layout.scrollable, layout);
+  t('当前表标签完整可见', layout.activeVisible, layout);
+  t('快速切表选中最后一张', layout.select === 'ui_table_12', layout);
+  t('表名/库/注释行未被挤掉', layout.row2 && layout.row2Left, layout);
+
   // 回到表格，恢复 seed
   await val(`closeModal()`);
   await val(`api.seed().then(p=>{S.project=p;S.cat=p.categories[0].id;S.selId=p.interfaces[0].id;S.mode='grid';return api.save(p)}).then(()=>render())`, true);
