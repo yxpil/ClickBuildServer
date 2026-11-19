@@ -62,7 +62,7 @@ function rb(action, ic, label, title) {
 /* ---------------- 基础工具 ---------------- */
 function toast(msg, ms) {
   const el = $('#toast');
-  el.textContent = msg;
+  el.textContent = window.__i18n && window.__i18n.translate ? window.__i18n.translate(msg) : msg;
   el.classList.remove('hidden');
   clearTimeout(toast._t);
   toast._t = setTimeout(() => el.classList.add('hidden'), ms || 2200);
@@ -76,6 +76,7 @@ function modal(html, mount, opts) {
   box.classList.remove('hidden');
   box.innerHTML = `<div class="bg-white border border-neutral-900 overflow-auto" style="width:${width}px;max-width:96vw;max-height:${maxHeight}">${html}</div>`;
   if (mount) mount(box.firstElementChild);
+  if (window.__i18n && window.__i18n.apply) window.__i18n.apply(document);
   return box;
 }
 function closeModal() {
@@ -705,9 +706,10 @@ function renderSide() {
 
 /* ---------------- 表格视图 ---------------- */
 function renderWorkspace() {
-  if (S.mode === 'editor' && activeIface()) return renderEditor();
-  if (S.mode === 'help') return renderHelp();
-  return renderGrid();
+  if (S.mode === 'editor' && activeIface()) renderEditor();
+  else if (S.mode === 'help') renderHelp();
+  else renderGrid();
+  if (window.__i18n && window.__i18n.apply) window.__i18n.apply(document);
 }
 
 function renderGrid() {
@@ -1878,7 +1880,7 @@ async function showPlugins() {
     <div class="help-h">Windows Defender 信任目录</div>
     <div class="flex items-center gap-2">
       <button class="btn thin" id="plTrust">加入排除项</button>
-      <span class="text-[11px] text-neutral-500">工程目录、runtime\node、node_modules，并排除 node.exe / electron.exe</span>
+      <span class="text-[11px] text-neutral-500">工程目录、runtime/node、node_modules，并排除 node.exe / electron.exe</span>
     </div>
     <div class="mono text-[11px] text-neutral-600 mt-2 flex gap-3">
       <button class="btn thin" id="plOpenRepo">打开内置插件目录</button>

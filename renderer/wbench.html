@@ -83,6 +83,7 @@
     </div>
     <button class="btn thin" data-action="save">保存</button>
     <button class="btn solid" data-action="generate">生成服务</button>
+    <select id="langSel" class="border border-neutral-300 px-1 py-1 text-[11px]" title="语言 / Language" aria-label="语言 / Language"></select>
     <div class="no-drag flex items-center h-12 -mr-3 border-l border-neutral-200">
       <button id="winMin" class="winbtn" title="最小化" aria-label="最小化"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg></button>
       <button id="winMax" class="winbtn" title="最大化" aria-label="最大化"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
@@ -124,6 +125,7 @@
 <div id="drawer" class="hidden fixed right-0 top-0 h-full w-[680px] bg-white border-l border-neutral-900 z-40 flex flex-col"></div>
 <div id="ctxmenu" class="hidden fixed z-50 bg-white border border-neutral-900 shadow text-[12px] min-w-[180px]"></div>
 
+<script src="i18n.js"></script>
 <script src="wbench.js"></script>
 </body>
 </html>

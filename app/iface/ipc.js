@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ipcMain, dialog, shell, BrowserWindow } = require('electron');
+const { ipcMain, dialog, shell, BrowserWindow, app } = require('electron');
 
 const spec = require('./spec');
 const render = require('./render');
@@ -20,6 +20,7 @@ const defender = require('./defender');
 const frontend = require('./frontend');
 const projectExport = require('./project-export');
 const store = require('../store');
+const i18n = require('../i18n');
 
 function ctxOf(payload) {
   const query = {};
@@ -319,6 +320,10 @@ function registerIpc() {
 
   ipcMain.handle('iface:settings:get', () => store.readSettings());
   ipcMain.handle('iface:settings:set', (e, patch) => store.writeSettings(patch || {}));
+
+  ipcMain.handle('i18n:get', () => i18n.current(app));
+  ipcMain.handle('i18n:set', (e, locale) => i18n.setLocale(app, locale));
+  ipcMain.on('i18n:get-sync', (e) => { e.returnValue = i18n.current(app); });
 
   ipcMain.handle('window:new', async (e, projectName) => {
     const parent = BrowserWindow.fromWebContents(e.sender);

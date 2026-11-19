@@ -2235,6 +2235,26 @@ init();
   try { parent.postMessage({ type: 'cbs:yxpp:ready' }, '*'); } catch (e) {}
 })();
 </script>
+<script>
+(function () {
+  const apply = () => {
+    try {
+      if (parent && parent !== window && parent.__i18n) {
+        parent.__i18n.apply(document);
+        if (document.title) document.title = parent.__i18n.translate(document.title);
+      }
+    } catch (e) { /* 独立打开时保持中文 */ }
+  };
+  apply();
+  window.addEventListener('load', apply);
+  setTimeout(apply, 120);
+  let timer = null;
+  new MutationObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(apply, 120);
+  }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['title', 'placeholder', 'aria-label', 'alt'] });
+})();
+</script>
 </body>
 </html>
 
