@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "description": "以接口为最小单位的接口工作台：多库多表、脚本 SQL、事务、缓存、文档与一键生成可运行服务",
   "main": "main.js",
   "author": "yxpil",
@@ -105,7 +105,8 @@
         "en_US"
       ],
       "multiLanguageInstaller": true,
-      "displayLanguageSelector": false
+      "displayLanguageSelector": false,
+      "include": "build/installer.nsh"
     }
   }
 }
