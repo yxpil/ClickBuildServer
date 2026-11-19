@@ -1,0 +1,19 @@
+﻿ClickBuildServer Terms of Use and Disclaimer
+
+1. Open Source License
+This software is released under the Apache License, Version 2.0. The full license text is included in the LICENSE file in the installation directory, or available at:
+https://www.apache.org/licenses/LICENSE-2.0
+Subject to the Apache License 2.0, you may use, modify, copy, and distribute this software and derivative works, provided that copyright, license, and NOTICE notices are preserved.
+
+2. Lawful Use Only
+This software may be used only for lawful purposes. You must not use it to violate any applicable law or regulation, including but not limited to unauthorized network access, attacks, data theft, fraud, distribution of malicious software, invasion of privacy, or any other illegal or criminal activity.
+You are solely responsible for ensuring that your use of this software, the services you create, the data you process, and the content you publish are lawful and properly authorized.
+
+3. Responsibility
+You assume all responsibility arising from your use of this software, including but not limited to data loss, service interruption, business loss, third-party claims, and legal liability.
+To the maximum extent permitted by applicable law, this software is provided "AS IS", without any express or implied warranties. The author, copyright holders, and contributors accept no liability for any direct or indirect loss, damage, or legal responsibility arising from the use or inability to use this software. The disclaimer and limitation of liability provisions of the Apache License 2.0 also apply.
+
+4. Acceptance
+By continuing the installation or using this software, you confirm that you have read, understood, and agree to these terms. If you do not agree, please stop the installation and delete the software.
+
+Copyright © 2026 yxpil
