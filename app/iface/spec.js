@@ -117,6 +117,14 @@ function defaultFields() {
   ];
 }
 
+// 新建空白表默认无主键：只给时间戳，主键由用户按业务自己加。
+function blankFields() {
+  return [
+    { ...newField('created_at', 'datetime'), nullable: true, writable: false, default: 'CURRENT_TIMESTAMP', comment: '创建时间' },
+    { ...newField('updated_at', 'datetime'), nullable: true, writable: false, default: 'CURRENT_TIMESTAMP', comment: '更新时间' },
+  ];
+}
+
 function safeIdent(name, prefix) {
   const raw = String(name == null ? '' : name).toLowerCase();
   const ascii = raw.replace(/[^a-z0-9_]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
@@ -142,7 +150,7 @@ function newTable(name, usedKeys) {
     name: safe,
     schema: '',
     comment: '',
-    fields: defaultFields(),
+    fields: blankFields(),
   };
 }
 
@@ -365,7 +373,6 @@ function normalizeTable(t, idx, used) {
     writable: f.writable !== false,
     default: f.default == null ? '' : String(f.default),
   }));
-  if (!fields.some((f) => f.pk)) fields[0].pk = true;
   return {
     key: t.key || keyOf(t.name || `table_${idx + 1}`, used),
     name: t.name || `table_${idx + 1}`,
@@ -555,7 +562,7 @@ function validateProject(project) {
       if (tableKeys.has(t.key)) errors.push(`接口「${it.name}」表键重复：${t.key}`);
       tableKeys.add(t.key);
       if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(t.name)) errors.push(`接口「${it.name}」表名非法：${t.name}`);
-      if (!t.fields.some((f) => f.pk)) errors.push(`表 ${t.name} 没有主键`);
+      if (!t.fields.some((f) => f.pk)) warnings.push(`表 ${t.name} 没有主键（按无主键模式生成）`);
       for (const f of t.fields) {
         if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(f.name)) errors.push(`表 ${t.name} 字段名非法：${f.name}`);
       }
@@ -593,7 +600,8 @@ function ddlOf(iface) {
       return parts.join(' ');
     });
     const pk = t.fields.filter((f) => f.pk).map((f) => `\`${f.name}\``).join(', ');
-    out.push(`CREATE TABLE IF NOT EXISTS ${t.schema ? `\`${t.schema}\`.` : ''}\`${t.name}\` (\n${cols.join(',\n')},\n  PRIMARY KEY (${pk})\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4${t.comment ? ` COMMENT='${String(t.comment).replace(/'/g, "''")}'` : ''};`);
+    const pkSql = pk ? `,\n  PRIMARY KEY (${pk})` : '';
+    out.push(`CREATE TABLE IF NOT EXISTS ${t.schema ? `\`${t.schema}\`.` : ''}\`${t.name}\` (\n${cols.join(',\n')}${pkSql}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4${t.comment ? ` COMMENT='${String(t.comment).replace(/'/g, "''")}'` : ''};`);
   }
   return out.join('\n\n');
 }

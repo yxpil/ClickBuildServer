@@ -210,6 +210,15 @@ function bearer(req) {
   return cm ? decodeURIComponent(cm[1]) : '';
 }
 
+// 登录脚本签发 token 后自动写入 HttpOnly cookie；退出时清除。
+// 这样浏览器只靠 cookie 就能维持登录态，API 客户端仍然可以用 Authorization。
+function authCookie(ctx) {
+  const name = String(TOKEN_CFG.cookie || 'icb_token');
+  if (ctx.tokenDeleted) return `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  if (!ctx.mintedToken) return '';
+  return `${name}=${encodeURIComponent(ctx.mintedToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${TOKEN_TTL}`;
+}
+
 // ---------------- 路由匹配 ----------------
 function routeRegex(prefix, pattern) {
   const keys = [];
@@ -516,6 +525,7 @@ async function handle(req, res, item) {
     query, body, path: item.params, id: item.params.id != null ? item.params.id : (query.id != null ? query.id : body.id),
     file: null, vars: user ? { user } : {}, uuid: crypto.randomUUID().replace(/-/g, ''),
     user, token, remoteIp: ip, traceId, service: project.services || [],
+    mintedToken: '', mintedOnlyId: '', tokenDeleted: false,
   };
 
   let uploaded = null;
@@ -732,7 +742,8 @@ async function handle(req, res, item) {
     ...(logs.length ? { logs } : {}),
   };
   if (status >= 500) return sendError(req, res, status, out, '服务内部错误', outBody.message || '');
-  return send(res, status, out);
+  const setCookie = authCookie(ctx);
+  return send(res, status, out, setCookie ? { 'set-cookie': setCookie } : undefined);
 }
 
 // ---------------- 文档 ----------------

@@ -128,7 +128,8 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('Ribbon 有模版与插件入口', await val(`!!document.querySelector('[data-action="templates"]') && !!document.querySelector('[data-action="plugins"]')`));
   await val(`act('templates')`);
   await wait(500);
-  t('模版库列出 21 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 21`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
+  t('模版库列出 22 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 22`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
+  t('社交接口库卡片统计 9 接口 / 46 表 / 86 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:social"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('9 接口') && card.innerText.includes('46 表') && card.innerText.includes('86 路由');})()`));
   t('模版卡片有接口/表统计', await val(`document.querySelector('#modal').innerText.includes('接口 ·')`));
   await val(`document.querySelector('[data-tpl-apply="builtin:blog"]').click()`);
   await wait(300);

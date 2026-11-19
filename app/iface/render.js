@@ -262,9 +262,11 @@ function renderSqlText(text, root, ctx) {
   let last = 0;
   RE_TOKEN.lastIndex = 0;
   let m;
-  // 脚本里的 $变量 可以直接写进 SQL：$i.product_id → {{vars.i.product_id}}
+  // 脚本里的 $变量 可以直接写进 SQL：$i.product_id → {{vars.i.product_id}}，
+  // 也支持数组下标：$rows.rows[0].id → {{vars.rows.rows.0.id}}。
   // 只替换能解析出值的路径（至少一段 .），解析不到就原样留给 SQL 报错。
-  const tpl = String(text || '').replace(/\$([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+)/g, (all, path) => {
+  const tpl = String(text || '').replace(/\$([A-Za-z_][A-Za-z0-9_]*(?:(?:\[[0-9]+\])|(?:\.[A-Za-z0-9_]+))*)/g, (all, rawPath) => {
+    const path = rawPath.replace(/\[([0-9]+)\]/g, '.$1');
     const v = pick(ctx, `vars.${path}`);
     if (v === undefined || v === null) return all;
     return `{{vars.${path}}}`;

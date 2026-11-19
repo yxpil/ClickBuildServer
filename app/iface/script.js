@@ -638,6 +638,11 @@ async function runScript(ast, env) {
         if (!env.token) throw new Error('TOKEN 没有可用的会话存储');
         const arg = evalExpr(st.expr, scope);
         scope.vars[st.name] = st.action === 'NEW' ? await env.token.mint(arg) : await env.token.get(arg);
+        // 让生成服务知道本次脚本签发了 token，可以在响应里自动种 cookie。
+        if (st.action === 'NEW' && env.ctx) {
+          env.ctx.mintedToken = scope.vars[st.name] && scope.vars[st.name].token;
+          env.ctx.mintedOnlyId = scope.vars[st.name] && scope.vars[st.name].onlyId;
+        }
       } else {
         scope.vars[st.name] = evalExpr(st.expr, scope);
       }
@@ -665,6 +670,7 @@ async function runScript(ast, env) {
     }
     if (st.k === 'tokenDel') {
       if (env.token && env.token.del) await env.token.del(evalExpr(st.expr, scope));
+      if (env.ctx) env.ctx.tokenDeleted = true;
       return null;
     }
     if (st.k === 'if') {

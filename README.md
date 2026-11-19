@@ -43,12 +43,12 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.0.10.exe
+dist\ClickBuildServer-Setup-1.1.0.exe
 ```
 
-也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.5](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.5)。
+也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
-1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。1.0.8 把生成服务改成模块化单体：一个接口一个 `src/modules/` 目录，自动加载，公共能力留在 `server.js`。1.0.9 重做多表切换栏：表多时横向滚动 + 快速下拉，表名/库/注释移到独立一行，不再挤掉右侧控件。1.0.10 补齐空白区域右键菜单、表/字段右键操作和快捷键；自动保存改静默，底栏显示未保存/保存中/已保存。生成服务新增全局 404/500 错误页、`dev.js` 热部署和 Node/Bun/Java/Go 启动选择；导出工程时可关闭错误页或 500 详情。
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。1.0.8 把生成服务改成模块化单体：一个接口一个 `src/modules/` 目录，自动加载，公共能力留在 `server.js`。1.0.9 重做多表切换栏：表多时横向滚动 + 快速下拉，表名/库/注释移到独立一行，不再挤掉右侧控件。1.0.10 补齐空白区域右键菜单、表/字段右键操作和快捷键；自动保存改静默，底栏显示未保存/保存中/已保存。生成服务新增全局 404/500 错误页、`dev.js` 热部署和 Node/Bun/Java/Go 启动选择；导出工程时可关闭错误页或 500 详情。1.1.0 新增「社交接口库」预置工程：9 个接口、86 条路由、18 张唯一表，覆盖账户、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报和统计；统一用 `onlyId` 标识用户，登录自动下发 HttpOnly cookie，所有表默认无主键。
 
 安装包已内置便携 Node（`resources\runtime\node\node.exe`）与三台本地服务（`resources\services\`），不依赖系统 Node，也不要求电脑上预先装数据库；安装时注册 `.yxpn` 文件关联。运行时数据只写用户数据目录，源码和配置里不写死盘符。
 
@@ -100,7 +100,7 @@ runtime\node\node.exe tools\ui-smoke.js 9222           # 界面冒烟（需 --re
 - **全局搜索** `Ctrl+K`：接口 / 表 / 字段 / 路由 / SQL 一把搜。
 - **六页编辑器**：表结构、路由脚本、缓存存储、接口文档、测试、生成导出。
 - **Ribbon**：文件、接口、表结构、脚本、服务、视图、工程、模版与插件、扩展。
-- **模版库**：5 套内置业务（商城 / 视频站 / 博客 / 工单 / 预约），一键替换当前工程；当前工程也能“存模版”。
+- **模版库**：22 套内置工程（商城 / 视频站 / 博客 / 工单 / 预约 / 跨库订单 / 社交接口库 / 聊天等），一键替换当前工程；当前工程也能“存模版”。
 - **插件**：`plugins/<id>/plugin.json + index.js` 可注入自定义函数、接口、路由、改写脚本；面板里启停/安装/卸载。
 - **Defender**：插件面板里可一键把仓库、运行时、生成目录加入 Windows Defender 排除项。
 - **右键**：接口行、分类 sheet、路由都能右键（打开 / 复制 / 重命名 / 删除 / 导出）。
@@ -214,10 +214,18 @@ module.exports.routes.push({
 
 ## 模版 / 插件 / 文档
 
-- 模版：`app/iface/templates.js`，内置 21 套业务工程（商城 / 视频站 / 博客 / 工单 / 预约 / 跨库订单 / 聊天 / 视频会议 / CRM / 在线课程 / 餐饮 / 物流 / 预约挂号 / 费用报销 / IoT / 活动票务 / 网课系统 / 装修报价 / 印刷报价 / 软件项目报价 / 货运报价），用户模版落 `%APPDATA%\click-build-server\clickbuild\templates\`。
+- 模版：`app/iface/templates.js`，内置 22 套业务工程（商城 / 视频站 / 博客 / 工单 / 预约 / 跨库订单 / 社交接口库 / 聊天 / 视频会议 / CRM / 在线课程 / 餐饮 / 物流 / 预约挂号 / 费用报销 / IoT / 活动票务 / 网课系统 / 装修报价 / 印刷报价 / 软件项目报价 / 货运报价），用户模版落 `%APPDATA%\click-build-server\clickbuild\templates\`。
 - 插件：`app/iface/plugins.js`，仓库 `plugins/trace-tag` 是最小示例（注入 `REQ_TAG()`）；生成时自动应用，插件失败只记 warning。
 - 接口文档：编辑器第 3 页可填接口级 7 项 + 每条路由 4 项，直接进 `docs/openapi.json` 与 `/docs`。
 - Defender：`app/iface/defender.js`，读写 `Get-MpPreference`；权限不足会原样报错。
+
+### 社交接口库（builtin:social）
+
+- 位置：`app/iface/cases/social.json`，由 `tools/make-social-case.js` 生成；模版卡片显示 **9 接口 · 46 表引用 · 86 路由**，实际落库 18 张唯一表，全部无主键。
+- 覆盖：账户身份、好友关系、私聊消息、群聊、动态社区、搜索、通知收藏、文件与安全、统计运维；路由统一前缀 `/social`。
+- 身份：注册 / 登录返回 `onlyId` 与 Bearer token，同时下发 `Set-Cookie: icb_token=...; Path=/; HttpOnly; SameSite=Lax; Max-Age=7200`。所有受保护路由只认 token / cookie 里的 `onlyId`，写操作不接受请求体伪造用户 ID；退出登录返回 `Max-Age=0` 清除 cookie。
+- 无主键：表结构不强制主键，DDL 不生成空 `PRIMARY KEY ()`，模型校验只给 warning；新建空白表默认只有 `created_at / updated_at`。
+- 验收：`node tools/test-social.js http://127.0.0.1:18100`，会真实跑完全部 86 条路由、cookie 下发/清除、私聊/群聊权限、文件上传与统计，结果 **117/117**。
 
 ## 微服务 / 守护进程
 
@@ -252,10 +260,11 @@ npm run dist       # 发布安装包
 
 | 套件 | 结果 |
 | --- | --- |
-| `tools/test-templates.js --gen`（21 套模版 + 插件 + 文档 + 每条详情 404） | **158/158** |
+| `tools/test-templates.js --gen`（22 套模版 + 插件 + 文档 + 每条详情 404） | **165/165** |
 | `tools/e2e-cases.js`（21 套行业案例真实 HTTP） | **106/106** |
 | `tools/test-help.js`（生成服务 `/help`、`/docs`、`/console`、业务 404） | **18/18** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **50/50** |
+| `tools/test-social.js`（社交接口库 86 条路由真实 HTTP） | **117/117** |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **51/51** |
 | `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **19/19** |
 | 生成服务真实验收（注册/登录/CRUD/缓存/事务/限流/上传/日志/CORS） | **30/30** |
 
