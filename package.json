@@ -1,0 +1,21 @@
+{
+  "name": "click-build-server",
+  "version": "1.0.0",
+  "description": "选择业务模块，直接生成可运行的服务器工程（Java jar/war、Node.js、Go，Rust 实验性）",
+  "main": "main.js",
+  "author": "ClickBuildServer",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "gen": "node app/gen-cli.js",
+    "gen:all": "node app/gen-cli.js --all-modules --zip",
+    "verify": "node app/verify.js",
+    "self-test": "node app/gen-cli.js --self-test",
+    "test": "node app/check-ui.js && node app/verify.js && node app/gen-cli.js --self-test",
+    "test:runtime": "node app/rt-test.js --install",
+    "test:runtime:go": "node app/rt-test.js --lang go"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

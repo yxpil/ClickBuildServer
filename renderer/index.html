@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
+  <title>ClickBuildServer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">CB</div>
+      <div>
+        <div class="brand-name">ClickBuildServer</div>
+        <div class="brand-sub">服务器快速制造工具</div>
+      </div>
+    </div>
+
+    <div class="top-center">
+      <label class="field inline">
+        <span>项目</span>
+        <input id="f-name" type="text" placeholder="项目名称" spellcheck="false" />
+      </label>
+      <div class="seg" id="seg-lang">
+        <button data-lang="java" class="active">Java</button>
+        <button data-lang="node">Node.js</button>
+        <button data-lang="go">Go</button>
+        <button data-lang="rust">Rust</button>
+      </div>
+      <div class="seg" id="seg-package">
+        <button data-package="jar" class="active">JAR</button>
+        <button data-package="war">WAR</button>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button class="btn ghost" id="btn-new">新建</button>
+      <button class="btn ghost" id="btn-open">打开</button>
+      <button class="btn ghost" id="btn-save">保存</button>
+      <button class="btn ghost" id="btn-import">导入 JSON</button>
+      <button class="btn ghost" id="btn-export">导出 JSON</button>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <button class="nav-item active" data-view="modules"><span class="nav-idx">1</span>业务模块</button>
+    <button class="nav-item" data-view="topology"><span class="nav-idx">2</span>拓扑编排</button>
+    <button class="nav-item" data-view="project"><span class="nav-idx">3</span>工程配置</button>
+    <button class="nav-item" data-view="datasource"><span class="nav-idx">4</span>自定义表 / 数据源</button>
+    <button class="nav-item" data-view="perms"><span class="nav-idx">5</span>权限矩阵</button>
+    <button class="nav-item" data-view="preview"><span class="nav-idx">6</span>生成预览</button>
+    <div class="sidebar-foot">
+      <div class="hint">勾选即生成，所有业务共用统一 ID 与 RBAC。</div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <!-- 1. 模块 -->
+    <section class="view active" data-view="modules">
+      <div class="view-head">
+        <div>
+          <h1>业务模块货架</h1>
+          <p>要什么加什么。勾选后自动带入依赖（权限 → 账号 → 角色），并在右侧汇总成一台服务器。</p>
+        </div>
+        <div class="presets">
+          <button class="chip" data-preset="min">最小后台</button>
+          <button class="chip" data-preset="commerce">电商中台</button>
+          <button class="chip" data-preset="content">内容 / 视频站</button>
+          <button class="chip" data-preset="all">全量</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <input id="module-search" class="search" type="search" placeholder="搜索模块：订单 / 审核 / 视频 / 缓存 …" spellcheck="false" />
+        <div class="tabs" id="group-tabs">
+          <button class="active" data-group="all">全部</button>
+          <button data-group="平台">平台</button>
+          <button data-group="业务">业务</button>
+          <button data-group="扩展">扩展</button>
+        </div>
+      </div>
+
+      <div id="module-groups" class="groups"></div>
+    </section>
+
+    <!-- 2. 拓扑编排 -->
+    <section class="view" data-view="topology">
+      <div class="view-head">
+        <div>
+          <h1>拓扑编排</h1>
+          <p>像 ComfyUI 一样拖节点：左侧是节点库，中间是画布，连线表示调用或依赖。画布会变成微服务的切分依据和网关路由表。</p>
+        </div>
+        <div class="presets">
+          <button class="chip" id="topo-auto">按模块自动排布</button>
+          <button class="chip" id="topo-clear">清空画布</button>
+          <button class="chip" id="topo-link">连线模式</button>
+        </div>
+      </div>
+
+      <div class="topo-wrap">
+        <aside class="topo-palette">
+          <h3>节点库</h3>
+          <div class="topo-list">
+            <button class="topo-item" data-kind="service"><b>服务</b><small>一组模块，独立部署</small></button>
+            <button class="topo-item" data-kind="gateway"><b>网关</b><small>ONRouter / Nginx</small></button>
+            <button class="topo-item" data-kind="db"><b>数据库</b><small>主库 / 从库 / 多集群</small></button>
+            <button class="topo-item" data-kind="redis"><b>Redis</b><small>缓存与租约</small></button>
+            <button class="topo-item" data-kind="storage"><b>对象存储</b><small>MinIO / S3</small></button>
+            <button class="topo-item" data-kind="client"><b>客户端</b><small>Web / App / 三方</small></button>
+            <button class="topo-item" data-kind="module"><b>模块</b><small>单个业务模块</small></button>
+          </div>
+          <p class="hint">点一下加到画布，拖动摆放。选中节点后点「连线模式」，再点目标节点即可连线。</p>
+        </aside>
+
+        <div class="topo-canvas" id="topo-canvas">
+          <svg class="topo-edges" id="topo-edges"></svg>
+          <div class="topo-nodes" id="topo-nodes"></div>
+        </div>
+
+        <aside class="topo-props">
+          <h3>节点属性</h3>
+          <div id="topo-props-body" class="topo-props-body">
+            <p class="hint">点画布里的节点来编辑。</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 3. 工程配置 -->
+    <section class="view" data-view="project">
+      <div class="view-head">
+        <div>
+          <h1>工程配置</h1>
+          <p>语言、ID 策略、数据库、Redis、对象存储。换语言不会丢配置 —— 同一份 IR 重新渲染。</p>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h2>基础</h2>
+          <div class="grid two">
+            <label class="field"><span>groupId / 包名</span><input id="f-group" type="text" spellcheck="false" /></label>
+            <label class="field"><span>端口</span><input id="f-port" type="number" /></label>
+            <label class="field"><span>context-path</span><input id="f-context" type="text" spellcheck="false" /></label>
+            <label class="field"><span>ID 策略</span>
+              <select id="f-id">
+                <option value="snowflake">雪花（bigint，趋势递增）</option>
+                <option value="ulid">ULID（字符，可排序）</option>
+                <option value="uuid">UUID（字符）</option>
+                <option value="auto">数据库自增</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>MySQL</h2>
+          <div class="grid two">
+            <label class="field"><span>主机</span><input id="f-db-host" type="text" /></label>
+            <label class="field"><span>端口</span><input id="f-db-port" type="number" /></label>
+            <label class="field"><span>库名</span><input id="f-db-name" type="text" /></label>
+            <label class="field"><span>用户 / 密码</span>
+              <div class="pair"><input id="f-db-user" type="text" /><input id="f-db-pass" type="text" /></div>
+            </label>
+            <label class="field"><span>连接池 min / max</span>
+              <div class="pair"><input id="f-db-min" type="number" /><input id="f-db-max" type="number" /></div>
+            </label>
+            <label class="field check"><input id="f-cluster" type="checkbox" /><span>读写分离集群</span></label>
+            <label class="field span2"><span>从库地址（逗号分隔 host:port）</span><input id="f-cluster-read" type="text" placeholder="127.0.0.1:3307" /></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Redis</h2>
+          <div class="grid two">
+            <label class="field check"><input id="f-redis" type="checkbox" /><span>启用 Redis</span></label>
+            <label class="field"><span>模式</span>
+              <select id="f-redis-mode">
+                <option value="standalone">单机</option>
+                <option value="sentinel">哨兵</option>
+                <option value="cluster">集群</option>
+              </select>
+            </label>
+            <label class="field span2"><span>节点（逗号分隔）</span><input id="f-redis-nodes" type="text" placeholder="127.0.0.1:6379" /></label>
+            <label class="field"><span>key 前缀</span><input id="f-redis-prefix" type="text" /></label>
+            <label class="field"><span>默认 TTL（秒）</span><input id="f-redis-ttl" type="number" /></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>对象存储</h2>
+          <div class="grid two">
+            <label class="field"><span>类型</span>
+              <select id="f-storage">
+                <option value="minio">MinIO</option>
+                <option value="s3">S3 / 兼容</option>
+                <option value="local">本地磁盘</option>
+              </select>
+            </label>
+            <label class="field"><span>Endpoint</span><input id="f-storage-endpoint" type="text" /></label>
+            <label class="field"><span>Bucket</span><input id="f-storage-bucket" type="text" /></label>
+            <label class="field"><span>Access / Secret</span>
+              <div class="pair"><input id="f-storage-ak" type="text" /><input id="f-storage-sk" type="text" /></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>搜索与安全</h2>
+          <div class="grid two">
+            <label class="field"><span>搜索引擎</span>
+              <select id="f-search">
+                <option value="redis">Redis 倒排</option>
+                <option value="elasticsearch">Elasticsearch</option>
+              </select>
+            </label>
+            <label class="field"><span>Cookie 名</span><input id="f-cookie" type="text" /></label>
+            <label class="field"><span>Token TTL（秒）</span><input id="f-ttl" type="number" /></label>
+            <label class="field"><span>JWT Secret</span><input id="f-jwt" type="text" /></label>
+            <label class="field"><span>初始管理员</span><input id="f-admin" type="text" /></label>
+            <label class="field"><span>初始密码</span><input id="f-admin-pass" type="text" /></label>
+          </div>
+
+          <h2 class="subhead">逻辑用户编号（LUID）</h2>
+          <p class="hint">登录后下发一个只有服务端知道映射的编号，前端带着它即可鉴权；命中缓存不查库，登出即失效。可按 LUID / 用户 ID 做数据归属。</p>
+          <div class="grid two">
+            <label class="field check"><input id="f-luid" type="checkbox" /><span>启用 LUID</span></label>
+            <label class="field check"><input id="f-owner-guard" type="checkbox" /><span>数据归属（非超管只看自己的）</span></label>
+            <label class="field"><span>LUID 缓存</span>
+              <select id="f-luid-cache">
+                <option value="auto">自动（有 Redis 用 Redis）</option>
+                <option value="redis">Redis</option>
+                <option value="memory">进程内内存</option>
+              </select>
+            </label>
+            <label class="field"><span>LUID TTL（秒）</span><input id="f-luid-ttl" type="number" /></label>
+            <label class="field"><span>LUID 请求头</span><input id="f-luid-header" type="text" placeholder="X-Luid" /></label>
+          </div>
+
+          <h2 class="subhead">短信 / 邮箱验证码（只做对接）</h2>
+          <p class="hint">我们不做服务器：这里配的是你自己的网关，生成后 <code>POST /captcha/send</code> 会把「接收方 / 验证码 / 场景」POST 过去。provider 选 none 时只打 dry-run 日志。</p>
+          <div class="grid two">
+            <label class="field"><span>短信通道</span>
+              <select id="f-sms-provider">
+                <option value="none">不启用（dry-run）</option>
+                <option value="http">HTTP 网关</option>
+              </select>
+            </label>
+            <label class="field"><span>短信网关地址</span><input id="f-sms-endpoint" type="text" placeholder="https://sms.example.com/send" /></label>
+            <label class="field"><span>短信签名</span><input id="f-sms-sign" type="text" placeholder="ClickBuild" /></label>
+            <label class="field"><span>短信模板号</span><input id="f-sms-template" type="text" /></label>
+            <label class="field"><span>邮件通道</span>
+              <select id="f-email-provider">
+                <option value="none">不启用（dry-run）</option>
+                <option value="http">HTTP 网关</option>
+              </select>
+            </label>
+            <label class="field"><span>邮件网关 / 发件人</span>
+              <div class="pair"><input id="f-email-host" type="text" placeholder="https://mail.example.com/send" /><input id="f-email-from" type="text" placeholder="noreply@x.com" /></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>防护（WAF / 防火墙）</h2>
+          <p class="hint">进程内的第一道闸：SQL 注入、XSS、路径穿越、CC 限流、并发上限、CORS、安全响应头。上线建议前面再挂一层 Nginx / ONRouter。</p>
+          <div class="grid two">
+            <label class="field check"><input id="f-waf" type="checkbox" /><span>启用 WAF</span></label>
+            <label class="field check"><input id="f-waf-sqli" type="checkbox" /><span>SQL 注入检测</span></label>
+            <label class="field check"><input id="f-waf-xss" type="checkbox" /><span>XSS 检测</span></label>
+            <label class="field check"><input id="f-waf-traversal" type="checkbox" /><span>路径穿越检测</span></label>
+            <label class="field check"><input id="f-waf-body" type="checkbox" /><span>检测请求体（可能误伤正文）</span></label>
+            <label class="field check"><input id="f-cc" type="checkbox" /><span>CC 限流（按 IP 令牌桶）</span></label>
+            <label class="field"><span>每秒请求 / 突发</span>
+              <div class="pair"><input id="f-cc-rps" type="number" /><input id="f-cc-burst" type="number" /></div>
+            </label>
+            <label class="field check"><input id="f-ddos" type="checkbox" /><span>并发上限（基础 DDoS）</span></label>
+            <label class="field"><span>最大并发</span><input id="f-ddos-max" type="number" /></label>
+            <label class="field check"><input id="f-cors" type="checkbox" /><span>启用 CORS</span></label>
+            <label class="field span2"><span>允许来源（逗号分隔，* 表示全开）</span><input id="f-cors-origins" type="text" placeholder="* 或 https://a.com,https://b.com" /></label>
+            <label class="field check"><input id="f-cors-cred" type="checkbox" /><span>允许携带 Cookie</span></label>
+            <label class="field"><span>X-Frame-Options</span>
+              <select id="f-frame">
+                <option value="DENY">DENY</option>
+                <option value="SAMEORIGIN">SAMEORIGIN</option>
+              </select>
+            </label>
+            <label class="field check"><input id="f-hsts" type="checkbox" /><span>HSTS（仅 HTTPS）</span></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>集群与分流</h2>
+          <p class="hint">多库多集群：主库写、从库读，按权重分流；写前抢 Redis 租约，抢不到就拒写（防脑裂）。</p>
+          <div class="grid two">
+            <label class="field"><span>分流策略</span>
+              <select id="f-db-strategy">
+                <option value="round-robin">轮询</option>
+                <option value="weighted">按权重</option>
+                <option value="hash">哈希固定</option>
+              </select>
+            </label>
+            <label class="field check"><input id="f-db-split" type="checkbox" /><span>读写分离（GET 走从库）</span></label>
+            <label class="field"><span>健康检查（毫秒）</span><input id="f-db-health" type="number" /></label>
+            <label class="field"><span>失败阈值（次）</span><input id="f-db-threshold" type="number" /></label>
+            <label class="field check"><input id="f-db-failover" type="checkbox" /><span>故障转移 + 防脑裂</span></label>
+            <label class="field"><span>租约（秒） / quorum</span>
+              <div class="pair"><input id="f-db-lease" type="number" /><input id="f-db-quorum" type="number" /></div>
+            </label>
+          </div>
+          <label class="field"><span>集群节点（每行一条：名称 | primary/replica | host:port | 权重）</span>
+            <textarea id="f-db-clusters" rows="4" spellcheck="false" placeholder="primary | primary | 127.0.0.1:3306 | 10&#10;replica1 | replica | 127.0.0.1:3307 | 2"></textarea>
+          </label>
+        </div>
+
+        <div class="card">
+          <h2>网关与微服务</h2>
+          <p class="hint">网关只做鉴权透传、限流和转发；微服务按画布上的服务节点（没画就按模块分组）拆成多个可独立部署的工程。</p>
+          <div class="grid two">
+            <label class="field check"><input id="f-gateway" type="checkbox" /><span>生成 ONRouter 网关配置</span></label>
+            <label class="field"><span>网关端口</span><input id="f-gw-port" type="number" /></label>
+            <label class="field span2"><span>ONRouter 仓库地址（拉源码用，留空则只生成配置）</span><input id="f-gw-repo" type="text" placeholder="https://github.com/you/onrouter.git" /></label>
+            <label class="field"><span>网关镜像（可选）</span><input id="f-gw-image" type="text" placeholder="ghcr.io/you/onrouter:latest" /></label>
+            <label class="field check"><input id="f-gw-jwt" type="checkbox" /><span>网关校验 JWT 并注入 X-Luid</span></label>
+            <label class="field check"><input id="f-ms" type="checkbox" /><span>导出微服务（多 jar + 网关路由）</span></label>
+            <label class="field"><span>切分依据</span>
+              <select id="f-ms-mode">
+                <option value="module-group">按模块分组</option>
+                <option value="topology">按画布服务节点</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>集成</h2>
+          <div class="checks">
+            <label class="field check"><input id="f-docker" type="checkbox" /><span>Docker / Compose</span></label>
+            <label class="field check"><input id="f-swagger" type="checkbox" /><span>OpenAPI / Swagger</span></label>
+            <label class="field check"><input id="f-rate" type="checkbox" /><span>接口限流</span></label>
+            <label class="field check"><input id="f-nginx" type="checkbox" /><span>Nginx 反代</span></label>
+            <label class="field check"><input id="f-tenant" type="checkbox" /><span>多租户</span></label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 自定义表 / 数据源 -->
+    <section class="view" data-view="datasource">
+      <div class="view-head">
+        <div>
+          <h1>自定义表 / 文件数据源</h1>
+          <p>给字段就能当数据库：一张 MySQL 表，或直接把 Excel / CSV / JSON 挂上来。</p>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="card">
+          <h2>新增自定义表</h2>
+          <div class="grid two">
+            <label class="field"><span>表名</span><input id="ct-name" type="text" placeholder="biz_contract" spellcheck="false" /></label>
+            <label class="field"><span>注释</span><input id="ct-comment" type="text" placeholder="合同" /></label>
+            <label class="field"><span>引擎</span>
+              <select id="ct-engine">
+                <option value="mysql">MySQL</option>
+                <option value="csv">CSV 文件</option>
+                <option value="json">JSON 文件</option>
+                <option value="excel">Excel 文件</option>
+              </select>
+            </label>
+            <label class="field"><span>文件路径（文件引擎时）</span><input id="ct-path" type="text" placeholder="data/contract.csv" /></label>
+          </div>
+          <label class="field"><span>字段定义：每行 <code>名称|类型|注释|标记</code>，标记可组合 req,uniq,idx,search,cache</span>
+            <textarea id="ct-columns" rows="7" spellcheck="false">title|varchar(128)|标题|req,search
+amount|decimal(12,2)|金额|idx
+status|varchar(16)|状态|idx,search
+remark|text|备注|</textarea>
+          </label>
+          <label class="field"><span>可搜索字段（逗号分隔，留空取 search 标记）</span><input id="ct-search" type="text" /></label>
+          <div class="row">
+            <button class="btn" id="ct-add">添加到项目</button>
+            <span class="hint">添加后立刻出现在模块货架的「自定义」分组</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>已添加（<span id="custom-count">0</span>）</h2>
+          <div id="custom-list" class="list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>字段预览</h2>
+        <div id="ct-preview" class="table-wrap"></div>
+      </div>
+
+      <div class="card">
+        <h2>自定义 SQL 查询</h2>
+        <p class="hint">条件查询（keyword / field__op / filter / sort / page）已内置在每个表上；这里加的是跨表聚合、报表这类固定 SQL，运行期只做 <code>:param</code> 绑定，不拼接用户输入。</p>
+        <div class="grid two">
+          <label class="field"><span>名称（kebab）</span><input id="q-name" type="text" placeholder="order-status-report" spellcheck="false" /></label>
+          <label class="field"><span>方法</span>
+            <select id="q-method"><option value="GET">GET</option><option value="POST">POST</option></select>
+          </label>
+          <label class="field"><span>权限码（留空=登录即可）</span><input id="q-perm" type="text" placeholder="report:list" spellcheck="false" /></label>
+          <label class="field"><span>绑定参数（逗号分隔）</span><input id="q-params" type="text" placeholder="beginDate,endDate" spellcheck="false" /></label>
+        </div>
+        <label class="field"><span>SQL 语句</span>
+          <textarea id="q-sql" rows="5" spellcheck="false">SELECT status, COUNT(*) AS cnt, SUM(total_amount) AS amount
+FROM biz_order
+WHERE created_at BETWEEN :beginDate AND :endDate
+GROUP BY status</textarea>
+        </label>
+        <div class="row">
+          <button class="btn" id="q-add">添加查询</button>
+          <span class="hint">生成后为 <code>/api/query/&lt;name&gt;</code>，参数走 query 或 body</span>
+        </div>
+        <div id="query-list" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h2>自定义积木（<span id="block-count">0</span>）</h2>
+        <p class="hint">积木就是你自己写的工具：一个 id 一条路由 <code>/blocks/&lt;id&gt;</code>，handler 里能用 db / cache / ids / 当前用户。生成后是一段可直接改的代码，不是另建一个服务。</p>
+        <div class="grid two">
+          <label class="field"><span>积木 ID（kebab）</span><input id="b-id" type="text" placeholder="ping" spellcheck="false" /></label>
+          <label class="field"><span>名称</span><input id="b-name" type="text" placeholder="连通性探针" /></label>
+          <label class="field"><span>方法</span>
+            <select id="b-method"><option value="GET">GET</option><option value="POST">POST</option></select>
+          </label>
+          <label class="field"><span>权限码（留空=登录即可）</span><input id="b-perm" type="text" placeholder="order:list" spellcheck="false" /></label>
+          <label class="field span2"><span>参数名（逗号分隔）</span><input id="b-params" type="text" placeholder="day,status" spellcheck="false" /></label>
+        </div>
+        <label class="field"><span>处理器代码（JS 写法，生成器会先校验语法；Go / Java 侧会翻译成注释 + 可运行骨架）</span>
+          <textarea id="b-code" rows="5" spellcheck="false">const list = await ctx.db.query('SELECT COUNT(*) AS n FROM biz_order');
+return { total: list[0] ? list[0].n : 0 };</textarea>
+        </label>
+        <div class="row">
+          <button class="btn" id="b-add">添加积木</button>
+          <span class="hint">生成后路由：<code>/api/blocks/&lt;id&gt;</code>（Java：<code>/blocks/&lt;id&gt;</code>）</span>
+        </div>
+        <div id="block-list" class="list"></div>
+      </div>
+    </section>
+
+    <!-- 4. 权限 -->
+    <section class="view" data-view="perms">
+      <div class="view-head">
+        <div>
+          <h1>权限矩阵</h1>
+          <p>权限码由模块自动推导：<code>模块:动作</code>。super_admin 直接 <code>*</code>。</p>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <h2>角色</h2>
+          <div id="role-list" class="list"></div>
+        </div>
+        <div class="card">
+          <h2>权限点（<span id="perm-count">0</span>）</h2>
+          <div id="perm-list" class="tags"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>角色 × 权限</h2>
+        <div id="perm-matrix" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- 5. 预览 -->
+    <section class="view" data-view="preview">
+      <div class="view-head">
+        <div>
+          <h1>生成预览</h1>
+          <p>先看清单，再落盘。所有产物来自同一份 IR，可随时切换语言重生成。</p>
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="btn-refresh">刷新预览</button>
+          <button class="btn primary" id="btn-generate">生成工程</button>
+          <button class="btn" id="btn-zip">导出 ZIP</button>
+        </div>
+      </div>
+
+      <div id="stats" class="stats"></div>
+      <div id="warnings" class="warnings"></div>
+
+      <div class="split preview-split">
+        <div class="card filecard">
+          <h2>文件（<span id="file-count">0</span>）</h2>
+          <input id="file-search" class="search small" type="search" placeholder="过滤路径" spellcheck="false" />
+          <div id="file-tree" class="filetree"></div>
+        </div>
+        <div class="card codecard">
+          <h2 id="code-title">选择文件查看内容</h2>
+          <pre id="code-view" class="code"><span class="muted">点击左侧文件…</span></pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>编译 / 打包</h2>
+        <div class="row">
+          <input id="out-dir" class="path" type="text" readonly />
+          <button class="btn ghost" id="btn-pick-dir">选择目录</button>
+          <button class="btn ghost" id="btn-open-dir">打开目录</button>
+        </div>
+        <div class="row">
+          <button class="btn" id="btn-build">编译当前工程</button>
+          <span class="hint" id="build-hint">Rust 用 cargo build --release；Java 用 mvn package（需本机安装）</span>
+        </div>
+        <pre id="build-log" class="log"></pre>
+      </div>
+    </section>
+  </main>
+
+  <aside class="cart">
+    <div class="cart-head">
+      <h2>已选业务 <span id="cart-count">0</span></h2>
+      <button class="link" id="cart-clear">清空</button>
+    </div>
+    <div id="cart-list" class="cart-list"></div>
+    <div class="cart-stats" id="cart-stats"></div>
+    <div class="cart-actions">
+      <button class="btn primary block" id="btn-cart-generate">生成服务器</button>
+      <div class="hint" id="cart-hint">勾选模块后自动计算表与权限</div>
+    </div>
+  </aside>
+
+  <div id="toast" class="toast"></div>
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><h2 id="modal-title">项目</h2><button class="link" id="modal-close">关闭</button></div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+{
+  "name": "ShopServer",
+  "groupId": "com.shop",
+  "lang": "java",
+  "packageType": "jar",
+  "idStrategy": "snowflake",
+  "port": 8080,
+  "contextPath": "/api",
+  "modules": [
+    "auth",
+    "account",
+    "rbac",
+    "audit-log",
+    "approval",
+    "order",
+    "product",
+    "inventory",
+    "payment",
+    "customer",
+    "cart",
+    "address",
+    "coupon",
+    "media-upload",
+    "media-play",
+    "cms",
+    "comment",
+    "search",
+    "cache",
+    "file",
+    "report",
+    "import-export",
+    "notify",
+    "dict"
+  ],
+  "database": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "name": "shop_server",
+    "user": "root",
+    "password": "root123",
+    "pool": {
+      "min": 2,
+      "max": 20
+    },
+    "cluster": {
+      "enabled": false,
+      "readHosts": []
+    }
+  },
+  "redis": {
+    "enabled": true,
+    "mode": "standalone",
+    "nodes": [
+      "127.0.0.1:6379"
+    ],
+    "db": 0,
+    "keyPrefix": "shop",
+    "cacheTtl": 300
+  },
+  "storage": {
+    "provider": "minio",
+    "endpoint": "http://127.0.0.1:9000",
+    "bucket": "shop",
+    "accessKey": "minioadmin",
+    "secretKey": "minioadmin"
+  },
+  "search": {
+    "engine": "redis"
+  },
+  "security": {
+    "jwtSecret": "change-me-shop-server-secret-key-32bytes",
+    "cookieName": "SHOP_TOKEN",
+    "ttlSeconds": 7200,
+    "initAdmin": "admin",
+    "initPassword": "Admin@123456"
+  },
+  "integrations": {
+    "docker": true,
+    "swagger": true,
+    "rateLimit": true,
+    "nginx": true,
+    "tenant": false
+  },
+  "tableConfig": {
+    "biz_order": {
+      "search": [
+        "order_no",
+        "receiver_name"
+      ],
+      "cache": true,
+      "cacheTtl": 60
+    },
+    "biz_product": {
+      "search": [
+        "title",
+        "brand"
+      ],
+      "cache": true,
+      "cacheTtl": 120
+    }
+  },
+  "queries": [
+    {
+      "name": "order-status-report",
+      "method": "GET",
+      "perm": "report:list",
+      "params": [
+        "beginDate",
+        "endDate"
+      ],
+      "comment": "按状态汇总订单量与金额",
+      "sql": "SELECT status, COUNT(*) AS cnt, SUM(total_amount) AS amount FROM biz_order WHERE deleted = 0 AND created_at BETWEEN :beginDate AND :endDate GROUP BY status"
+    },
+    {
+      "name": "top-products",
+      "method": "GET",
+      "perm": "report:list",
+      "params": [
+        "limit"
+      ],
+      "comment": "销量 Top N 商品",
+      "sql": "SELECT p.title, SUM(i.quantity) AS sold FROM biz_order_item i JOIN biz_product p ON p.id = i.product_id GROUP BY p.title ORDER BY sold DESC LIMIT :limit"
+    }
+  ],
+  "customTables": [
+    {
+      "name": "shop_banner",
+      "comment": "首页轮播",
+      "engine": "mysql",
+      "columns": "title|varchar(128)|标题|req,search\nimage_url|varchar(255)|图片\nsort_no|int|排序|idx\nonline|tinyint|是否上线|idx"
+    }
+  ],
+  "fileSources": [
+    {
+      "name": "express",
+      "comment": "快递公司表",
+      "engine": "csv",
+      "path": "data/express.csv",
+      "columns": "code|varchar(32)|编码|req\nname|varchar(64)|名称|search\nphone|varchar(32)|电话"
+    },
+    {
+      "name": "region",
+      "comment": "行政区划",
+      "engine": "json",
+      "path": "data/region.json",
+      "columns": "name|varchar(64)|名称|req,search\nparent|varchar(64)|上级\nlevel|int|层级"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "order-stat",
+      "name": "订单统计",
+      "method": "POST",
+      "perm": "order:list",
+      "params": [
+        "day"
+      ],
+      "code": "const rows = await ctx.db.query('SELECT COUNT(*) AS n FROM biz_order WHERE created_at >= ?', [ctx.body.day || '2026-01-01']);\nreturn { total: rows[0] ? rows[0].n : 0 };",
+      "comment": "演示积木"
+    }
+  ]
+}
