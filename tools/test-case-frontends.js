@@ -56,6 +56,15 @@ async function liveMall(dir) {
     }
     check('商城案例服务启动', ready, ready ? '' : log.join('').slice(-500));
     if (!ready) return;
+    const health = await req(base, '/_health/interfaces');
+    let healthOk = false;
+    try {
+      const h = JSON.parse(health.text);
+      healthOk = health.status === 200 && h.ok === true && h.total >= 1 && h.healthy === h.total && Array.isArray(h.interfaces);
+    } catch (e) { /* ignore */ }
+    check('全部接口健康检查', healthOk, `${health.status} ${health.text.slice(0, 160)}`);
+    const consolePage = await req(base, '/console');
+    check('控制台健康按钮检查全部', consolePage.status === 200 && consolePage.text.includes('/_health/interfaces') && consolePage.text.includes('检查全部'), `${consolePage.status} ${consolePage.text.length} B`);
     const home = await req(base, '/');
     check('GET / 返回案例前端', home.status === 200 && home.text.includes('MALL / CASE FRONTEND') && home.text.includes('const CASE ='), `${home.status} ${home.text.length} B`);
     const yxpp = await req(base, '/frontend/index.yxpp');

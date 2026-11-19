@@ -42,7 +42,7 @@
         <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>PATCH</option>
       </select>
       <button class="go" id="send">发送</button>
-      <button class="go" id="health">健康</button>
+      <button class="go" id="health" title="检查全部接口：路由、表/字段、脚本语法，不发写请求">检查全部</button>
     </div>
     <h2>请求体 JSON</h2>
     <textarea id="body" placeholder='{"name":"值"}'></textarea>
@@ -94,8 +94,27 @@ $('routes').addEventListener('click', (e) => {
   call(b.dataset.m, b.dataset.p, body);
 });
 
+async function healthAll() {
+  $('out').textContent = '正在检查全部接口…';
+  const t0 = performance.now();
+  try {
+    const r = await (await fetch('/_health/interfaces')).json();
+    if (!r || r.ok === false && !Array.isArray(r.interfaces)) throw new Error(r && (r.message || r.error) || '健康检查失败');
+    const ms = Math.round(performance.now() - t0);
+    const head = `接口健康 ${r.healthy}/${r.total} · ${r.routes} 路由 · ${r.tables} 表 · ${ms}ms`;
+    const lines = r.interfaces.map((i) => {
+      const state = i.ok ? '✓' : '✗';
+      const extra = i.errors && i.errors.length ? '\n    ' + i.errors.join('\n    ') : '';
+      return `${state} ${i.name} · ${i.routes} 路由 · ${i.tables} 表 · ${i.ms}ms${extra}`;
+    });
+    $('out').textContent = `${head}\n${r.note}\n\n${lines.join('\n') || '没有接口'}`;
+  } catch (e) {
+    $('out').textContent = `检查全部接口失败（${Math.round(performance.now() - t0)}ms）：${e.message}`;
+  }
+}
+
 $('send').onclick = () => call($('method').value, $('path').value, $('body').value.trim());
-$('health').onclick = async () => { $('out').textContent = JSON.stringify(await (await fetch('/_health')).json(), null, 2); };
+$('health').onclick = healthAll;
 
 load().catch((e) => { $('hint').textContent = '读取 /_meta 失败：' + e.message; });
 </script>

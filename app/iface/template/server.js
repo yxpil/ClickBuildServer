@@ -133,6 +133,75 @@ function parsedOf(route) {
   return PARSED.get(route);
 }
 
+function sqlIdent(v) {
+  return '`' + String(v == null ? '' : v).replace(/`/g, '``') + '`';
+}
+
+// 检查全部接口：路由是否注册、脚本能否解析、表与字段是否存在。
+// 只做结构与语法检查，不执行任何写请求，适合控制台「检查全部」按钮。
+async function checkInterfaceHealth() {
+  const started = Date.now();
+  const report = await Promise.all((IFACES || []).map(async (iface) => {
+    const t0 = Date.now();
+    const errors = [];
+    const tables = Array.isArray(iface.tables) ? iface.tables : [];
+    const routes = Array.isArray(iface.routes) ? iface.routes : [];
+    if (!iface.id) errors.push('缺少接口 id');
+    if (!iface.name) errors.push('缺少接口名称');
+    if (!tables.length) errors.push('没有配置数据表');
+    if (!routes.length) errors.push('没有配置路由');
+
+    await Promise.all(tables.map(async (t) => {
+      if (!t || !t.name) { errors.push('存在未命名的数据表'); return; }
+      try {
+        const h = await poolFor(t.conn || 'main');
+        const prefix = t.schema ? `${sqlIdent(t.schema)}.` : '';
+        const cols = (Array.isArray(t.fields) ? t.fields : []).map((f) => f && f.name).filter(Boolean).map(sqlIdent);
+        const sql = `SELECT ${cols.length ? cols.join(',') : '1'} FROM ${prefix}${sqlIdent(t.name)} LIMIT 0`;
+        await h.pool.query(sql);
+      } catch (e) {
+        errors.push(`表 ${t.name}：${e.message}`);
+      }
+    }));
+
+    await Promise.all(routes.map(async (r) => {
+      if (!r || !r.method || !r.path) { errors.push('存在缺少 method/path 的路由'); return; }
+      const registered = TABLE.some((x) => x.iface === iface && x.route === r);
+      if (!registered) errors.push(`路由 ${r.method} ${r.path} 未注册`);
+      if (r.handler) return; // 模块自定义 handler，不做脚本语法检查
+      try {
+        const p = scriptEngine.parseScript(r.script || '');
+        if (p.errors && p.errors.length) {
+          errors.push(`路由 ${r.method} ${r.path} 脚本：${p.errors.slice(0, 3).map(String).join('；')}`);
+        }
+      } catch (e) {
+        errors.push(`路由 ${r.method} ${r.path} 脚本：${e.message}`);
+      }
+    }));
+
+    return {
+      id: iface.id || '', name: iface.name || '(未命名接口)',
+      ok: errors.length === 0,
+      tables: tables.length, routes: routes.length,
+      ms: Date.now() - t0,
+      errors: errors.slice(0, 8),
+    };
+  }));
+
+  const total = report.length;
+  const healthy = report.filter((i) => i.ok).length;
+  return {
+    ok: healthy === total,
+    checkedAt: new Date().toISOString(),
+    total, healthy,
+    tables: report.reduce((n, i) => n + i.tables, 0),
+    routes: report.reduce((n, i) => n + i.routes, 0),
+    elapsedMs: Date.now() - started,
+    note: '只检查接口注册、表/字段和脚本语法，不执行写请求',
+    interfaces: report,
+  };
+}
+
 // ---------------- 日志 ----------------
 function stamp() {
   const d = new Date();
@@ -875,6 +944,7 @@ pre{border:1px solid #111;background:#fafafa;padding:10px;overflow:auto;white-sp
 <tr><td><code>/_docs</code> 或 <code>/openapi.json</code></td><td>OpenAPI JSON，可导入 Postman / Apifox</td></tr>
 <tr><td><code>/_routes</code></td><td>全部路由的机器可读列表</td></tr>
 <tr><td><code>/_health</code></td><td>MySQL / Redis / S3 健康检查</td></tr>
+<tr><td><code>/_health/interfaces</code></td><td>检查全部接口的路由、表/字段和脚本语法，不执行写请求</td></tr>
 <tr><td><code>/_logs</code> / <code>/_logs/stream</code></td><td>日志快照 / SSE 实时日志</td></tr>
 <tr><td><code>/_errors/404</code></td><td>404 错误页预览</td></tr>
 <tr><td><code>/_errors/405</code></td><td>405 方法不允许错误页预览</td></tr>
@@ -940,8 +1010,9 @@ curl "${esc(exampleUrl)}"
 # 新建（按你的表字段替换 JSON）
 curl -X POST "${esc(exampleUrl)}" -H "Content-Type: application/json" -d '{"name":"test"}'
 
-# 健康检查
-curl "http://127.0.0.1:${CFG.httpPort}/_health"</pre>
+# 健康检查（依赖 + 全部接口结构与脚本）
+curl "http://127.0.0.1:${CFG.httpPort}/_health"
+curl "http://127.0.0.1:${CFG.httpPort}/_health/interfaces"</pre>
 <p class="note">注意：所有接口默认前缀是 <code>${esc(CFG.apiPrefix)}</code>；如果路径带 <code>:id</code>，请求时换成真实 ID。数据库 / Redis / S3 地址在生成目录的 <code>.env</code> 里改，重启服务生效。</p>
 </main></html>`;
 }
@@ -966,6 +1037,13 @@ const server = http.createServer(async (req, res) => {
       return sendError(req, res, 413, { ok: false, error: 'BODY_TOO_LARGE', message: '这是 413 页面预览：请求体超过 64MB', traceId }, '请求体过大');
     }
     if (pathname === '/_errors/500') throw new Error('这是 500 页面预览：模拟服务端异常');
+    if (pathname === '/_health/interfaces') {
+      try {
+        return send(res, 200, await checkInterfaceHealth());
+      } catch (e) {
+        return send(res, 500, { ok: false, error: 'HEALTH_CHECK_FAILED', message: e.message, checkedAt: new Date().toISOString() });
+      }
+    }
     if (pathname === '/_health') {
       let mysqlOk = false, redisOk = false, s3Ok = false;
       try { const c = await (await poolFor('main')).pool.getConnection(); await c.query('SELECT 1'); c.release(); mysqlOk = true; } catch (e) {}
