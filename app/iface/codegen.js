@@ -376,7 +376,7 @@ function generate(project, options) {
   add('interfaces.json', JSON.stringify({
     name: p.name, description: p.description, categories: p.categories,
     functions: p.functions, interfaces: p.interfaces,
-    connections: p.connections, log: p.log, token: p.token, docs: p.docs,
+    connections: p.connections, log: p.log, token: p.token, docs: p.docs, errors: p.errors,
     services: p.services, theme: p.theme, isolation: p.isolation,
     frontend: p.frontend ? { name: p.frontend.name, framework: p.frontend.framework, updatedAt: p.frontend.updatedAt } : null,
     generatedAt: new Date().toISOString(),
@@ -400,7 +400,7 @@ function generate(project, options) {
     private: true,
     description: p.description || 'ClickBuild 生成的接口服务',
     main: 'server.js',
-    scripts: { start: 'node server.js' },
+    scripts: { start: 'node server.js', dev: 'node dev.js', hot: 'node dev.js' },
     dependencies: { mysql2: '^3.11.0', ioredis: '^5.4.1', minio: '^8.0.1' },
   }, null, 2));
 
@@ -430,6 +430,108 @@ function generate(project, options) {
     `API_PREFIX=/api`,
     '',
   ].join('\n'));
+
+  add('dev.js', `#!/usr/bin/env node
+/* ClickBuild 热部署：监听 src / public / sql / interfaces.json，文件变化后自动重启 server.js */
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+const ROOT = __dirname;
+let child = null;
+let stopping = false;
+let expectedExit = 0;
+let pending = false;
+let debounce = null;
+
+function start() {
+  if (stopping) return;
+  pending = false;
+  child = spawn(process.execPath, ['server.js'], { cwd: ROOT, stdio: 'inherit', env: { ...process.env, HOT_RELOAD: '1' } });
+  child.on('exit', (code, signal) => {
+    child = null;
+    if (stopping) { process.exit(0); return; }
+    if (expectedExit > 0) { expectedExit -= 1; return; }
+    console.log('[dev] server exit code=' + code + ' signal=' + signal + '，600ms 后重启');
+    setTimeout(start, 600);
+  });
+}
+
+function restart() {
+  if (stopping) return;
+  if (!child) { start(); return; }
+  if (pending) return;
+  pending = true;
+  const old = child;
+  expectedExit += 1;
+  console.log('[dev] 检测到文件变化，重启服务…');
+  old.once('exit', () => setTimeout(() => { pending = false; start(); }, 300));
+  old.kill('SIGTERM');
+  setTimeout(() => { try { if (old && old.exitCode == null) old.kill('SIGKILL'); } catch (_) {} }, 900);
+}
+
+function shouldWatch(file) {
+  const p = String(file || '').replace(/\\\\/g, '/');
+  if (/node_modules|\\.git|package-lock|dev\\.js|daemon\\.log|\\.log$/.test(p)) return false;
+  return /^src\\/|^public\\/|^sql\\/|^interfaces\\.json$|^server\\.js$|^frontend\\//.test(p);
+}
+
+function watch() {
+  try {
+    fs.watch(ROOT, { recursive: true }, (event, file) => {
+      if (!shouldWatch(file)) return;
+      clearTimeout(debounce);
+      debounce = setTimeout(restart, 350);
+    });
+    console.log('[dev] 热部署已开启：src/ · public/ · sql/ · interfaces.json');
+  } catch (e) {
+    console.error('[dev] 文件监听失败：' + e.message);
+  }
+}
+
+function stop() { stopping = true; if (child) child.kill('SIGTERM'); else process.exit(0); }
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);
+
+start();
+watch();
+`);
+
+  add('launcher/Server.java', `public class Server {
+  // Java 启动器：调用 Node 内核。Java 11+ 可直接：java launcher/Server.java [server.js|dev.js]
+  public static void main(String[] args) throws Exception {
+    String node = System.getenv("NODE_BIN");
+    if (node == null || node.isBlank()) node = "node";
+    String entry = args.length > 0 ? args[0] : "server.js";
+    ProcessBuilder pb = new ProcessBuilder(node, entry);
+    pb.inheritIO();
+    Process p = pb.start();
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> { try { p.destroy(); } catch (Exception ignored) {} }));
+    System.exit(p.waitFor());
+  }
+}
+`);
+
+  add('launcher/main.go', `package main
+
+// Go 启动器：调用 Node 内核。go run launcher/main.go [server.js|dev.js]
+import (
+  "os"
+  "os/exec"
+)
+
+func main() {
+  node := os.Getenv("NODE_BIN")
+  if node == "" { node = "node" }
+  entry := "server.js"
+  if len(os.Args) > 1 { entry = os.Args[1] }
+  cmd := exec.Command(node, entry)
+  cmd.Stdout = os.Stdout
+  cmd.Stderr = os.Stderr
+  cmd.Stdin = os.Stdin
+  if err := cmd.Run(); err != nil { os.Exit(1) }
+}
+`);
 
   add('daemon/watchdog.js', `#!/usr/bin/env node
 /* ClickBuild 守护进程：拉起 server.js，异常退出后按退避重启 */
@@ -499,16 +601,25 @@ Write-Host "已创建登录自启任务：$TaskName"
     `- 路由数：${p.interfaces.reduce((n, i) => n + i.routes.length, 0)}`,
     '',
     '```bash',
-    'node server.js',
+    'node server.js      # 普通启动',
+    'node dev.js         # 热部署：改 src/public/sql/interfaces.json 自动重启',
     '```',
     '',
     `启动后：控制台 http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/ ，文档 /docs ，路由清单 /_routes ，元信息 /_meta ，日志流 /_logs/stream 。`,
+    `错误页：浏览器请求 404/500 默认显示错误页；API 客户端仍收到 JSON。预览：/_errors/404 、/_errors/500 。`,
     '',
     '- 数据落 MySQL，GET 结果可走 Redis 旁路缓存，附件进 RustFS。',
     '- 写路由可开事务（guard.tx），脚本异常自动回滚并写 FATAL 日志。',
     '- 路由支持限流（rate）、时间窗（schedule）、熔断（breaker）、token 鉴权（auth）。',
     '- 日志可按等级落库：`sys_log` 表（可在项目里改库/表）。',
     '- 账号体系：注册签发唯一ID + token（Redis 会话），密码 SM4 加密存储。',
+    '',
+    '## 启动方式',
+    '',
+    '- Node：`node server.js`，热部署 `node dev.js`',
+    '- Bun：`bun server.js`，热部署 `bun dev.js`',
+    '- Java 启动器（需 JDK 11+）：`java launcher/Server.java`',
+    '- Go 启动器（需 Go）：`go run launcher/main.go`',
     '',
     '## 守护进程',
     '',

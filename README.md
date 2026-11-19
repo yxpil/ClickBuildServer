@@ -43,12 +43,12 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.0.9.exe
+dist\ClickBuildServer-Setup-1.0.10.exe
 ```
 
 也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.5](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.5)。
 
-1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。1.0.8 把生成服务改成模块化单体：一个接口一个 `src/modules/` 目录，自动加载，公共能力留在 `server.js`。1.0.9 重做多表切换栏：表多时横向滚动 + 快速下拉，表名/库/注释移到独立一行，不再挤掉右侧控件。
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。1.0.8 把生成服务改成模块化单体：一个接口一个 `src/modules/` 目录，自动加载，公共能力留在 `server.js`。1.0.9 重做多表切换栏：表多时横向滚动 + 快速下拉，表名/库/注释移到独立一行，不再挤掉右侧控件。1.0.10 补齐空白区域右键菜单、表/字段右键操作和快捷键；自动保存改静默，底栏显示未保存/保存中/已保存。生成服务新增全局 404/500 错误页、`dev.js` 热部署和 Node/Bun/Java/Go 启动选择；导出工程时可关闭错误页或 500 详情。
 
 安装包已内置便携 Node（`resources\runtime\node\node.exe`）与三台本地服务（`resources\services\`），不依赖系统 Node，也不要求电脑上预先装数据库；安装时注册 `.yxpn` 文件关联。运行时数据只写用户数据目录，源码和配置里不写死盘符。
 
@@ -255,8 +255,8 @@ npm run dist       # 发布安装包
 | `tools/test-templates.js --gen`（21 套模版 + 插件 + 文档 + 每条详情 404） | **158/158** |
 | `tools/e2e-cases.js`（21 套行业案例真实 HTTP） | **106/106** |
 | `tools/test-help.js`（生成服务 `/help`、`/docs`、`/console`、业务 404） | **18/18** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **44/44** |
-| `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **16/16** |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **50/50** |
+| `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **19/19** |
 | 生成服务真实验收（注册/登录/CRUD/缓存/事务/限流/上传/日志/CORS） | **30/30** |
 
 
@@ -265,7 +265,7 @@ npm run dist       # 发布安装包
 - 跨 MySQL 实例不做两阶段提交，只做单池事务 + 补偿回滚 + 日志追。
 - 验证码样式、短信脚本示例还没内置成品，只能自己用 `HTTP` + 自定义函数拼。
 - 原生菜单已去掉，但窗口边框仍是系统标题栏；完全自绘标题栏还没做。
-- bun 运行时未接（内置的是 Node）。
+- Java / Go 目前是启动器，内核仍复用 Node；要真正的语言版服务还需要单独的代码生成器。
 
 ## 文档
 

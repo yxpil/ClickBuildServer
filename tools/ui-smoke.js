@@ -193,6 +193,31 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('快速切表选中最后一张', layout.select === 'ui_table_12', layout);
   t('表名/库/注释行未被挤掉', layout.row2 && layout.row2Left, layout);
 
+  // 空白区域右键：不能没反应
+  const gridCtx = await val(`(()=>{S.mode='grid';S.tab='tables';render();document.querySelector('#workspace').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));const t=document.querySelector('#ctxmenu').innerText;closeCtx();return t;})()`);
+  t('表格空白右键有新建入口', /新建接口/.test(gridCtx) && /新建分类/.test(gridCtx), gridCtx);
+  const editorCtx = await val(`(()=>{S.mode='editor';S.tab='tables';render();document.querySelector('#tabBody').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));const t=document.querySelector('#ctxmenu').innerText;closeCtx();return t;})()`);
+  t('编辑器空白右键有字段/生成入口', /添加字段/.test(editorCtx) && /生成服务/.test(editorCtx), editorCtx);
+
+  // 自动保存静默，且状态栏可见
+  const dirty = await val(`(()=>{S.project.name=S.project.name+'x';scheduleSave();render();return document.querySelector('#saveState').textContent;})()`);
+  await wait(1100);
+  const saved = await val(`document.querySelector('#saveState').textContent`);
+  t('自动保存静默且状态可见', /未保存|保存中/.test(dirty) && saved.includes('已保存'), `${dirty} → ${saved}`);
+
+  // 启动按钮要跟运行状态一起变
+  const ribbonStop = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:true}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="stopAll"]');const txt=el?el.innerText:'无';S.services=keep;renderRibbon();return txt;})()`);
+  t('全部服务运行时按钮变“停止”', /停止/.test(ribbonStop), ribbonStop);
+
+  // 测试页有运行时选择与热部署
+  const testTools = await val(`(()=>{S.mode='editor';S.tab='test';render();return JSON.stringify({rt:!!document.querySelector('#tRuntime'),hot:!!document.querySelector('#tHot'),checked:document.querySelector('#tHot')&&document.querySelector('#tHot').checked,opts:Array.from(document.querySelectorAll('#tRuntime option')).map(o=>o.textContent)});})()`);
+  const tt = JSON.parse(testTools);
+  t('测试页可选运行时与热部署', tt.rt && tt.hot && tt.checked && tt.opts.length >= 4, testTools);
+
+  // 导出对话框有 404/500 与详情开关
+  const exportText = await val(`(()=>{act('exportProject');const t=document.querySelector('#modal')?document.querySelector('#modal').innerText:'';closeModal();return t;})()`);
+  t('导出对话框含错误页开关', /404 \/ 500/.test(exportText) && /错误详情/.test(exportText), exportText.slice(0, 80));
+
   // 回到表格，恢复 seed
   await val(`closeModal()`);
   await val(`api.seed().then(p=>{S.project=p;S.cat=p.categories[0].id;S.selId=p.interfaces[0].id;S.mode='grid';return api.save(p)}).then(()=>render())`, true);

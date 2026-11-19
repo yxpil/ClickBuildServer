@@ -18,10 +18,15 @@ const S = {
   help: null,
   genDir: '',
   saveTimer: null,
+  saveState: 'saved',
+  saveText: '已保存',
   valTimer: null,
   problems: [],
   view: 'api',
   studioProject: null,
+  runtimes: [],
+  runner: 'node',
+  hot: true,
 };
 
 const esc = (v) => String(v == null ? '' : v)
@@ -119,17 +124,52 @@ function tableOfIface(iface, key) {
   return iface.tables.find((t) => t.key === key) || iface.tables[0];
 }
 
+function nextTableKey(iface, base) {
+  const clean = String(base || 'table').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'table';
+  if (!iface.tables.some((t) => t.key === clean)) return clean;
+  const stem = clean.replace(/(?:_\d+)+$/, '') || 'table';
+  let i = 2;
+  let key = `${stem}_${i++}`;
+  while (iface.tables.some((t) => t.key === key)) key = `${stem}_${i++}`;
+  return key;
+}
+
+function setSaveState(state, text) {
+  S.saveState = state;
+  const map = {
+    dirty: ['未保存', '#a16207'],
+    saving: ['保存中…', '#555555'],
+    saved: [text || '已保存', '#166534'],
+    error: ['保存失败', '#b91c1c'],
+  };
+  const [label, color] = map[state] || map.saved;
+  S.saveText = label;
+  const el = $('#saveState');
+  if (!el) return;
+  el.textContent = label;
+  el.style.color = color;
+  el.title = state === 'error' ? '点击重试保存' : '点击立即保存（Ctrl+S）';
+}
+
 function scheduleSave() {
+  setSaveState('dirty');
   clearTimeout(S.saveTimer);
-  S.saveTimer = setTimeout(save, 700);
+  S.saveTimer = setTimeout(() => save(true), 700);
 }
 
 async function save(silent) {
   if (!S.project) return;
-  const r = await api.save(S.project);
-  S.problems = r.problems || [];
-  renderSide();
-  if (!silent) toast(r.problems.length ? `已保存，但有 ${r.problems.length} 处问题` : '已保存');
+  setSaveState('saving');
+  try {
+    const r = await api.save(S.project);
+    S.problems = r.problems || [];
+    renderSide();
+    setSaveState('saved', S.problems.length ? `已保存 · ${S.problems.length} 问题` : '已保存');
+    if (!silent) toast(r.problems.length ? `已保存，但有 ${S.problems.length} 处问题` : '已保存');
+  } catch (err) {
+    setSaveState('error');
+    toast('保存失败：' + String(err && err.message || err), 5000);
+  }
 }
 
 /* ---------------- 渲染入口 ---------------- */
@@ -143,6 +183,9 @@ function render() {
 
 function renderRibbon() {
   const svc = S.services || { items: [], ports: {} };
+  const infra = svc.items.filter((x) => x.id !== 'server');
+  const up = infra.filter((x) => x.running).length;
+  const allUp = infra.length > 0 && up === infra.length;
   $('#ribbon').innerHTML = `
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('seed', 'new', '新建', '重置为示例工程')}
@@ -169,8 +212,8 @@ function renderRibbon() {
   </div><div class="lbl">脚本</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('startAll', 'play', '启动', '启动 MariaDB / Redis / RustFS')}
-    ${rb('stopAll', 'stop', '停止', '停止三台本地服务')}
+    ${rb(allUp ? 'stopAll' : 'startAll', allUp ? 'stop' : 'play', allUp ? '停止' : '启动', allUp ? '停止 MariaDB / Redis / RustFS' : '启动 MariaDB / Redis / RustFS')}
+    <div class="flex items-center gap-1 px-1 text-[10px] text-neutral-500" title="内置服务运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length}</div>
     ${rb('console', 'console', '控制台', '打开生成服务的控制台')}
     ${rb('microExport', 'package', '微服务', '按接口或分类导出独立服务')}
   </div><div class="lbl">服务</div></div>
@@ -204,12 +247,15 @@ function renderRibbon() {
 
 function renderSheets() {
   const tabs = S.project.categories.map((c) => `<div class="sheet ${S.mode === 'grid' && c.id === S.cat ? 'active' : ''}" data-sheet="${c.id}" title="双击重命名">${esc(c.name)}<span class="ml-2 text-neutral-400">${S.project.interfaces.filter((i) => i.categoryId === c.id).length}</span></div>`).join('');
+  const saveColor = { dirty: '#a16207', saving: '#555555', saved: '#166534', error: '#b91c1c' }[S.saveState] || '#166534';
+  const saveTitle = S.saveState === 'error' ? '点击重试保存' : '点击立即保存（Ctrl+S）';
   $('#sheetbar').innerHTML = `${tabs}
     <div class="sheet text-neutral-600" data-action="addCat">＋</div>
     <div class="ml-auto flex items-center gap-2 pr-2 text-[11px] text-neutral-500">
       <span class="mono">${S.project.interfaces.length} 接口</span>
       <span class="mono">${S.project.interfaces.reduce((n, i) => n + i.tables.length, 0)} 表</span>
       <span class="mono">${S.project.interfaces.reduce((n, i) => n + i.routes.length, 0)} 路由</span>
+      <span id="saveState" class="mono cursor-pointer" style="color:${saveColor}" title="${saveTitle}">${esc(S.saveText)}</span>
     </div>`;
   $$('#sheetbar .sheet[data-sheet]').forEach((el) => {
     el.addEventListener('click', () => { S.cat = el.dataset.sheet; S.mode = 'grid'; S.tab = 'tables'; render(); });
@@ -220,6 +266,8 @@ function renderSheets() {
       if (name) { cat.name = name; scheduleSave(); render(); }
     });
   });
+  const sv = $('#saveState');
+  if (sv) sv.onclick = () => save();
 }
 
 function renderSide() {
@@ -423,7 +471,7 @@ function tabTables(it) {
         <thead><tr><th class="rownum"></th><th>A 字段</th><th>B 类型</th><th>C 主键</th><th>D 自增</th><th>E 可空</th><th>F 搜索</th><th>G 隐藏</th><th>H 默认</th><th>I 注释</th><th style="width:56px">J</th></tr></thead>
         <tbody>
           ${t.fields.map((f, i) => `
-          <tr>
+          <tr data-field-row="${i}">
             <td class="rownum">${i + 1}</td>
             <td><input class="cell-in mono" data-fi="${i}" data-fk="name" value="${esc(f.name)}"></td>
             <td><select class="cell-in mono" data-fi="${i}" data-fk="type">${typeOptions(f.type)}</select></td>
@@ -662,15 +710,34 @@ function bindCache(it) {
 }
 
 /* ----- 测试 ----- */
+function runnerOptions() {
+  const list = (S.runtimes && S.runtimes.length) ? S.runtimes : [
+    { id: 'node', name: 'Node', available: true, note: '内置 Node.js' },
+    { id: 'bun', name: 'Bun', available: false, note: '未检测到 Bun' },
+    { id: 'java', name: 'Java', available: false, note: '语言版服务未接入' },
+    { id: 'go', name: 'Go', available: false, note: '语言版服务未接入' },
+  ];
+  return list.map((r) => {
+    const ver = String(r.version || '').replace(/^java version "?([^"\s]+)"?.*$/i, '$1').replace(/^go version go/i, '').replace(/^v/i, '').split(/\s+/)[0];
+    const label = `${r.name}${ver ? ' ' + ver : ''}${r.native === false && r.available ? '（启动器）' : ''}${r.available ? '' : '（不可用）'}`;
+    return `<option value="${r.id}" ${r.id === S.runner ? 'selected' : ''} ${r.available ? '' : 'disabled'} title="${esc(r.note || '')}">${esc(label)}</option>`;
+  }).join('');
+}
+
 function tabTest(it) {
+  const server = ((S.services && S.services.items) || []).find((x) => x.id === 'server') || {};
+  const running = !!server.running;
   return `
   <div class="h-full flex flex-col p-3 gap-2 text-[12px] overflow-auto">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
       <select id="tRoute" class="border border-neutral-300 px-1 py-1 mono">
         ${it.routes.map((r) => `<option value="${r.id}">${esc(r.method)} ${esc(r.path)} · ${esc(r.name)}</option>`).join('')}
       </select>
-      <input id="tId" class="border border-neutral-300 px-2 py-1 mono w-32" placeholder=":id 的值">
-      <button class="btn thin" data-action="startServer">启动生成服务</button>
+      <input id="tId" class="border border-neutral-300 px-2 py-1 mono w-28" placeholder=":id 的值">
+      <span class="flex items-center gap-1"><span class="dot ${running ? 'on' : 'off'}"></span>${running ? '运行中' : '已停止'}</span>
+      <select id="tRuntime" class="border border-neutral-300 px-1 py-1 mono" title="选择启动运行时">${runnerOptions()}</select>
+      <label class="flex items-center gap-1 cursor-pointer" title="监听文件变化并自动重启"><input id="tHot" type="checkbox" ${S.hot ? 'checked' : ''}>热部署</label>
+      <button class="btn thin" data-action="${running ? 'stopServer' : 'startServer'}">${running ? '停止服务' : '启动服务'}</button>
       <button class="btn thin" data-action="console">打开控制台</button>
       <button class="btn solid ml-auto" data-action="send">发送</button>
     </div>
@@ -689,21 +756,33 @@ function bindTest(it) {
   const route = it.routes.find((x) => x.id === S.routeId) || it.routes[0];
   $('#tRoute').value = route.id;
   $('#tRoute').onchange = (e) => { S.routeId = e.target.value; };
+  const rt = $('#tRuntime');
+  if (rt) {
+    rt.onchange = (e) => { S.runner = e.target.value; };
+  }
+  const hot = $('#tHot');
+  if (hot) {
+    hot.onchange = (e) => { S.hot = e.target.checked; };
+  }
 }
 
 /* ----- 导出 ----- */
 function tabExport(it) {
+  const server = ((S.services && S.services.items) || []).find((x) => x.id === 'server') || {};
+  const running = !!server.running;
   return `
   <div class="h-full flex flex-col p-3 gap-3 text-[12px] overflow-auto">
     <div class="help-h">生成服务</div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
       <button class="btn solid" data-action="generate">生成到 generated/iface</button>
       <button class="btn thin" data-action="exportProject">导出工程（IDEA）</button>
-      <button class="btn thin" data-action="startServer">启动服务（端口 ${S.settings.ports.http}）</button>
-      <button class="btn thin" data-action="stopServer">停止服务</button>
+      <span class="flex items-center gap-1"><span class="dot ${running ? 'on' : 'off'}"></span>${running ? '运行中' : '已停止'}</span>
+      <select id="eRuntime" class="border border-neutral-300 px-1 py-1 mono" title="选择启动运行时">${runnerOptions()}</select>
+      <label class="flex items-center gap-1 cursor-pointer" title="监听文件变化并自动重启"><input id="eHot" type="checkbox" ${S.hot ? 'checked' : ''}>热部署</label>
+      <button class="btn thin" data-action="${running ? 'stopServer' : 'startServer'}">${running ? '停止服务' : `启动服务（:${S.settings.ports.http}）`}</button>
       <button class="btn thin" data-action="console">打开控制台</button>
     </div>
-    <div class="text-[11px] text-neutral-500">导出工程会新建一个独立目录，带 <span class="mono">.idea</span> 配置和启动配置，IDEA 里 File → Open 直接打开。</div>
+    <div class="text-[11px] text-neutral-500">导出工程会新建一个独立目录，带 <span class="mono">.idea</span> 配置、启动配置和 <span class="mono">dev.js</span> 热部署脚本；IDEA 里 File → Open 直接打开。</div>
     <div class="mono text-[11px] break-all">${esc(S.genDir || '还没有生成')}</div>
 
     <div class="help-h">生成物</div>
@@ -739,6 +818,10 @@ function tabExport(it) {
 }
 
 function bindExport(it) {
+  const rt = $('#eRuntime');
+  if (rt) rt.onchange = (e) => { S.runner = e.target.value; };
+  const hot = $('#eHot');
+  if (hot) hot.onchange = (e) => { S.hot = e.target.checked; };
   $$('[data-fn]').forEach((el) => {
     const i = Number(el.dataset.fn);
     const k = el.dataset.ff;
@@ -929,14 +1012,20 @@ async function act(name, el) {
     const n = await ask('新表名字', 'new_table', '表键会自动生成，脚本里按表键引用；中文名会自动转成安全表名');
     if (!n) return;
     const safe = await api.ident(n, 'tbl');
-    let key = safe.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'table';
-    if (it.tables.some((t) => t.key === key)) {
-      const base = key.replace(/(?:_\d+)+$/, '') || 'table';
-      let i = 2;
-      do { key = `${base}_${i++}`; } while (it.tables.some((t) => t.key === key));
-    }
+    const key = nextTableKey(it, safe);
     it.tables.push({ key, name: safe, schema: '', comment: '', fields: defaultFields() });
     S.tableKey = key; S.tab = 'tables'; scheduleSave(); renderWorkspace();
+    return;
+  }
+  if (name === 'dupTable' && it) {
+    const t = tableOfIface(it, S.tableKey);
+    const copy = JSON.parse(JSON.stringify(t));
+    copy.key = nextTableKey(it, t.key);
+    copy.name = `${t.name}_copy`;
+    copy.comment = `${t.comment || ''}（副本）`;
+    it.tables.push(copy);
+    S.tableKey = copy.key; S.tab = 'tables'; scheduleSave(); renderWorkspace();
+    toast(`已复制表结构为「${copy.key}」`);
     return;
   }
   if (name === 'delTable' && it) {
@@ -1037,13 +1126,14 @@ async function act(name, el) {
   }
   if (name === 'startServer') {
     if (!S.genDir) { toast('先点“生成服务”'); return; }
-    const r = await api.startServer(S.genDir);
+    const r = await api.startServer(S.genDir, { runtime: S.runner, hot: S.hot });
     if (r.ok === false) toast(r.error || '启动失败');
-    else toast(`服务已启动 :${(S.settings.ports || {}).http}`);
-    S.services = await api.services(); renderRibbon(); renderSide();
+    else if (r.already) toast('服务已经在运行');
+    else toast(`服务已启动 :${(S.settings.ports || {}).http}${r.hot ? ' · 热部署' : ''}${r.runtime && r.runtime !== 'node' ? ' · ' + r.runtime : ''}`);
+    S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace();
     return;
   }
-  if (name === 'stopServer') { await api.stopServer(); S.services = await api.services(); renderRibbon(); renderSide(); toast('已停止服务'); return; }
+  if (name === 'stopServer') { await api.stopServer(); S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace(); toast('已停止服务'); return; }
   if (name === 'startAll') { await api.startService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已启动三台服务'); return; }
   if (name === 'stopAll') { await api.stopService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已停止'); return; }
   if (name === 'console') { await api.console(); return; }
@@ -1054,24 +1144,37 @@ async function act(name, el) {
     return;
   }
   if (name === 'exportProject') {
-    const r = await api.exportProject(S.project);
-    if (!r) return;
-    if (!r.ok) return toast('导出失败：' + String(r.error || '').slice(0, 160), 6000);
-    S.exportDir = r.dir;
-    modal(`<div class="p-4">
-      <div class="text-[13px] font-semibold mb-2">工程已导出 · ${r.files.length} 个文件</div>
-      <div class="text-[11px] text-neutral-500 mb-1 mono break-all">${esc(r.dir)}</div>
-      <div class="text-[11px] text-neutral-600 mb-3">已带 <span class="mono">.idea</span> 工程配置和「启动接口服务」运行配置。</div>
-      <div class="text-[11px] text-neutral-500 mb-4">先 <span class="mono">npm install</span>，再在 IDEA 里运行；数据库、Redis、S3 地址在 <span class="mono">.env</span>。</div>
-      <div class="flex justify-end gap-2">
-        <button class="btn thin" id="epOpen">打开目录</button>
-        <button class="btn solid" id="epIdea">用 IDEA 打开</button>
-      </div></div>`, (m) => {
-      m.querySelector('#epOpen').onclick = () => api.openPath(r.dir);
-      m.querySelector('#epIdea').onclick = async () => {
-        const got = await api.openInIdea(r.dir);
-        if (got.ok) { closeModal(); toast('已交给 IntelliJ IDEA 打开', 3500); }
-        else { toast(got.error || '没有找到 IDEA，已打开目录', 6000); api.openPath(r.dir); }
+    const errCfg = S.project.errors || {};
+    modal(`<div class="p-4 w-[420px]">
+      <div class="text-[13px] font-semibold mb-3">导出工程</div>
+      <label class="flex items-start gap-2 py-2 cursor-pointer"><input id="epPages" type="checkbox" ${errCfg.pages === false ? '' : 'checked'} class="mt-0.5"><span><b class="text-[12px]">生成 404 / 500 错误页</b><span class="block text-[11px] text-neutral-500">浏览器打开时显示黑白错误页，API 客户端仍收到 JSON。</span></span></label>
+      <label class="flex items-start gap-2 py-2 cursor-pointer"><input id="epDetail" type="checkbox" ${errCfg.detail === false ? '' : 'checked'} class="mt-0.5"><span><b class="text-[12px]">500 页面显示错误详情</b><span class="block text-[11px] text-neutral-500">关闭后只显示状态码和 traceId，堆栈写日志。</span></span></label>
+      <div class="text-[11px] text-neutral-500 mt-1 mb-3">导出同时带 <span class="mono">dev.js</span> 热部署入口（<span class="mono">node dev.js</span>）。</div>
+      <div class="flex justify-end gap-2"><button class="btn thin" id="epCancel">取消</button><button class="btn solid" id="epGo">导出</button></div></div>`, (m) => {
+      m.querySelector('#epCancel').onclick = closeModal;
+      m.querySelector('#epGo').onclick = async () => {
+        const errors = { pages: !!m.querySelector('#epPages').checked, detail: !!m.querySelector('#epDetail').checked };
+        closeModal();
+        const r = await api.exportProject(S.project, { errors });
+        if (!r) return;
+        if (!r.ok) return toast('导出失败：' + String(r.error || '').slice(0, 160), 6000);
+        S.exportDir = r.dir;
+        modal(`<div class="p-4">
+          <div class="text-[13px] font-semibold mb-2">工程已导出 · ${r.files.length} 个文件</div>
+          <div class="text-[11px] text-neutral-500 mb-1 mono break-all">${esc(r.dir)}</div>
+          <div class="text-[11px] text-neutral-600 mb-3">已带 <span class="mono">.idea</span> 工程配置和「启动接口服务」运行配置；错误页：${errors.pages ? '开' : '关'}，500 详情：${errors.detail ? '开' : '关'}。</div>
+          <div class="text-[11px] text-neutral-500 mb-4">先 <span class="mono">npm install</span>，再在 IDEA 里运行；数据库、Redis、S3 地址在 <span class="mono">.env</span>。</div>
+          <div class="flex justify-end gap-2">
+            <button class="btn thin" id="epOpen">打开目录</button>
+            <button class="btn solid" id="epIdea">用 IDEA 打开</button>
+          </div></div>`, (mm) => {
+          mm.querySelector('#epOpen').onclick = () => api.openPath(r.dir);
+          mm.querySelector('#epIdea').onclick = async () => {
+            const got = await api.openInIdea(r.dir);
+            if (got.ok) { closeModal(); toast('已交给 IntelliJ IDEA 打开', 3500); }
+            else { toast(got.error || '没有找到 IDEA，已打开目录', 6000); api.openPath(r.dir); }
+          };
+        });
       };
     });
     return;
@@ -1384,9 +1487,33 @@ $('#search').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { const first = $('#searchPanel [data-res]'); if (first) first.click(); }
 });
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#search').focus(); }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
-  if (e.key === 'Escape') { closeModal(); $('#searchPanel').classList.add('hidden'); }
+  const typing = e.target.closest('input, textarea, select, [contenteditable="true"]');
+  const modalOpen = !$('#modal').classList.contains('hidden');
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#search').focus(); $('#search').select(); return; }
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+  if (mod && !typing && !modalOpen && e.key.toLowerCase() === 'n') {
+    e.preventDefault();
+    if (e.shiftKey) act('addCat'); else act('newIface');
+    return;
+  }
+  if (mod && !typing && !modalOpen && e.key === 'Enter') { e.preventDefault(); act('generate'); return; }
+  if (!typing && !modalOpen && e.key === 'F2' && S.selId) {
+    e.preventDefault();
+    const it = activeIface();
+    if (it) ask('接口名', it.name).then((n) => { if (n) { it.name = n; scheduleSave(); render(); } });
+    return;
+  }
+  if (!typing && !modalOpen && S.mode === 'grid' && S.selId && e.key === 'Delete') {
+    e.preventDefault(); act('delIface'); return;
+  }
+  if (e.key === 'Escape') {
+    if (modalOpen) { closeModal(); return; }
+    const sp = $('#searchPanel');
+    if (sp && !sp.classList.contains('hidden')) { sp.classList.add('hidden'); return; }
+    if (!$('#ctxmenu').classList.contains('hidden')) { closeCtx(); return; }
+    if (S.mode === 'editor' && !typing) { S.mode = 'grid'; render(); }
+  }
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#search') && !e.target.closest('#searchPanel')) $('#searchPanel').classList.add('hidden');
@@ -1526,42 +1653,119 @@ function showMonitor() {
 }
 
 /* ---------------- 右键菜单 ---------------- */
+function closeCtx() {
+  const box = $('#ctxmenu');
+  if (box) box.classList.add('hidden');
+}
+
+function copyText(text) {
+  const s = String(text == null ? '' : text);
+  if (!s) return toast('没有可复制的内容');
+  (navigator.clipboard ? navigator.clipboard.writeText(s) : Promise.reject(new Error('剪贴板不可用')))
+    .then(() => toast(`已复制：${s.length > 36 ? s.slice(0, 36) + '…' : s}`))
+    .catch(() => toast('复制失败，请手动选中'));
+}
+
 function openCtx(x, y, items) {
   const box = $('#ctxmenu');
-  box.innerHTML = items.map((it, i) => `<div class="px-3 py-1.5 cursor-pointer hover:bg-neutral-900 hover:text-white" data-ctx="${i}">${esc(it.label)}</div>`).join('');
-  box.style.left = Math.min(x, window.innerWidth - 200) + 'px';
-  box.style.top = Math.min(y, window.innerHeight - items.length * 30 - 10) + 'px';
+  box.innerHTML = items.map((it, i) => {
+    if (it.sep) return '<div style="height:1px;background:#e5e5e5;margin:4px 0"></div>';
+    const color = it.danger ? '#b91c1c' : '';
+    const disabled = it.disabled ? 'opacity:.38;cursor:default' : '';
+    return `<div class="px-3 py-1.5 flex items-center gap-5" style="white-space:nowrap;${color ? `color:${color};` : ''}${disabled}" data-ctx="${i}" ${it.disabled ? 'data-disabled="1"' : ''}>
+      <span class="flex-1">${esc(it.label)}</span>${it.hint ? `<span class="text-[10px] text-neutral-400 mono">${esc(it.hint)}</span>` : ''}
+    </div>`;
+  }).join('');
   box.classList.remove('hidden');
+  box.style.left = '0px'; box.style.top = '0px';
+  box.style.minWidth = '220px'; box.style.maxWidth = '320px';
+  const w = box.offsetWidth || 220;
+  const h = box.offsetHeight || 40;
+  box.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 12)) + 'px';
+  box.style.top = Math.max(8, Math.min(y, window.innerHeight - h - 12)) + 'px';
   box.querySelectorAll('[data-ctx]').forEach((el) => {
-    el.onclick = () => { box.classList.add('hidden'); const fn = items[Number(el.dataset.ctx)].run; if (fn) fn(); };
+    const item = items[Number(el.dataset.ctx)];
+    if (!item || item.disabled) return;
+    el.onmouseenter = () => { el.style.background = '#171717'; el.style.color = '#fff'; };
+    el.onmouseleave = () => { el.style.background = ''; el.style.color = item.danger ? '#b91c1c' : ''; };
+    el.onclick = () => { closeCtx(); const fn = item.run; if (fn) Promise.resolve(fn()).catch((e) => toast(String(e && e.message || e), 5000)); };
   });
 }
 document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
   const sheet = e.target.closest('#sheetbar .sheet[data-sheet]');
   const row = e.target.closest('#workspace tr[data-iface]');
   const routeEl = e.target.closest('#routeList [data-route], [data-route]');
-  if (!sheet && !row && !routeEl) return;
+  const tableEl = e.target.closest('#tableTabs [data-table]');
+  const fieldRow = e.target.closest('#workspace tr[data-field-row]');
+  const inWorkspace = e.target.closest('#workspace') || e.target.closest('#sheetbar');
+  if (!sheet && !row && !routeEl && !tableEl && !fieldRow && !inWorkspace) return;
   e.preventDefault();
-  const close = () => $('#ctxmenu').classList.add('hidden');
-  setTimeout(close, 4000);
+  closeCtx();
+
   if (row) {
     const iface = S.project.interfaces.find((x) => x.id === row.dataset.iface);
     S.selId = iface.id;
     openCtx(e.clientX, e.clientY, [
-      { label: '打开接口', run: () => openIface(iface.id) },
-      { label: '复制接口（自动编号）', run: () => act('dupIface') },
+      { label: '打开接口', hint: '双击', run: () => openIface(iface.id) },
+      { label: '复制接口', hint: '自动编号', run: () => act('dupIface') },
       { label: '导出此接口为微服务', run: () => showMicroExport(iface.id) },
+      { sep: true },
       { label: '重命名', run: async () => { const n = await ask('接口名', iface.name); if (n) { iface.name = n; scheduleSave(); render(); } } },
-      { label: '删除接口', run: () => act('delIface') },
+      { label: '删除接口', danger: true, run: () => act('delIface') },
     ]);
-  } else if (sheet) {
+    return;
+  }
+  if (sheet) {
     const cat = S.project.categories.find((c) => c.id === sheet.dataset.sheet);
     openCtx(e.clientX, e.clientY, [
       { label: '重命名分类', run: async () => { const n = await ask('分类名', cat.name); if (n) { cat.name = n; scheduleSave(); render(); } } },
       { label: '在此分类新建接口', run: async () => { S.cat = cat.id; await act('newIface'); } },
+      { sep: true },
       { label: '导出 .yxpn', run: () => act('exportYxpn') },
     ]);
-  } else if (routeEl) {
+    return;
+  }
+  if (tableEl) {
+    const it = activeIface();
+    const key = tableEl.dataset.table;
+    const t = tableOfIface(it, key);
+    openCtx(e.clientX, e.clientY, [
+      { label: '切换到此表', run: () => { S.tableKey = key; renderWorkspace(); } },
+      { label: '复制表结构', run: () => { S.tableKey = key; act('dupTable'); } },
+      { label: '复制表键', hint: t.key, run: () => copyText(t.key) },
+      { sep: true },
+      { label: '看 DDL', run: () => { S.tableKey = key; renderWorkspace(); act('ddl'); } },
+      { label: '删除此表', danger: true, disabled: it.tables.length <= 1, run: () => { S.tableKey = key; act('delTable'); } },
+    ]);
+    return;
+  }
+  if (fieldRow) {
+    const it = activeIface();
+    const t = tableOfIface(it, S.tableKey);
+    const i = Number(fieldRow.dataset.fieldRow);
+    const f = t.fields[i];
+    if (!f) return;
+    openCtx(e.clientX, e.clientY, [
+      { label: '复制字段名', hint: f.name, run: () => copyText(f.name) },
+      { label: '复制此字段', run: () => {
+        const copy = JSON.parse(JSON.stringify(f));
+        let name = `${f.name}_copy`; let n = 2;
+        while (t.fields.some((x) => x.name === name)) name = `${f.name}_copy_${n++}`;
+        copy.name = name; copy.pk = false; copy.autoIncrement = false;
+        t.fields.splice(i + 1, 0, copy); scheduleSave(); renderWorkspace();
+        toast(`已复制字段「${name}」`);
+      } },
+      { sep: true },
+      { label: '在末尾加字段', run: () => act('addField') },
+      { label: '删除此字段', danger: true, disabled: t.fields.length <= 1, run: async () => {
+        if (!(await confirmBox('删除字段', `确定删掉「${f.name}」？`))) return;
+        t.fields.splice(i, 1); scheduleSave(); renderWorkspace();
+      } },
+    ]);
+    return;
+  }
+  if (routeEl) {
     const it = activeIface();
     const id = routeEl.dataset.route;
     openCtx(e.clientX, e.clientY, [
@@ -1573,11 +1777,45 @@ document.addEventListener('contextmenu', (e) => {
         copy.name = r.name + '2'; copy.path = r.path + '-2';
         it.routes.push(copy); S.routeId = copy.id; scheduleSave(); renderWorkspace();
       } },
-      { label: '删除路由', run: () => { S.routeId = id; act('delRoute'); } },
+      { label: '删除路由', danger: true, run: () => { S.routeId = id; act('delRoute'); } },
     ]);
+    return;
   }
+
+  // 空白区域：不再“右键没反应”
+  const editor = S.mode === 'editor';
+  const items = editor ? [
+    { label: '添加字段', run: () => act('addField') },
+    { label: '新增表', run: () => act('addTable') },
+    { label: '复制当前表结构', run: () => act('dupTable') },
+    { label: '看当前表 DDL', run: () => act('ddl') },
+    { sep: true },
+    { label: '路由脚本', run: () => { S.tab = 'routes'; renderWorkspace(); } },
+    { label: '接口文档', run: () => { S.tab = 'docs'; renderWorkspace(); } },
+    { label: '测试', run: () => { S.tab = 'test'; renderWorkspace(); } },
+    { label: '生成导出', run: () => { S.tab = 'export'; renderWorkspace(); } },
+    { sep: true },
+    { label: '生成服务', hint: 'Ctrl+Enter', run: () => act('generate') },
+    { label: '导出工程', run: () => act('exportProject') },
+    { label: '保存', hint: 'Ctrl+S', run: () => save() },
+  ] : [
+    { label: '新建接口', hint: 'Ctrl+N', run: () => act('newIface') },
+    { label: '新建分类', hint: 'Ctrl+Shift+N', run: () => act('addCat') },
+    { sep: true },
+    { label: '导入 .yxpn', run: () => act('importYxpn') },
+    { label: '导出工程', run: () => act('exportProject') },
+    { label: '生成服务', hint: 'Ctrl+Enter', run: () => act('generate') },
+    { label: '打开生成目录', disabled: !S.genDir, run: () => api.openPath(S.genDir) },
+    { sep: true },
+    { label: '全局搜索', hint: 'Ctrl+K', run: () => { $('#search').focus(); $('#search').select(); } },
+    { label: '主题', run: () => act('theme') },
+    { label: '保存', hint: 'Ctrl+S', run: () => save() },
+  ];
+  openCtx(e.clientX, e.clientY, items);
 });
-document.addEventListener('click', (e) => { if (!e.target.closest('#ctxmenu')) $('#ctxmenu').classList.add('hidden'); });
+document.addEventListener('click', (e) => { if (!e.target.closest('#ctxmenu')) closeCtx(); });
+window.addEventListener('resize', closeCtx);
+window.addEventListener('blur', closeCtx);
 
 /* ---------------- 窗口按钮（无边框自绘标题栏） ---------------- */
 function bindWindowControls() {
@@ -1741,6 +1979,7 @@ $('#yxppAttach').onclick = () => attachStudioToProject().catch((e) => toast(e.me
     S.list = b.list;
     S.services = b.services;
     S.settings = b.settings;
+    try { S.runtimes = await api.runtimes(); } catch (e) { S.runtimes = []; }
     applyTheme(S.settings.theme || {});
     const wanted = new URLSearchParams(location.search).get('project');
     if (wanted && wanted !== S.project.name) {

@@ -43,6 +43,17 @@ npm start
 数据库、Redis、S3 连接在 \`.env\` 里改；本机没装这三样时，先在 ClickBuild 里启动内置服务。
 
 工程里的 \`server.js\` 是入口，\`src/modules/\` 每个目录是一个接口模块，\`src/\` 还有解释器，\`sql/\` 是建表脚本，\`docs/\` 是接口文档，\`export/\` 是每条路由的 JS / Java / Go 参考实现。
+
+## 启动方式
+
+- Node：\`node server.js\`；热部署：\`node dev.js\`（监听 src/public/sql/interfaces.json 自动重启）。
+- Bun：\`bun server.js\`；热部署：\`bun dev.js\`。
+- Java 启动器（JDK 11+）：\`java launcher/Server.java\`；热部署传 \`dev.js\`。
+- Go 启动器：\`go run launcher/main.go\`；热部署传 \`dev.js\`。
+
+## 错误页
+
+浏览器请求 404/500 默认显示错误页，API 客户端仍收到 JSON。预览：\`/_errors/404\`、\`/_errors/500\`；导出时可以在 ClickBuild 里关闭错误页或 500 详情。
 `;
 }
 
@@ -58,6 +69,7 @@ daemon/daemon.log
 
 function writeProject(project, parentDir, opts) {
   const p = spec.normalizeProject(project);
+  if (opts && opts.errors) p.errors = { ...p.errors, ...opts.errors };
   const parent = parentDir || os.tmpdir();
   const dir = uniqueDir(parent, p.name);
   const gen = codegen.writeTo(p, dir, { port: (opts && opts.port) || codegen.DEFAULT_PORTS.http, ide: true });

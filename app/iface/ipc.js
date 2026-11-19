@@ -151,7 +151,8 @@ function registerIpc() {
   ipcMain.handle('iface:services:logs', (e, id) => services.logs(id));
   ipcMain.handle('iface:ports:set', (e, patch) => services.setPorts(patch));
 
-  ipcMain.handle('iface:server:start', async (e, dir) => services.startServer(dir));
+  ipcMain.handle('iface:server:start', async (e, dir, opts) => services.startServer(dir, opts || {}));
+  ipcMain.handle('iface:runtimes', () => services.runtimes());
   ipcMain.handle('iface:server:stop', async () => services.stopServer());
   ipcMain.handle('iface:server:logs', () => services.logs('server'));
 
@@ -178,7 +179,7 @@ function registerIpc() {
       parent = r.filePaths[0];
     }
     try {
-      return projectExport.writeProject(project, parent, { port: services.settings().ports.http });
+      return projectExport.writeProject(project, parent, { port: services.settings().ports.http, errors: o.errors || null });
     } catch (err) { return { ok: false, error: err.message }; }
   });
 

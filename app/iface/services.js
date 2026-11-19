@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
-const { spawn } = require('child_process');
+const { spawn, execFileSync, spawnSync } = require('child_process');
 const store = require('../store');
 
 const PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
@@ -103,7 +103,7 @@ async function status() {
       { id: 'mysql', name: 'MariaDB', port: ports.mysql, running: mysqlOpen, pid: state.mysql.pid || null, note: 'skip-grant-tables 本地测试实例' },
       { id: 'redis', name: 'Redis', port: ports.redis, running: redisOpen, pid: state.redis.pid || null, note: 'Cygwin 构建，RedisService 托管' },
       { id: 's3', name: 'RustFS', port: ports.s3, running: s3Open, pid: state.s3.pid || null, note: `S3 兼容，控制台 ${ports.s3Console}` },
-      { id: 'server', name: '生成的服务', port: ports.http, running: httpOpen, pid: state.server.pid || null, dir: state.server.dir },
+      { id: 'server', name: '生成的服务', port: ports.http, running: httpOpen, pid: state.server.pid || null, dir: state.server.dir, hot: !!state.server.hot, runtime: state.server.runtime || 'node' },
     ],
   };
 }
@@ -220,11 +220,72 @@ function nodeBin() {
   return 'node';
 }
 
-async function startServer(dir) {
+function which(cmd) {
+  try {
+    const out = execFileSync('where.exe', [cmd], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    return String(out).split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function probe(exe, args) {
+  if (!exe) return '';
+  try {
+    // .cmd 不能直接 spawn（Windows 会 EINVAL）；用 cmd /c 按 PATH 里的命令名执行
+    const isCmd = /\.(cmd|bat)$/i.test(exe);
+    const cmd = isCmd ? 'cmd.exe' : exe;
+    const cmdArgs = isCmd ? ['/d', '/c', [path.basename(exe, path.extname(exe)), ...args].join(' ')] : args;
+    const r = spawnSync(cmd, cmdArgs, { encoding: 'utf8', windowsHide: true, timeout: 8000 });
+    const text = String((r.stdout || '') + (r.stderr || ''));
+    return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function runtimes() {
+  const node = nodeBin();
+  const bun = which('bun.exe') || which('bun.cmd') || which('bun');
+  const java = which('java.exe') || which('java');
+  const go = which('go.exe') || which('go.cmd') || which('go');
+  return [
+    // 显示真正用来跑服务的 node.exe 版本，而不是 Electron 内置的 process.version
+    { id: 'node', name: 'Node', version: probe(node, ['--version']) || process.version, path: node, available: fs.existsSync(node) || node === 'node', native: true, note: '内置 Node.js，直接运行 server.js' },
+    { id: 'bun', name: 'Bun', version: probe(bun, ['--version']), path: bun, available: !!bun, native: true, note: '需要系统已安装 Bun，兼容 Node API' },
+    { id: 'java', name: 'Java', version: probe(java, ['-version']), path: java, available: !!java, native: false, note: 'Java 启动器，内核仍为 Node' },
+    { id: 'go', name: 'Go', version: probe(go, ['version']), path: go, available: !!go, native: false, note: 'Go 启动器，内核仍为 Node' },
+  ];
+}
+
+async function startServer(dir, opts) {
   const { ports } = settings();
-  if (state.server.child && !state.server.child.killed) return { ok: true, already: true, pid: state.server.pid };
-  const res = spawnSvc('server', nodeBin(), ['server.js'], {
+  if (state.server.child && !state.server.child.killed) return { ok: true, already: true, pid: state.server.pid, hot: state.server.hot, runtime: state.server.runtime };
+  const o = opts || {};
+  const runtime = o.runtime || 'node';
+  const hot = !!o.hot;
+  if (!['node', 'bun', 'java', 'go'].includes(runtime)) return { ok: false, error: `暂不支持 ${runtime} 运行时` };
+  let exe = nodeBin();
+  let args = [hot && fs.existsSync(path.join(dir, 'dev.js')) ? 'dev.js' : 'server.js'];
+  if (runtime === 'bun') {
+    exe = which('bun.exe') || which('bun.cmd') || which('bun');
+    if (!exe) return { ok: false, error: '没有找到 Bun，请先安装 Bun 或切换到 Node' };
+  } else if (runtime === 'java') {
+    exe = which('java.exe') || which('java');
+    if (!exe) return { ok: false, error: '没有找到 Java，请先安装 JDK 11+ 或切换到 Node' };
+    if (!fs.existsSync(path.join(dir, 'launcher', 'Server.java'))) return { ok: false, error: '生成目录缺少 launcher/Server.java，请重新生成服务' };
+    args = ['launcher/Server.java', hot ? 'dev.js' : 'server.js'];
+  } else if (runtime === 'go') {
+    exe = which('go.exe') || which('go');
+    if (!exe) return { ok: false, error: '没有找到 Go，请先安装 Go 或切换到 Node' };
+    if (!fs.existsSync(path.join(dir, 'launcher', 'main.go'))) return { ok: false, error: '生成目录缺少 launcher/main.go，请重新生成服务' };
+    args = ['run', 'launcher/main.go', hot ? 'dev.js' : 'server.js'];
+  }
+  const entry = args[args.length - 1];
+  if (!fs.existsSync(path.join(dir, entry))) return { ok: false, error: `生成目录里找不到 ${entry}` };
+  const res = spawnSvc('server', exe, args, {
     cwd: dir,
+    shell: /\.(cmd|bat)$/i.test(exe),
     env: {
       ...process.env,
       PORT: String(ports.http),
@@ -242,11 +303,15 @@ async function startServer(dir) {
       S3_SECRET_KEY: 'clickbuild123',
       S3_SSL: 'false',
       NODE_PATH: store.nodeModulesRoot(),
+      NODE_BIN: nodeBin(),
+      HOT_RELOAD: hot ? '1' : '0',
     },
   });
   state.server.dir = dir;
+  state.server.hot = hot;
+  state.server.runtime = runtime;
   if (res.ok) await waitPort(ports.http, 20000);
-  return { ...res, port: ports.http };
+  return { ...res, port: ports.http, hot, runtime, entry };
 }
 
 async function stopServer() {
@@ -276,5 +341,5 @@ function setPorts(patch) {
 
 module.exports = {
   PORTS, settings, status, startMysql, startRedis, startS3, startAll, stopOne, stopAll, logs, setPorts, isPortOpen, waitPort,
-  startServer, stopServer,
+  runtimes, startServer, stopServer,
 };

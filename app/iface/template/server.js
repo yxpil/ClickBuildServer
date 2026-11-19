@@ -52,6 +52,9 @@ const CFG = {
 };
 
 const project = JSON.parse(fs.readFileSync(path.join(ROOT, 'interfaces.json'), 'utf8'));
+const ERR_CFG = project.errors || {};
+const ERR_PAGES = process.env.ERROR_PAGES == null ? ERR_CFG.pages !== false : String(process.env.ERROR_PAGES) !== 'false';
+const ERR_DETAIL = process.env.ERROR_DETAIL == null ? ERR_CFG.detail !== false : String(process.env.ERROR_DETAIL) !== 'false';
 let IFACES = [];
 try {
   IFACES = require(path.join(ROOT, 'src', 'modules'));
@@ -251,6 +254,50 @@ function send(res, status, body, extra) {
     ...(extra || {}),
   });
   res.end(payload);
+}
+
+function wantsHtml(req) {
+  const accept = String(req.headers.accept || '').toLowerCase();
+  return accept.includes('text/html') && !accept.includes('application/json');
+}
+
+function errorHtml(status, title, message, detail, traceId) {
+  const color = status >= 500 ? '#b91c1c' : '#111111';
+  const detailHtml = ERR_DETAIL && detail
+    ? `<pre class="detail">${esc(detail)}</pre>`
+    : '';
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${status} · ${esc(title)}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f4f2;color:#111;font:14px/1.65 -apple-system,Segoe UI,"Microsoft YaHei",sans-serif}
+.card{width:min(720px,calc(100vw - 40px));background:#fff;border:1px solid #d4d4d4;border-left:5px solid ${color};padding:34px 38px 30px;box-shadow:0 18px 50px rgba(0,0,0,.08)}
+.code{font:700 56px/1 ui-monospace,Consolas,monospace;letter-spacing:-2px;color:${color}}
+h1{font-size:20px;margin:16px 0 8px;font-weight:650}.msg{color:#555;margin:0 0 18px;word-break:break-all}
+.meta{display:flex;flex-wrap:wrap;gap:8px 20px;color:#777;font-size:12px;font-family:ui-monospace,Consolas,monospace}
+.links{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap}
+a{color:#111;border:1px solid #111;padding:7px 13px;text-decoration:none;font-size:12px}a:hover{background:#111;color:#fff}
+.detail{margin:18px 0 0;padding:12px;border:1px solid #e5e5e5;background:#fafafa;max-height:220px;overflow:auto;font:12px/1.55 ui-monospace,Consolas,monospace;white-space:pre-wrap;color:#444}
+.note{margin-top:18px;color:#999;font-size:11px}
+</style></head><body><main class="card">
+<div class="code">${status}</div><h1>${esc(title)}</h1><p class="msg">${esc(message)}</p>
+<div class="meta"><span>${esc(new Date().toISOString())}</span><span>traceId ${esc(traceId || '-')}</span></div>
+${detailHtml}
+<div class="links"><a href="/">控制台</a><a href="/docs">接口文档</a><a href="/_routes">路由清单</a><a href="/_logs">最近日志</a></div>
+<div class="note">由 ClickBuild 生成的服务 · 浏览器打开时显示错误页，API 客户端仍收到 JSON</div>
+</main></body></html>`;
+}
+
+function sendError(req, res, status, body, title, detail) {
+  if (ERR_PAGES && wantsHtml(req)) {
+    res.writeHead(status, {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+    });
+    return res.end(errorHtml(status, title || (status === 404 ? '没有找到这个页面' : '服务内部错误'), (body && body.message) || '', detail || '', body && body.traceId));
+  }
+  return send(res, status, body);
 }
 
 function readBody(req) {
@@ -581,7 +628,7 @@ async function handle(req, res, item) {
     } catch (e) {
       await txRollbackAll('开启失败');
       logPush({ level: 'ERROR', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 500, ms: Date.now() - started, ip, traceId, message: '开启事务失败', data: { error: e.message } });
-      return send(res, 500, { ok: false, error: 'TX_BEGIN_FAILED', message: e.message, traceId });
+      return sendError(req, res, 500, { ok: false, error: 'TX_BEGIN_FAILED', message: e.message, traceId }, '服务内部错误', e.stack);
     }
   }
 
@@ -658,7 +705,7 @@ async function handle(req, res, item) {
     }
   }
   if (commitFailure) {
-    return send(res, 500, { ok: false, error: 'CROSS_TX_COMMIT_FAILED', message: '提交阶段失败，部分连接已提交，已记录 FATAL 日志', traceId });
+    return sendError(req, res, 500, { ok: false, error: 'CROSS_TX_COMMIT_FAILED', message: '提交阶段失败，部分连接已提交，已记录 FATAL 日志', traceId }, '服务内部错误');
   }
 
   logs.push(...(result.logs || []));
@@ -674,7 +721,7 @@ async function handle(req, res, item) {
 
   const outBody = result.body && typeof result.body === 'object' ? result.body : {};
   const failed = status >= 400 || outBody.ok === false;
-  return send(res, status, {
+  const out = {
     ok: !failed,
     ...(failed ? { error: outBody.error || 'ERROR', message: outBody.message || undefined } : {}),
     data: result.body,
@@ -683,7 +730,9 @@ async function handle(req, res, item) {
     traceId,
     ...(uploaded ? { file: uploaded } : {}),
     ...(logs.length ? { logs } : {}),
-  });
+  };
+  if (status >= 500) return sendError(req, res, status, out, '服务内部错误', outBody.message || '');
+  return send(res, status, out);
 }
 
 // ---------------- 文档 ----------------
@@ -862,6 +911,11 @@ const server = http.createServer(async (req, res) => {
   const pathname = decodeURIComponent(url.pathname);
 
   try {
+    if (pathname === '/_errors/404') {
+      const traceId = crypto.randomBytes(6).toString('hex');
+      return sendError(req, res, 404, { ok: false, error: 'NO_ROUTE', message: '这是 404 页面预览', traceId }, '没有找到这个页面');
+    }
+    if (pathname === '/_errors/500') throw new Error('这是 500 页面预览：模拟服务端异常');
     if (pathname === '/_health') {
       let mysqlOk = false, redisOk = false, s3Ok = false;
       try { const c = await (await poolFor('main')).pool.getConnection(); await c.query('SELECT 1'); c.release(); mysqlOk = true; } catch (e) {}
@@ -924,16 +978,20 @@ const server = http.createServer(async (req, res) => {
 
     const item = matchRoute(req.method, pathname);
     if (!item) {
-      return send(res, 404, {
+      const traceId = crypto.randomBytes(6).toString('hex');
+      return sendError(req, res, 404, {
         ok: false, error: 'NO_ROUTE', message: `${req.method} ${pathname} 没有匹配到接口路由`,
-        hint: '打开 /_routes 看全部路由，/docs 看文档',
-      });
+        hint: '打开 /_routes 看全部路由，/docs 看文档', traceId,
+      }, '没有找到这个页面');
     }
     return await handle(req, res, item);
   } catch (e) {
-    console.error('[error]', req.method, req.url, e);
-    logPush({ level: 'ERROR', ts: stamp(), method: req.method, pathname, status: 500, ms: 0, message: e.message });
-    return send(res, 500, { ok: false, error: 'INTERNAL', message: e.message, stack: String(e.stack || '').split('\n').slice(0, 4) });
+    const traceId = crypto.randomBytes(6).toString('hex');
+    console.error('[error]', traceId, req.method, req.url, e);
+    logPush({ level: 'ERROR', ts: stamp(), method: req.method, pathname, status: 500, ms: 0, message: e.message, traceId });
+    return sendError(req, res, 500, {
+      ok: false, error: 'INTERNAL', message: e.message, stack: String(e.stack || '').split('\n').slice(0, 4), traceId,
+    }, '服务内部错误', ERR_DETAIL ? String(e.stack || e.message) : '');
   }
 });
 

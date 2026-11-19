@@ -510,6 +510,10 @@ function normalizeProject(project) {
       version: (p.docs && p.docs.version) || '1.0.0',
       description: (p.docs && p.docs.description) || (p.description || ''),
     },
+    errors: {
+      pages: !(p.errors && p.errors.pages === false),
+      detail: !(p.errors && p.errors.detail === false),
+    },
     services: (Array.isArray(p.services) ? p.services : []).map((s, i) => ({
       key: s.key || `svc${i + 1}`, label: s.label || s.key || `服务${i + 1}`, baseUrl: s.baseUrl || '', token: s.token || '',
     })),
