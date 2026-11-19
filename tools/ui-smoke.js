@@ -4,6 +4,8 @@
 // 用法：先 electron . --remote-debugging-port=9222，再 runtime\node\node.exe tools\ui-smoke.js
 
 const PORT = Number(process.argv[2] || 9222);
+const os = require('os');
+const fs = require('fs');
 
 async function targets() {
   const res = await fetch(`http://127.0.0.1:${PORT}/json`);
@@ -73,6 +75,14 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('导出文件存在且够大', exp && exp.size > 10000, exp && exp.size);
   await val(`act('exportYxpn')`);
   await wait(400);
+
+  // 导出独立工程（IDEA）
+  t('Ribbon 有导出工程按钮', await val(`!!document.querySelector('[data-action="exportProject"]')`));
+  const eproj = await val(`api.exportProject(S.project, { parent: ${JSON.stringify(os.tmpdir())} })`);
+  t('导出工程返回成功', !!(eproj && eproj.ok), eproj);
+  t('导出工程带 .idea 模块', !!(eproj && eproj.ok && await val(`api.exists(${JSON.stringify((eproj.dir || '') + '\\.idea\\modules.xml')})`)), eproj && eproj.dir);
+  t('导出工程带 IDEA 运行配置', !!(eproj && eproj.ok && await val(`api.exists(${JSON.stringify((eproj.dir || '') + '\\.run\\启动接口服务.run.xml')})`)), eproj && eproj.dir);
+  if (eproj && eproj.ok && eproj.dir) fs.rmSync(eproj.dir, { recursive: true, force: true });
 
   // AI 对话框：填需求 → 生成
   await val(`act('ai')`);

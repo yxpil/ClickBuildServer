@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('icb', {
   openUrl: (url) => invoke('iface:openUrl', url),
   clone: (iface, names) => invoke('iface:clone', iface, names || []),
   exportYxpn: (project) => invoke('iface:exportYxpn', project),
+  exportProject: (project, opts) => invoke('iface:exportProject', project, opts || {}),
+  openInIdea: (dir) => invoke('iface:openInIdea', dir),
   importYxpn: () => invoke('iface:importYxpn'),
   importYxpnPath: (file) => invoke('iface:importYxpnPath', file),
   assocYxpn: () => invoke('app:assocYxpn'),

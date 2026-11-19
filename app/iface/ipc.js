@@ -17,6 +17,7 @@ const templates = require('./templates');
 const plugins = require('./plugins');
 const defender = require('./defender');
 const frontend = require('./frontend');
+const projectExport = require('./project-export');
 const store = require('../store');
 
 function ctxOf(payload) {
@@ -135,7 +136,7 @@ function registerIpc() {
     const o = opts || {};
     const dirName = String(o.dirName || p.name || '接口服务').replace(/[\\/:*?"<>|]/g, '_');
     const target = outDir || path.join(store.defaultGeneratedRoot(), 'iface', dirName);
-    const gen = codegen.writeTo(p, target, { port: services.settings().ports.http, only: o.only, category: o.category });
+    const gen = codegen.writeTo(p, target, { port: services.settings().ports.http, only: o.only, category: o.category, ide: !!o.ide });
     return { ok: true, dir: gen.dir, files: gen.files.map((f) => ({ path: f, size: 0 })), ports: gen.ports, warnings: plugged.warnings, count: gen.project.interfaces.length };
   });
 
@@ -167,6 +168,21 @@ function registerIpc() {
   ipcMain.handle('iface:openUrl', (e, url) => shell.openExternal(String(url)));
 
   ipcMain.handle('iface:clone', (e, iface, names) => spec.cloneIface(iface, names || []));
+
+  ipcMain.handle('iface:exportProject', async (e, project, opts) => {
+    const o = opts || {};
+    let parent = o.parent || '';
+    if (!parent) {
+      const r = await dialog.showOpenDialog({ title: '选择导出位置（会新建一个工程目录）', properties: ['openDirectory', 'createDirectory'] });
+      if (r.canceled || !r.filePaths[0]) return null;
+      parent = r.filePaths[0];
+    }
+    try {
+      return projectExport.writeProject(project, parent, { port: services.settings().ports.http });
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('iface:openInIdea', (e, dir) => projectExport.openInIdea(dir));
 
   ipcMain.handle('iface:exportYxpn', (e, project) => {
     try {

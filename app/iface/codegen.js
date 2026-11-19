@@ -187,6 +187,50 @@ function docsPage(project, port) {
 <p style="color:#777;margin-top:24px">由 ClickBuild 生成 · ${new Date().toISOString()}</p></body></html>`;
 }
 
+function addIdeaFiles(add) {
+  add('.idea/modules.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/clickbuild.iml" filepath="$PROJECT_DIR$/.idea/clickbuild.iml" />
+    </modules>
+  </component>
+</project>
+`);
+  add('.idea/clickbuild.iml', `<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$/..">
+      <excludeFolder url="file://$MODULE_DIR$/../node_modules" />
+      <excludeFolder url="file://$MODULE_DIR$/../.git" />
+    </content>
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
+`);
+  add('.idea/misc.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectRootManager" version="2" />
+</project>
+`);
+  add('.idea/.gitignore', `workspace.xml
+usage.statistics.xml
+shelf/
+`);
+  add('.run/启动接口服务.run.xml', `<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="启动接口服务" type="jsNodeRunConfiguration" factoryName="Node.js">
+    <option name="NODE_PARAMETERS" value="" />
+    <option name="PARAMETERS" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_PARAMETERS_FROM_SCRIPT" value="true" />
+    <option name="SCRIPT_NAME" value="server.js" />
+    <method v="2" />
+  </configuration>
+</component>
+`);
+}
+
 function generate(project, options) {
   const opts = options || {};
   let p = spec.normalizeProject(project);
@@ -257,6 +301,8 @@ function generate(project, options) {
     scripts: { start: 'node server.js' },
     dependencies: { mysql2: '^3.11.0', ioredis: '^5.4.1', minio: '^8.0.1' },
   }, null, 2));
+
+  if (opts.ide) addIdeaFiles(add);
 
   add('.env', [
     '# MySQL（ClickBuild 内置临时实例）',

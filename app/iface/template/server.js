@@ -16,6 +16,21 @@ const render = require('./src/render');
 const scriptEngine = require('./src/script');
 
 const ROOT = __dirname;
+
+// 读同目录的 .env：方便导出后在 IDEA / 终端里直接 npm start。
+try {
+  const envFile = path.join(ROOT, '.env');
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      let value = m[2].trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+      if (process.env[m[1]] == null) process.env[m[1]] = value;
+    }
+  }
+} catch (e) { console.error('[env] 读取 .env 失败', e.message); }
+
 const CFG = {
   host: process.env.MYSQL_HOST || '127.0.0.1',
   port: Number(process.env.MYSQL_PORT || 13306),

@@ -48,7 +48,7 @@ dist\ClickBuildServer-Setup-1.0.6.exe
 
 也可以从 GitHub Releases 下载：[ClickBuildServer v1.0.5](https://github.com/yxpil/ClickBuildServer/releases/tag/v1.0.5)。
 
-1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。
+1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。
 
 安装包已内置便携 Node（`resources\runtime\node\node.exe`）与三台本地服务（`resources\services\`），不依赖系统 Node，也不要求电脑上预先装数据库；安装时注册 `.yxpn` 文件关联。运行时数据只写用户数据目录，源码和配置里不写死盘符。
 
@@ -160,6 +160,18 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 
 服务之间：脚本里 `HTTP` 直连别的服务，或 `PUBLISH` 到 Redis 频道；默认约定 Redis `db0` + `icb:*` 前缀。
 
+## 导出工程（IDEA 可直接打开）
+
+`工程 → 导出工程`（或「生成导出」页）选一个父目录，会在里面新建 `<工程名>` 独立目录，写入完整源码、SQL、文档、`package.json`、`.env` 和 `.idea`。
+
+- `.idea/clickbuild.iml` + `modules.xml`：IDEA 选 **File → Open** 直接识别工程。
+- `.run/启动接口服务.run.xml`：IDEA 里一键运行 `server.js`。
+- `README-IDEA.md`：首次打开、`npm install`、改 `.env` 的步骤。
+- 导出目录里的 `server.js` 会自动读取同目录 `.env`，终端 `npm start` 和 IDEA 运行配置行为一致。
+- 导出的工程不依赖 ClickBuild 的安装目录，换机器只要 Node 和依赖装好即可；数据库 / Redis / RustFS 可连本机已有的，也可在 ClickBuild 里启动内置的。
+
+`服务 → 微服务` 的独立服务产物同样带 `.idea`，弹窗里可以直接「用 IDEA 打开」。
+
 ## .yxpn 工程包
 
 `导出包` 生成 ZIP（纯 Node 实现，带 CRC32）：`manifest.json` + `project.json` + `interfaces.json` + `sql/*` + `docs/*` + 导出代码；如果工程绑定了前端，还会带 `frontend/index.yxpp`、`frontend/project.json` 和 `public/index.html`，manifest 里有 `frontend` 元信息。`导入包` / 双击 `.yxpn` 直接打开（`关联` 按钮写入 HKCU 文件关联）。
@@ -225,7 +237,7 @@ npm run dist       # 发布安装包
 | `tools/test-templates.js --gen`（21 套模版 + 插件 + 文档 + 每条详情 404） | **158/158** |
 | `tools/e2e-cases.js`（21 套行业案例真实 HTTP） | **106/106** |
 | `tools/test-help.js`（生成服务 `/help`、`/docs`、`/console`、业务 404） | **18/18** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **36/36** |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程） | **40/40** |
 | `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **16/16** |
 | 生成服务真实验收（注册/登录/CRUD/缓存/事务/限流/上传/日志/CORS） | **30/30** |
 

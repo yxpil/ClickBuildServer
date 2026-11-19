@@ -181,6 +181,7 @@ function renderRibbon() {
   </div><div class="lbl">视图</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
+    ${rb('exportProject', 'package', '导出工程', '导出完整源码工程，IDEA 可直接打开')}
     ${rb('exportYxpn', 'save', '导出包', '导出 .yxpn 工程包（含运行时与文档）')}
     ${rb('importYxpn', 'open', '导入包', '打开 .yxpn 工程包')}
     ${rb('docs', 'page', '文档', '预览自动生成的 API 文档')}
@@ -673,10 +674,12 @@ function tabExport(it) {
     <div class="help-h">生成服务</div>
     <div class="flex items-center gap-2">
       <button class="btn solid" data-action="generate">生成到 generated/iface</button>
+      <button class="btn thin" data-action="exportProject">导出工程（IDEA）</button>
       <button class="btn thin" data-action="startServer">启动服务（端口 ${S.settings.ports.http}）</button>
       <button class="btn thin" data-action="stopServer">停止服务</button>
       <button class="btn thin" data-action="console">打开控制台</button>
     </div>
+    <div class="text-[11px] text-neutral-500">导出工程会新建一个独立目录，带 <span class="mono">.idea</span> 配置和启动配置，IDEA 里 File → Open 直接打开。</div>
     <div class="mono text-[11px] break-all">${esc(S.genDir || '还没有生成')}</div>
 
     <div class="help-h">生成物</div>
@@ -1021,6 +1024,29 @@ async function act(name, el) {
     scheduleSave(); renderWorkspace();
     return;
   }
+  if (name === 'exportProject') {
+    const r = await api.exportProject(S.project);
+    if (!r) return;
+    if (!r.ok) return toast('导出失败：' + String(r.error || '').slice(0, 160), 6000);
+    S.exportDir = r.dir;
+    modal(`<div class="p-4">
+      <div class="text-[13px] font-semibold mb-2">工程已导出 · ${r.files.length} 个文件</div>
+      <div class="text-[11px] text-neutral-500 mb-1 mono break-all">${esc(r.dir)}</div>
+      <div class="text-[11px] text-neutral-600 mb-3">已带 <span class="mono">.idea</span> 工程配置和「启动接口服务」运行配置。</div>
+      <div class="text-[11px] text-neutral-500 mb-4">先 <span class="mono">npm install</span>，再在 IDEA 里运行；数据库、Redis、S3 地址在 <span class="mono">.env</span>。</div>
+      <div class="flex justify-end gap-2">
+        <button class="btn thin" id="epOpen">打开目录</button>
+        <button class="btn solid" id="epIdea">用 IDEA 打开</button>
+      </div></div>`, (m) => {
+      m.querySelector('#epOpen').onclick = () => api.openPath(r.dir);
+      m.querySelector('#epIdea').onclick = async () => {
+        const got = await api.openInIdea(r.dir);
+        if (got.ok) { closeModal(); toast('已交给 IntelliJ IDEA 打开', 3500); }
+        else { toast(got.error || '没有找到 IDEA，已打开目录', 6000); api.openPath(r.dir); }
+      };
+    });
+    return;
+  }
   if (name === 'exportYxpn') {
     const r = await api.exportYxpn(S.project);
     if (!r.ok) return toast('导出失败：' + r.error, 5000);
@@ -1108,19 +1134,23 @@ function showMicroExport(presetId) {
       closeModal();
       const name = await ask('微服务名称', `${S.project.name}-微服务`, '只导出选中的接口，生成到独立目录');
       if (!name) return;
-      const r = await api.generate(S.project, undefined, { only, dirName: name });
+      const r = await api.generate(S.project, undefined, { only, dirName: name, ide: true });
       if (!r.ok) return toast('导出失败：' + String(r.error || '').slice(0, 140), 5000);
       modal(`<div class="p-4">
         <div class="text-[13px] font-semibold mb-2">已导出 ${r.count} 个接口 · ${r.files.length} 个文件</div>
         <div class="text-[11px] text-neutral-500 mb-2 mono break-all">${esc(r.dir)}</div>
-        <div class="text-[11px] text-neutral-600 mb-3">${esc(picked.join('、'))}</div>
-        <div class="text-[11px] text-neutral-500 mb-4">启动前改 .env 里的 PORT / MYSQL_DB / CACHE_PREFIX，避免和主服务抢端口、串库、串缓存。</div>
+        <div class="text-[11px] text-neutral-600 mb-1">${esc(picked.join('、'))}</div>
+        <div class="text-[11px] text-neutral-500 mb-4">已带 <span class="mono">.idea</span>；启动前改 .env 里的 PORT / MYSQL_DB / CACHE_PREFIX，避免和主服务抢端口、串库、串缓存。</div>
         <div class="flex justify-end gap-2">
-          <button class="btn thin" id="mxClose">关闭</button>
-          <button class="btn solid" id="mxOpen">打开目录</button>
+          <button class="btn thin" id="mxOpen">打开目录</button>
+          <button class="btn solid" id="mxIdea">用 IDEA 打开</button>
         </div></div>`, (m) => {
-        m.querySelector('#mxClose').onclick = closeModal;
         m.querySelector('#mxOpen').onclick = () => api.openPath(r.dir);
+        m.querySelector('#mxIdea').onclick = async () => {
+          const got = await api.openInIdea(r.dir);
+          if (got.ok) { closeModal(); toast('已交给 IntelliJ IDEA 打开', 3500); }
+          else { toast(got.error || '没有找到 IDEA，已打开目录', 6000); api.openPath(r.dir); }
+        };
       });
     };
   });
