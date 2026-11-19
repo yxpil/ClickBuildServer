@@ -1,0 +1,1564 @@
+{
+  "name": "博客服务",
+  "description": "作者 / 文章 / 分类 / 标签 / 评论，含发布与浏览量",
+  "categories": [
+    {
+      "id": "content",
+      "name": "内容"
+    },
+    {
+      "id": "social",
+      "name": "互动"
+    },
+    {
+      "id": "sys",
+      "name": "作者"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "9aa858f8",
+      "name": "作者",
+      "comment": "后台登录",
+      "categoryId": "sys",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "blog_user",
+          "schema": "",
+          "conn": "main",
+          "comment": "作者",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "only_id",
+              "type": "char",
+              "comment": "唯一ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "username",
+              "type": "varchar",
+              "comment": "用户名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "password_hash",
+              "type": "varchar",
+              "comment": "SM4 密码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "display_name",
+              "type": "varchar",
+              "comment": "显示名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "ff38638f",
+          "key": "custom",
+          "name": "登录",
+          "method": "POST",
+          "path": "/login",
+          "auth": false,
+          "summary": "作者登录",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT only_id, password_hash, display_name FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) == 0\n  RETURN 401 { \"ok\": false, \"error\": \"NO_USER\" };\nEND\nIF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}\n  RETURN 401 { \"ok\": false, \"error\": \"BAD_PASSWORD\" };\nEND\nLET $t = TOKEN NEW { \"onlyId\": $u.rows[0].only_id, \"username\": {{body.username}} };\nRETURN 200 { \"ok\": true, \"token\": $t.token, \"name\": $u.rows[0].display_name };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "作者登录",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d79ab554",
+          "key": "custom",
+          "name": "注册",
+          "method": "POST",
+          "path": "/register",
+          "auth": false,
+          "summary": "作者注册",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC INSERT INTO {{t:main}} (only_id, username, password_hash, display_name) VALUES ({{onlyId}}, {{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.display_name}});\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "作者注册",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "后台登录",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "4438925a",
+      "name": "文章",
+      "comment": "文章 CRUD + 发布 + 浏览量",
+      "categoryId": "content",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "blog_post",
+          "schema": "",
+          "conn": "main",
+          "comment": "文章",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "标题",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "slug",
+              "type": "varchar",
+              "comment": "URL slug",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "category_id",
+              "type": "bigint",
+              "comment": "分类ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "author_only_id",
+              "type": "char",
+              "comment": "作者",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "cover_key",
+              "type": "varchar",
+              "comment": "封面",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "content",
+              "type": "text",
+              "comment": "正文（Markdown）",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "views",
+              "type": "int",
+              "comment": "浏览量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "0"
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 草稿 1 发布",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "published_at",
+              "type": "datetime",
+              "comment": "发布时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "datetime",
+              "comment": "更新时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "41287daf",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/posts",
+          "auth": false,
+          "summary": "文章列表（标题/状态/分类）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "文章列表（标题/状态/分类）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "ebae89c2",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/posts/:id",
+          "auth": false,
+          "summary": "文章详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "文章详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "cf5a6141",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/posts",
+          "auth": false,
+          "summary": "新建草稿",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建草稿",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "3fc45c8f",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/posts/:id",
+          "auth": false,
+          "summary": "编辑文章",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "编辑文章",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "4494b0a8",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/posts/:id",
+          "auth": false,
+          "summary": "删除文章",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删除文章",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "53267bc4",
+          "key": "upload",
+          "name": "附件",
+          "method": "POST",
+          "path": "/posts/:id/cover",
+          "auth": false,
+          "summary": "上传封面",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "# 文件已经由服务器写进对象存储，这里只做入库；{{objectKey}} {{objectUrl}} {{filename}} {{size}} 都是现成的\nEXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"key\": {{objectKey}}, \"url\": {{objectUrl}}, \"name\": {{filename}} };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "上传封面",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d73f42d3",
+          "key": "custom",
+          "name": "发布",
+          "method": "POST",
+          "path": "/posts/:id/publish",
+          "auth": false,
+          "summary": "草稿 → 发布，写入发布时间",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC UPDATE {{t:main}} SET status = 1, published_at = NOW() WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "草稿 → 发布，写入发布时间",
+            "description": "幂等：已发布再调用只更新时间，不报错。",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "6779acf8",
+          "key": "custom",
+          "name": "阅读（浏览量+1）",
+          "method": "GET",
+          "path": "/posts/:id/read",
+          "auth": false,
+          "summary": "取正文并累加浏览",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $p = QUERY SELECT * FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nIF LEN($p.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_POST\" };\nEND\nEXEC UPDATE {{t:main}} SET views = views + 1 WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"post\": $p.rows[0] };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "取正文并累加浏览",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "文章 CRUD + 发布 + 浏览量",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "009be2cd",
+      "name": "分类",
+      "comment": "文章分类",
+      "categoryId": "content",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "blog_category",
+          "schema": "",
+          "conn": "main",
+          "comment": "分类",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "名称",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "slug",
+              "type": "varchar",
+              "comment": "slug",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "sort",
+              "type": "int",
+              "comment": "排序",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "30883e3c",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/categories",
+          "auth": false,
+          "summary": "分类列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "分类列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "aa65cd3d",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/categories",
+          "auth": false,
+          "summary": "新建分类",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建分类",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "deb712a3",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/categories/:id",
+          "auth": false,
+          "summary": "改分类",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改分类",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "19786c98",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/categories/:id",
+          "auth": false,
+          "summary": "删分类",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删分类",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "文章分类",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "0589dfcb",
+      "name": "标签",
+      "comment": "标签 + 文章标签联查",
+      "categoryId": "content",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "blog_tag",
+          "schema": "",
+          "conn": "main",
+          "comment": "标签",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "标签名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "rel",
+          "name": "blog_post_tag",
+          "schema": "",
+          "conn": "main",
+          "comment": "文章-标签",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "post_id",
+              "type": "bigint",
+              "comment": "文章ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "tag_id",
+              "type": "bigint",
+              "comment": "标签ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "ac3659e5",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/tags",
+          "auth": false,
+          "summary": "标签列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "标签列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "3a6126cf",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/tags",
+          "auth": false,
+          "summary": "新建标签",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建标签",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "bd3f6e33",
+          "key": "custom",
+          "name": "文章标签联查",
+          "method": "GET",
+          "path": "/posts/:id/tags",
+          "auth": false,
+          "summary": "文章 JOIN 标签",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT t.id, t.name FROM {{t:rel}} r LEFT JOIN {{t:main}} t ON t.id = r.tag_id WHERE r.post_id = {{id}};\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:post-tags:{{id}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "文章 JOIN 标签",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "4e7a1fa9",
+          "key": "custom",
+          "name": "给文章打标签",
+          "method": "POST",
+          "path": "/posts/:id/tags",
+          "auth": false,
+          "summary": "批量插关联，同事务",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "FOREACH $t IN {{body.tags}}\n  EXEC INSERT INTO {{t:rel}} (post_id, tag_id) VALUES ({{id}}, $t);\nEND\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "批量插关联，同事务",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "标签 + 文章标签联查",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "83f2b862",
+      "name": "评论",
+      "comment": "文章评论",
+      "categoryId": "social",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "blog_comment",
+          "schema": "",
+          "conn": "main",
+          "comment": "评论",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "post_id",
+              "type": "bigint",
+              "comment": "文章ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "author",
+              "type": "varchar",
+              "comment": "昵称",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "content",
+              "type": "text",
+              "comment": "内容",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 待审 1 展示",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "44fdd4b5",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/comments",
+          "auth": false,
+          "summary": "评论列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "评论列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "f907b67b",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/comments",
+          "auth": false,
+          "summary": "发评论（匿名）",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "发评论（匿名）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "767427ec",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/comments/:id",
+          "auth": false,
+          "summary": "删评论",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删评论",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "文章评论",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "博客服务",
+    "version": "1.0.0",
+    "description": "作者 / 文章 / 分类 / 标签 / 评论，含发布与浏览量（已启用插件：请求标记）"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "博客服务",
+    "footerText": "",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "generatedAt": "2026-11-19T14:37:43.726Z"
+}

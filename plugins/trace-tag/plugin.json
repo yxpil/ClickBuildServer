@@ -1,0 +1,8 @@
+{
+  "id": "trace-tag",
+  "name": "请求标记",
+  "version": "1.0.0",
+  "description": "给所有工程加一个 REQ_TAG() 函数，生成短请求标记；并给工程文档补一句说明。",
+  "main": "index.js",
+  "author": "ClickBuild"
+}

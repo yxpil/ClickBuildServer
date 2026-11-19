@@ -1,0 +1,809 @@
+{
+  "name": "软件项目报价系统",
+  "description": "客户、人天单价、模块工作量、折扣与版本报价；模块金额自动汇总到项目",
+  "categories": [
+    {
+      "id": "client",
+      "name": "客户"
+    },
+    {
+      "id": "proj",
+      "name": "项目"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "f2068706",
+      "name": "客户",
+      "comment": "软件客户",
+      "categoryId": "client",
+      "basePath": "/softquote",
+      "tables": [
+        {
+          "key": "main",
+          "name": "soft_client",
+          "schema": "",
+          "conn": "main",
+          "comment": "客户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "contact",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "70fb8649",
+          "key": "custom",
+          "name": "新建客户",
+          "method": "POST",
+          "path": "/clients",
+          "auth": false,
+          "summary": "登记客户",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (name, contact, phone) VALUES ({{body.name}}, {{body.contact}}, {{body.phone}});\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "登记客户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "9df5e393",
+          "key": "custom",
+          "name": "客户列表",
+          "method": "GET",
+          "path": "/clients",
+          "auth": false,
+          "summary": "客户列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT * FROM {{t:main}} ORDER BY id DESC;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "客户列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "软件客户",
+        "description": "客户档案",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "22336e6b",
+      "name": "项目",
+      "comment": "软件报价",
+      "categoryId": "proj",
+      "basePath": "/softquote",
+      "tables": [
+        {
+          "key": "main",
+          "name": "soft_project",
+          "schema": "",
+          "conn": "main",
+          "comment": "项目",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "client_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "requirement",
+              "type": "text",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "rate_per_day",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "discount",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "total",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "draft"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "mod",
+          "name": "soft_module",
+          "schema": "",
+          "conn": "main",
+          "comment": "模块",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "project_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "days",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "amount",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "client",
+          "name": "soft_client",
+          "schema": "",
+          "conn": "main",
+          "comment": "客户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "contact",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "689971c6",
+          "key": "custom",
+          "name": "新建项目",
+          "method": "POST",
+          "path": "/projects",
+          "auth": false,
+          "summary": "按人天单价立项",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (client_id, name, requirement, rate_per_day, discount, total) VALUES ({{body.client_id}}, {{body.name}}, {{body.requirement}}, {{body.rate_per_day}}, {{body.discount}}, 0);\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按人天单价立项",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "26dd9926",
+          "key": "custom",
+          "name": "添加模块",
+          "method": "POST",
+          "path": "/projects/:id/modules",
+          "auth": false,
+          "summary": "模块工作量自动计价并汇总",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $p = QUERY SELECT rate_per_day FROM {{t:main}} WHERE id = {{id}} LIMIT 1;\nIF LEN($p.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_PROJECT\" };\nEND\nEXEC INSERT INTO {{t:mod}} (project_id, name, days, amount) VALUES ({{id}}, {{body.name}}, {{body.days}}, {{body.days}} * {{vars.p.rows.0.rate_per_day}});\nEXEC UPDATE {{t:main}} SET total = total + {{body.days}} * {{vars.p.rows.0.rate_per_day}} WHERE id = {{id}};\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "模块工作量自动计价并汇总",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "4d6f7578",
+          "key": "custom",
+          "name": "折扣提交",
+          "method": "PUT",
+          "path": "/projects/:id/submit",
+          "auth": false,
+          "summary": "按折扣率生成报价",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC UPDATE {{t:main}} SET total = ROUND(total * (1 - discount / 100), 2), status = 'quoted' WHERE id = {{id}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按折扣率生成报价",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "ba586555",
+          "key": "custom",
+          "name": "项目详情",
+          "method": "GET",
+          "path": "/projects/:id",
+          "auth": false,
+          "summary": "项目 + 模块 + 客户联查",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $p = QUERY SELECT * FROM {{t:main}} WHERE id = {{id}} LIMIT 1;\nLET $m = QUERY SELECT * FROM {{t:mod}} WHERE project_id = {{id}} ORDER BY id;\nLET $c = QUERY SELECT * FROM {{t:client}} WHERE id = (SELECT client_id FROM {{t:main}} WHERE id = {{id}}) LIMIT 1;\nRETURN 200 { \"project\": $p.rows, \"modules\": $m.rows, \"client\": $c.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "项目 + 模块 + 客户联查",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "cbc460b9",
+          "key": "custom",
+          "name": "项目列表",
+          "method": "GET",
+          "path": "/projects",
+          "auth": false,
+          "summary": "项目报价列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT p.id, p.name, p.total, p.status, c.name AS client FROM {{t:main}} p LEFT JOIN {{t:client}} c ON c.id = p.client_id ORDER BY p.id DESC;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "项目报价列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "5fe436b8",
+          "key": "custom",
+          "name": "成交",
+          "method": "PUT",
+          "path": "/projects/:id/approve",
+          "auth": false,
+          "summary": "客户确认项目报价",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC UPDATE {{t:main}} SET status = 'approved' WHERE id = {{id}} AND status = 'quoted';\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "客户确认项目报价",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "软件报价",
+        "description": "人天、模块、折扣、成交",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [
+          "软件",
+          "报价",
+          "项目"
+        ],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "软件项目报价系统",
+    "version": "1.0.0",
+    "description": "客户、人天单价、模块工作量、折扣与版本报价；模块金额自动汇总到项目"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "软件项目报价系统",
+    "footerText": "ClickBuild · 内置案例",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "updatedAt": "2026-11-19T15:17:09.092Z"
+}

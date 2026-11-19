@@ -1,0 +1,941 @@
+{
+  "name": "在线课程服务",
+  "description": "课程、课时、报名与学习进度；报名时事务校验名额",
+  "categories": [
+    {
+      "id": "course",
+      "name": "课程"
+    },
+    {
+      "id": "learn",
+      "name": "学习"
+    },
+    {
+      "id": "sys",
+      "name": "账户"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "c3d92b20",
+      "name": "账户",
+      "comment": "学员账户",
+      "categoryId": "sys",
+      "basePath": "/edu",
+      "tables": [
+        {
+          "key": "users",
+          "name": "edu_user",
+          "schema": "",
+          "conn": "main",
+          "comment": "用户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "only_id",
+              "type": "char",
+              "comment": "唯一ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "username",
+              "type": "char",
+              "comment": "用户名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "password_hash",
+              "type": "varchar",
+              "comment": "SM4 密码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "display_name",
+              "type": "varchar",
+              "comment": "显示名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "状态",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "81dbee29",
+          "key": "custom",
+          "name": "注册",
+          "method": "POST",
+          "path": "/register",
+          "auth": false,
+          "summary": "学员注册",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT id FROM {{t:users}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) > 0\n  RETURN 409 { \"ok\": false, \"error\": \"USER_EXISTS\" };\nEND\nEXEC INSERT INTO {{t:users}} (only_id, username, password_hash, display_name) VALUES ({{onlyId}}, {{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.display_name}});\nLET $t = TOKEN NEW { \"onlyId\": {{onlyId}}, \"username\": {{body.username}} };\nRETURN 201 { \"ok\": true, \"onlyId\": {{onlyId}}, \"token\": $t.token };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "学员注册",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "87e8e071",
+          "key": "custom",
+          "name": "登录",
+          "method": "POST",
+          "path": "/login",
+          "auth": false,
+          "summary": "学员登录",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT only_id, password_hash, display_name FROM {{t:users}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) == 0\n  RETURN 401 { \"ok\": false, \"error\": \"NO_USER\" };\nEND\nIF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}\n  RETURN 401 { \"ok\": false, \"error\": \"BAD_PASSWORD\" };\nEND\nLET $t = TOKEN NEW { \"onlyId\": $u.rows[0].only_id, \"username\": {{body.username}} };\nRETURN 200 { \"ok\": true, \"token\": $t.token, \"name\": $u.rows[0].display_name };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "学员登录",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "学员账户",
+        "description": "学员账户",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "1842b1eb",
+      "name": "课程",
+      "comment": "课程管理",
+      "categoryId": "course",
+      "basePath": "/edu",
+      "tables": [
+        {
+          "key": "main",
+          "name": "edu_course",
+          "schema": "",
+          "conn": "main",
+          "comment": "课程",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "teacher",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "seats",
+              "type": "int",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "30"
+            },
+            {
+              "name": "enrolled",
+              "type": "int",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "lesson",
+          "name": "edu_lesson",
+          "schema": "",
+          "conn": "main",
+          "comment": "课时",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "course_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "duration",
+              "type": "int",
+              "comment": "分钟",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "0a1b08ef",
+          "key": "custom",
+          "name": "课程列表",
+          "method": "GET",
+          "path": "/courses",
+          "auth": false,
+          "summary": "在售课程",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT id, title, teacher, price, seats, enrolled FROM {{t:main}} WHERE status = 1 ORDER BY id DESC;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "在售课程",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "a323ec7f",
+          "key": "custom",
+          "name": "课程详情",
+          "method": "GET",
+          "path": "/courses/:id",
+          "auth": false,
+          "summary": "课程与大钢",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $c = QUERY SELECT * FROM {{t:main}} WHERE id = {{id}} LIMIT 1;\nLET $l = QUERY SELECT * FROM {{t:lesson}} WHERE course_id = {{id}} ORDER BY id;\nRETURN 200 { \"course\": $c.rows, \"lessons\": $l.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "课程与大钢",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "e02278ab",
+          "key": "custom",
+          "name": "新建课程",
+          "method": "POST",
+          "path": "/courses",
+          "auth": true,
+          "summary": "新建课程",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (title, teacher, price, seats) VALUES ({{body.title}}, {{body.teacher}}, {{body.price}}, {{body.seats}});\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建课程",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "282eea19",
+          "key": "custom",
+          "name": "添加课时",
+          "method": "POST",
+          "path": "/courses/:id/lessons",
+          "auth": true,
+          "summary": "添加课时",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC INSERT INTO {{t:lesson}} (course_id, title, duration) VALUES ({{id}}, {{body.title}}, {{body.duration}});\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "添加课时",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "课程管理",
+        "description": "课程、课时、名额",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "6836f03c",
+      "name": "报名",
+      "comment": "报名与进度",
+      "categoryId": "learn",
+      "basePath": "/edu",
+      "tables": [
+        {
+          "key": "main",
+          "name": "edu_enrollment",
+          "schema": "",
+          "conn": "main",
+          "comment": "报名",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "course_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "user_only_id",
+              "type": "char",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "progress",
+              "type": "int",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "course",
+          "name": "edu_course",
+          "schema": "",
+          "conn": "main",
+          "comment": "课程",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "seats",
+              "type": "int",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "enrolled",
+              "type": "int",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "804dca53",
+          "key": "custom",
+          "name": "报名",
+          "method": "POST",
+          "path": "/courses/:id/enroll",
+          "auth": true,
+          "summary": "报名（防重复/防超员）",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $e = QUERY SELECT id FROM {{t:main}} WHERE course_id = {{id}} AND user_only_id = {{user.onlyId}} LIMIT 1;\nIF LEN($e.rows) > 0\n  RETURN 409 { \"ok\": false, \"error\": \"ALREADY_ENROLLED\" };\nEND\nLET $c = QUERY SELECT seats, enrolled FROM {{t:course}} WHERE id = {{id}} LIMIT 1;\nIF LEN($c.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_COURSE\" };\nEND\nIF $c.rows[0].enrolled >= $c.rows[0].seats\n  RETURN 409 { \"ok\": false, \"error\": \"FULL\" };\nEND\nEXEC INSERT INTO {{t:main}} (course_id, user_only_id) VALUES ({{id}}, {{user.onlyId}});\nEXEC UPDATE {{t:course}} SET enrolled = enrolled + 1 WHERE id = {{id}};\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "报名（防重复/防超员）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "2c085af0",
+          "key": "custom",
+          "name": "我的课程",
+          "method": "GET",
+          "path": "/my-courses",
+          "auth": true,
+          "summary": "我的报名",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT e.id, e.progress, c.title, c.teacher FROM {{t:main}} e JOIN {{t:course}} c ON c.id = e.course_id WHERE e.user_only_id = {{user.onlyId}};\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "我的报名",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "41c959fa",
+          "key": "custom",
+          "name": "更新进度",
+          "method": "PUT",
+          "path": "/enrollments/:id/progress",
+          "auth": true,
+          "summary": "学习进度",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC UPDATE {{t:main}} SET progress = {{body.progress}} WHERE id = {{id}} AND user_only_id = {{user.onlyId}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "学习进度",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "报名与进度",
+        "description": "报名事务、名额校验、我的课程、进度",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [
+          "教育",
+          "报名"
+        ],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "在线课程服务",
+    "version": "1.0.0",
+    "description": "课程、课时、报名与学习进度；报名时事务校验名额"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "在线课程服务",
+    "footerText": "ClickBuild · 内置案例",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "updatedAt": "2026-11-19T15:17:09.084Z"
+}

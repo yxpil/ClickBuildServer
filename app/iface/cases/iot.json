@@ -1,0 +1,699 @@
+{
+  "name": "IoT 设备监控服务",
+  "description": "设备注册、密钥校验、遥测上报、最新值、温度告警",
+  "categories": [
+    {
+      "id": "dev",
+      "name": "设备"
+    },
+    {
+      "id": "data",
+      "name": "数据"
+    },
+    {
+      "id": "sys",
+      "name": "账户"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "c3d92b20",
+      "name": "账户",
+      "comment": "运维账户",
+      "categoryId": "sys",
+      "basePath": "/iot",
+      "tables": [
+        {
+          "key": "users",
+          "name": "iot_user",
+          "schema": "",
+          "conn": "main",
+          "comment": "用户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "only_id",
+              "type": "char",
+              "comment": "唯一ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "username",
+              "type": "char",
+              "comment": "用户名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "password_hash",
+              "type": "varchar",
+              "comment": "SM4 密码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "display_name",
+              "type": "varchar",
+              "comment": "显示名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "状态",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "81dbee29",
+          "key": "custom",
+          "name": "注册",
+          "method": "POST",
+          "path": "/register",
+          "auth": false,
+          "summary": "运维注册",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT id FROM {{t:users}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) > 0\n  RETURN 409 { \"ok\": false, \"error\": \"USER_EXISTS\" };\nEND\nEXEC INSERT INTO {{t:users}} (only_id, username, password_hash, display_name) VALUES ({{onlyId}}, {{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.display_name}});\nLET $t = TOKEN NEW { \"onlyId\": {{onlyId}}, \"username\": {{body.username}} };\nRETURN 201 { \"ok\": true, \"onlyId\": {{onlyId}}, \"token\": $t.token };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "运维注册",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "87e8e071",
+          "key": "custom",
+          "name": "登录",
+          "method": "POST",
+          "path": "/login",
+          "auth": false,
+          "summary": "运维登录",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT only_id, password_hash, display_name FROM {{t:users}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) == 0\n  RETURN 401 { \"ok\": false, \"error\": \"NO_USER\" };\nEND\nIF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}\n  RETURN 401 { \"ok\": false, \"error\": \"BAD_PASSWORD\" };\nEND\nLET $t = TOKEN NEW { \"onlyId\": $u.rows[0].only_id, \"username\": {{body.username}} };\nRETURN 200 { \"ok\": true, \"token\": $t.token, \"name\": $u.rows[0].display_name };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "运维登录",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "运维账户",
+        "description": "运维账户",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "01f2c16c",
+      "name": "设备",
+      "comment": "设备与遥测",
+      "categoryId": "dev",
+      "basePath": "/iot",
+      "tables": [
+        {
+          "key": "main",
+          "name": "iot_device",
+          "schema": "",
+          "conn": "main",
+          "comment": "设备",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "device_no",
+              "type": "char",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "secret_hash",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "last_seen",
+              "type": "datetime",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "key": "tel",
+          "name": "iot_telemetry",
+          "schema": "",
+          "conn": "main",
+          "comment": "遥测",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "device_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "temp",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "humidity",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "payload",
+              "type": "json",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "dd8faa15",
+          "key": "custom",
+          "name": "注册设备",
+          "method": "POST",
+          "path": "/devices",
+          "auth": true,
+          "summary": "注册设备并保存密钥摘要",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (device_no, name, secret_hash) VALUES ({{body.device_no}}, {{body.name}}, SM4_ENC({{body.secret}}, 'clickbuild-key'));\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "注册设备并保存密钥摘要",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "770cf316",
+          "key": "custom",
+          "name": "上报遥测",
+          "method": "POST",
+          "path": "/telemetry",
+          "auth": false,
+          "summary": "设备密钥校验后上报",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $d = QUERY SELECT id, secret_hash FROM {{t:main}} WHERE device_no = {{body.device_no}} LIMIT 1;\nIF LEN($d.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_DEVICE\" };\nEND\nIF SM4_DEC($d.rows[0].secret_hash, 'clickbuild-key') != {{body.secret}}\n  RETURN 401 { \"ok\": false, \"error\": \"BAD_SECRET\" };\nEND\nEXEC INSERT INTO {{t:tel}} (device_id, temp, humidity, payload) VALUES ({{vars.d.rows.0.id}}, {{body.temp}}, {{body.humidity}}, {{body.payload}});\nEXEC UPDATE {{t:main}} SET last_seen = NOW() WHERE id = {{vars.d.rows.0.id}};\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "设备密钥校验后上报",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "3db235ba",
+          "key": "custom",
+          "name": "设备列表",
+          "method": "GET",
+          "path": "/devices",
+          "auth": false,
+          "summary": "设备状态",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT id, device_no, name, status, last_seen FROM {{t:main}} ORDER BY id;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "设备状态",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "4ed8c9bb",
+          "key": "custom",
+          "name": "最新遥测",
+          "method": "GET",
+          "path": "/devices/:id/latest",
+          "auth": false,
+          "summary": "最新一条遥测",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT temp, humidity, payload, created_at FROM {{t:tel}} WHERE device_id = {{id}} ORDER BY id DESC LIMIT 1;\nRETURN 200 { \"latest\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "最新一条遥测",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "5ad2728e",
+          "key": "custom",
+          "name": "温度告警",
+          "method": "GET",
+          "path": "/alerts",
+          "auth": false,
+          "summary": "按温度阈值筛选告警",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT d.name, t.temp, t.created_at FROM {{t:tel}} t JOIN {{t:main}} d ON d.id = t.device_id WHERE t.temp > {{query.temp}} ORDER BY t.id DESC LIMIT 100;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按温度阈值筛选告警",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "设备与遥测",
+        "description": "设备密钥、遥测、最新值、阈值告警",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [
+          "IoT",
+          "监控"
+        ],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "IoT 设备监控服务",
+    "version": "1.0.0",
+    "description": "设备注册、密钥校验、遥测上报、最新值、温度告警"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "IoT 设备监控服务",
+    "footerText": "ClickBuild · 内置案例",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "updatedAt": "2026-11-19T15:17:09.088Z"
+}

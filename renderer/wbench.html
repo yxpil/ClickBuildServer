@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ClickBuildServer · 接口工作台</title>
+<link rel="stylesheet" href="wbench.css">
+<style>
+  html, body { height: 100%; }
+  :root { --cb-head: #ffffff; --cb-headtext: #111111; --cb-accent: #111111; --cb-footer: #f4f4f4; --cb-font: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  body { font-family: var(--cb-font); font-size: 13px; }
+  header { background: var(--cb-head); color: var(--cb-headtext); }
+  header .btn.solid, header .btn { border-color: var(--cb-headtext); }
+  #sheetbar { background: var(--cb-footer); }
+  .sheet.active { border-bottom-color: var(--cb-accent); box-shadow: inset 0 -2px 0 var(--cb-accent); }
+  .btn:hover { background: var(--cb-accent); border-color: var(--cb-accent); }
+  .btn.solid { background: var(--cb-accent); border-color: var(--cb-accent); }
+  .gt { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  .gt thead th { background: #f4f4f4; border: 1px solid #cccccc; font-weight: 600; padding: 5px 8px; text-align: left; position: sticky; top: 0; z-index: 2; }
+  .gt td { border: 1px solid #dcdcdc; padding: 4px 8px; vertical-align: middle; }
+  .gt tbody tr:hover td { background: #fafafa; }
+  .gt tbody tr.sel td { background: #eeeeee; }
+  .gt .rownum { background: #f4f4f4; color: #777; text-align: center; width: 36px; }
+  .cell-in { width: 100%; border: 0; background: transparent; padding: 2px 4px; font: inherit; outline: none; }
+  .cell-in:focus { background: #fff; box-shadow: inset 0 0 0 2px #111; }
+  .sheet { padding: 4px 14px; border: 1px solid #c9c9c9; border-bottom: 0; background: #f4f4f4; cursor: pointer; user-select: none; font-size: 12px; }
+  .sheet.active { background: #fff; font-weight: 600; }
+  .ribbon-group { display: flex; flex-direction: column; gap: 3px; padding: 4px 10px; border-right: 1px solid #e2e2e2; min-width: 76px; flex: 0 0 auto; }
+  .ribbon-group .lbl { font-size: 10px; color: #888; letter-spacing: .5px; text-align: center; }
+  .rb { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 6px; border: 1px solid transparent; border-radius: 2px; cursor: pointer; color: #111; }
+  .rb:hover { background: #f0f0f0; border-color: #d8d8d8; }
+  .rb:active { background: #e4e4e4; }
+  .rb .t { font-size: 11px; line-height: 1; white-space: nowrap; }
+  header.appbar { -webkit-app-region: drag; user-select: none; }
+  #viewSwitch button.active { background:#111; color:#fff; }
+  #viewSwitch button:not(.active) { background:#fff; color:#111; }
+  header.appbar button, header.appbar input, header.appbar .no-drag, header.appbar a { -webkit-app-region: no-drag; }
+  .winbtn { width: 46px; height: 48px; display: flex; align-items: center; justify-content: center; color: #111; }
+  .winbtn:hover { background: #ececec; }
+  .winbtn.close:hover { background: #111; color: #fff; }
+  .winbtn svg { pointer-events: none; }
+  .icon { width: 16px; height: 16px; }
+  .tabbtn { padding: 4px 12px; border-bottom: 2px solid transparent; cursor: pointer; color: #555; }
+  .tabbtn.on { border-bottom-color: #111; color: #111; font-weight: 600; }
+  .pill { border: 1px solid #d0d0d0; padding: 1px 6px; font-size: 11px; font-family: Consolas, monospace; }
+  .mono { font-family: Consolas, "Cascadia Mono", monospace; }
+  .btn { border: 1px solid #111; background: #fff; padding: 4px 12px; cursor: pointer; font-size: 12px; }
+  .btn:hover { background: #111; color: #fff; }
+  .btn.solid { background: #111; color: #fff; }
+  .btn.solid:hover { background: #333; }
+  .btn.thin { border-color: #c9c9c9; padding: 2px 8px; }
+  .btn.thin:hover { background: #f0f0f0; color: #111; border-color: #111; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.on { background: #111; }
+  .dot.off { background: #fff; border: 1px solid #999; }
+  .monoarea { font-family: Consolas, monospace; font-size: 12px; line-height: 1.55; tab-size: 2; }
+  .side-sect { border-bottom: 1px solid #e4e4e4; padding: 8px 10px; }
+  .side-sect h4 { font-size: 11px; color: #777; letter-spacing: .5px; margin: 0 0 6px 0; text-transform: uppercase; }
+  .searchbox { width: 300px; }
+  .result-item:hover { background: #f2f2f2; }
+  .kbd { border: 1px solid #bbb; border-bottom-width: 2px; padding: 0 4px; font-size: 11px; border-radius: 2px; background: #fff; }
+  textarea.code { resize: vertical; }
+  .help-h { font-weight: 600; border-bottom: 1px solid #111; padding-bottom: 4px; margin: 14px 0 8px; }
+  .help-grid { border-collapse: collapse; width: 100%; }
+  .help-grid th, .help-grid td { border: 1px solid #e0e0e0; padding: 4px 8px; text-align: left; vertical-align: top; }
+  .help-grid th { background: #f6f6f6; font-weight: 600; }
+</style>
+</head>
+<body class="bg-white text-neutral-900 h-full overflow-hidden">
+
+<div id="app" class="h-full flex flex-col min-h-0">
+  <header id="appHeader" class="appbar h-12 shrink-0 border-b border-neutral-900 flex items-center gap-3 pl-3">
+    <img src="../assets/logo.png" alt="ClickBuild" width="34" height="34" draggable="false" class="shrink-0 object-cover bg-[#fbfaf5] border border-neutral-200" style="image-rendering:auto">
+    <span class="text-[15px] font-semibold tracking-wide">ClickBuild</span>
+    <span class="text-[11px] text-neutral-500 border-l border-neutral-300 pl-3">接口工作台</span>
+    <input id="projectName" class="ml-3 w-48 border border-neutral-300 px-2 py-1 text-[12px]" title="工程名">
+    <div id="viewSwitch" class="no-drag flex border border-neutral-300 h-7" role="tablist" aria-label="工作模式">
+      <button data-view="api" class="viewtab px-3 text-[11px] font-semibold bg-neutral-900 text-white">接口</button>
+      <button data-view="studio" class="viewtab px-3 text-[11px] border-l border-neutral-300">前端</button>
+    </div>
+    <div class="relative ml-auto no-drag">
+      <input id="search" class="searchbox border border-neutral-400 px-2 py-1 text-[12px]" placeholder="全局搜索：接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)">
+      <div id="searchPanel" class="hidden absolute right-0 top-8 w-[420px] max-h-[360px] overflow-auto border border-neutral-900 bg-white z-30"></div>
+    </div>
+    <button class="btn thin" data-action="save">保存</button>
+    <button class="btn solid" data-action="generate">生成服务</button>
+    <div class="no-drag flex items-center h-12 -mr-3 border-l border-neutral-200">
+      <button id="winMin" class="winbtn" title="最小化" aria-label="最小化"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button id="winMax" class="winbtn" title="最大化" aria-label="最大化"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+      <button id="winClose" class="winbtn close" title="关闭" aria-label="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </div>
+  </header>
+
+  <div id="ribbon" class="shrink-0 border-b border-neutral-300 flex items-stretch overflow-x-auto"></div>
+
+  <main id="workbenchMain" class="flex-1 flex min-h-0">
+    <section id="workspace" class="flex-1 flex flex-col min-w-0 overflow-hidden"></section>
+    <aside class="w-72 shrink-0 border-l border-neutral-300 flex flex-col min-h-0 bg-neutral-50">
+      <div id="sideTop" class="flex-1 overflow-auto"></div>
+      <div class="border-t border-neutral-300 p-2 flex gap-2">
+        <button class="btn thin flex-1" data-action="logs">日志</button>
+        <button class="btn thin flex-1" data-action="help">帮助</button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="studioPane" class="hidden flex-1 flex-col min-h-0">
+    <div class="h-10 shrink-0 border-b border-neutral-300 bg-neutral-50 flex items-center gap-2 px-3">
+      <span class="text-[11px] font-semibold tracking-wide">PageStudio 前端</span>
+      <span id="studioState" class="text-[11px] text-neutral-500 border-l border-neutral-300 pl-2">未绑定 .yxpp</span>
+      <div class="ml-auto flex gap-2">
+        <button class="btn thin" id="yxppImport">导入 .yxpp</button>
+        <button class="btn thin" id="yxppExport">导出 .yxpp</button>
+        <button class="btn solid" id="yxppAttach">保存到当前工程</button>
+      </div>
+    </div>
+    <iframe id="studioFrame" title="PageStudio" class="flex-1 w-full border-0 bg-[#ECECE8]"></iframe>
+  </div>
+
+  <footer id="sheetbar" class="h-9 shrink-0 border-t border-neutral-300 flex items-center px-1 gap-[2px] overflow-x-auto bg-neutral-100"></footer>
+</div>
+
+<div id="modal" class="hidden fixed inset-0 bg-black/30 z-40 flex items-center justify-center"></div>
+<div id="toast" class="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 hidden border border-neutral-900 bg-white px-4 py-2 text-[12px] shadow"></div>
+<div id="drawer" class="hidden fixed right-0 top-0 h-full w-[680px] bg-white border-l border-neutral-900 z-40 flex flex-col"></div>
+<div id="ctxmenu" class="hidden fixed z-50 bg-white border border-neutral-900 shadow text-[12px] min-w-[180px]"></div>
+
+<script src="wbench.js"></script>
+</body>
+</html>

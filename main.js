@@ -1,14 +1,31 @@
 'use strict';
 
 const path = require('path');
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const { registerIpc } = require('./app/ipc');
+const { registerIpc: registerIfaceIpc } = require('./app/iface/ipc');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   let win = null;
+
+  function windowState(w) {
+    return { maximized: !!(w && w.isMaximized()), minimized: !!(w && w.isMinimized()), fullScreen: !!(w && w.isFullScreen()) };
+  }
+
+  function registerWindowIpc() {
+    ipcMain.handle('win:action', (e, action) => {
+      const w = BrowserWindow.fromWebContents(e.sender);
+      if (!w || w.isDestroyed()) return { ok: false };
+      if (action === 'minimize') w.minimize();
+      else if (action === 'maximize') { if (w.isMaximized()) w.unmaximize(); else w.maximize(); }
+      else if (action === 'close') w.close();
+      else if (action === 'state') return { ok: true, ...windowState(w) };
+      return { ok: true, ...windowState(w) };
+    });
+  }
 
   const send = (action) => {
     if (win && !win.isDestroyed()) win.webContents.send('menu:action', action);
@@ -19,24 +36,35 @@ if (!gotLock) {
       {
         label: '文件',
         submenu: [
-          { label: '新建项目', accelerator: 'CmdOrCtrl+N', click: () => send('project:new') },
-          { label: '打开项目', accelerator: 'CmdOrCtrl+O', click: () => send('project:open') },
+          { label: '新建接口工程', accelerator: 'CmdOrCtrl+N', click: () => send('project:new') },
+          { label: '打开工程', accelerator: 'CmdOrCtrl+O', click: () => send('project:open') },
           { type: 'separator' },
-          { label: '保存项目', accelerator: 'CmdOrCtrl+S', click: () => send('project:save') },
-          { label: '导入 clickbuild.json', click: () => send('project:import') },
-          { label: '导出项目配置', click: () => send('project:export') },
+          { label: '保存工程', accelerator: 'CmdOrCtrl+S', click: () => send('project:save') },
+          { label: '导入工程 JSON', click: () => send('project:import') },
+          { label: '导出工程 JSON', click: () => send('project:export') },
           { type: 'separator' },
           { role: 'quit', label: '退出' },
         ],
       },
       {
+        label: '接口',
+        submenu: [
+          { label: '新增接口', accelerator: 'CmdOrCtrl+Shift+N', click: () => send('iface:new') },
+          { label: '新增路由', click: () => send('route:new') },
+          { label: '校验当前接口', accelerator: 'F7', click: () => send('iface:validate') },
+        ],
+      },
+      {
         label: '构建',
         submenu: [
-          { label: '刷新预览', accelerator: 'F5', click: () => send('generate:preview') },
+          { label: '刷新 SQL 预览', accelerator: 'F5', click: () => send('sql:preview') },
           { label: '生成工程', accelerator: 'CmdOrCtrl+G', click: () => send('generate:run') },
-          { label: '导出 ZIP', click: () => send('generate:zip') },
           { type: 'separator' },
-          { label: '打开输出目录', click: () => send('output:open') },
+          { label: '启动三台服务', click: () => send('services:startAll') },
+          { label: '停止三台服务', click: () => send('services:stopAll') },
+          { type: 'separator' },
+          { label: '启动生成的服务', click: () => send('server:start') },
+          { label: '打开接口控制台', click: () => send('server:console') },
         ],
       },
       {
@@ -52,16 +80,31 @@ if (!gotLock) {
         ],
       },
       {
+        label: '旧版',
+        submenu: [
+          {
+            label: '打开模块视图（旧）',
+            click: () => {
+              const legacy = new BrowserWindow({
+                width: 1440, height: 920, title: 'ClickBuildServer · 模块视图（旧版）',
+                backgroundColor: '#0d1117',
+                webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+              });
+              legacy.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+            },
+          },
+        ],
+      },
+      {
         label: '帮助',
         submenu: [
-          { label: '使用说明', click: () => send('help:docs') },
           {
             label: '关于 ClickBuildServer',
             click: () => dialog.showMessageBox(win, {
               type: 'info',
               title: '关于',
-              message: 'ClickBuildServer',
-              detail: `服务器快速制造工具\n版本 ${app.getVersion()}\n\n勾选业务 → 自动生成工程 + SQL。`,
+              message: 'ClickBuildServer · 接口工作台',
+              detail: `一个接口 = 任意多张表 / 多个库 + 一组路由\n版本 ${app.getVersion()}\n\n逐条管理 SQL、Redis 缓存与对象存储。`,
             }),
           },
         ],
@@ -70,14 +113,23 @@ if (!gotLock) {
     return Menu.buildFromTemplate(template);
   }
 
-  function createWindow() {
+  function yxpnArg(argv) {
+    const hit = (argv || []).find((a) => typeof a === 'string' && /\.yxpn$/i.test(a));
+    if (!hit) return '';
+    return require('fs').existsSync(hit) ? hit : '';
+  }
+
+  function createWindow(openYxpn) {
     win = new BrowserWindow({
-      width: 1440,
-      height: 920,
-      minWidth: 1180,
-      minHeight: 760,
-      backgroundColor: '#0d1117',
-      title: 'ClickBuildServer · 服务器快速制造工具',
+      width: 1480,
+      height: 940,
+      minWidth: 1080,
+      minHeight: 700,
+      backgroundColor: '#ffffff',
+      title: 'ClickBuildServer · 接口工作台',
+      icon: path.join(__dirname, 'assets', 'logo.png'),
+      frame: false,
+      thickFrame: true,
       show: false,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -87,36 +139,45 @@ if (!gotLock) {
       },
     });
 
-    win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+    win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: openYxpn ? { openYxpn } : {} });
     win.once('ready-to-show', () => win.show());
+    win.setMenuBarVisibility(false);
+    const pushState = () => { if (!win.isDestroyed()) win.webContents.send('win:state', windowState(win)); };
+    win.on('maximize', pushState);
+    win.on('unmaximize', pushState);
+    win.on('enter-full-screen', pushState);
+    win.on('leave-full-screen', pushState);
+
+    win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      console.log(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+    });
+    win.webContents.on('did-fail-load', (event, code, desc) => {
+      console.log(`[renderer] did-fail-load ${code} ${desc}`);
+    });
 
     win.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:/.test(url)) shell.openExternal(url);
       return { action: 'deny' };
     });
-    win.webContents.on('will-navigate', (event, url) => {
-      if (!url.startsWith('file://')) {
-        event.preventDefault();
-        if (/^https?:/.test(url)) shell.openExternal(url);
-      }
-    });
 
-    win.on('closed', () => {
-      win = null;
-    });
+    win.on('closed', () => { win = null; });
   }
 
   app.whenReady().then(() => {
-    createWindow();
+    registerWindowIpc();
     registerIpc(win);
-    Menu.setApplicationMenu(buildMenu());
+    registerIfaceIpc();
+    createWindow(yxpnArg(process.argv));
+    Menu.setApplicationMenu(null);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
 
-  app.on('second-instance', () => {
+  app.on('second-instance', (event, argv) => {
+    const file = yxpnArg(argv);
     if (win) {
+      if (file) win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: { openYxpn: file } });
       if (win.isMinimized()) win.restore();
       win.focus();
     }

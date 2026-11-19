@@ -1,0 +1,861 @@
+{
+  "name": "装修报价系统",
+  "description": "客户、面积、人工/材料单价、项目明细、折扣提交与审批；报价总额随明细累计",
+  "categories": [
+    {
+      "id": "cust",
+      "name": "客户"
+    },
+    {
+      "id": "quote",
+      "name": "报价"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "f2068706",
+      "name": "客户",
+      "comment": "装修客户",
+      "categoryId": "cust",
+      "basePath": "/decoration",
+      "tables": [
+        {
+          "key": "main",
+          "name": "deco_customer",
+          "schema": "",
+          "conn": "main",
+          "comment": "客户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "address",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "44fb4536",
+          "key": "custom",
+          "name": "新建客户",
+          "method": "POST",
+          "path": "/customers",
+          "auth": false,
+          "summary": "登记装修客户",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (name, phone, address) VALUES ({{body.name}}, {{body.phone}}, {{body.address}});\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "登记装修客户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "31feac5b",
+          "key": "custom",
+          "name": "客户列表",
+          "method": "GET",
+          "path": "/customers",
+          "auth": false,
+          "summary": "客户列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT * FROM {{t:main}} ORDER BY id DESC;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "客户列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "装修客户",
+        "description": "客户建档",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "78208f31",
+      "name": "报价",
+      "comment": "装修报价",
+      "categoryId": "quote",
+      "basePath": "/decoration",
+      "tables": [
+        {
+          "key": "main",
+          "name": "deco_quote",
+          "schema": "",
+          "conn": "main",
+          "comment": "报价单",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "customer_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "area",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "labor_rate",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "material_rate",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "discount",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "total",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "draft"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "item",
+          "name": "deco_item",
+          "schema": "",
+          "conn": "main",
+          "comment": "项目明细",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "quote_id",
+              "type": "bigint",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "spec",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "unit",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "qty",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "amount",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "cust",
+          "name": "deco_customer",
+          "schema": "",
+          "conn": "main",
+          "comment": "客户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "address",
+              "type": "varchar",
+              "comment": "",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "a4cd522e",
+          "key": "custom",
+          "name": "新建报价",
+          "method": "POST",
+          "path": "/quotes",
+          "auth": false,
+          "summary": "按面积和单价建立报价",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (customer_id, title, area, labor_rate, material_rate, discount, total) VALUES ({{body.customer_id}}, {{body.title}}, {{body.area}}, {{body.labor_rate}}, {{body.material_rate}}, {{body.discount}}, {{body.area}} * ({{body.labor_rate}} + {{body.material_rate}}));\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按面积和单价建立报价",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "dc4a41aa",
+          "key": "custom",
+          "name": "添加项目",
+          "method": "POST",
+          "path": "/quotes/:id/items",
+          "auth": false,
+          "summary": "加项目并累计总额",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC INSERT INTO {{t:item}} (quote_id, name, spec, unit, qty, unit_price, amount) VALUES ({{id}}, {{body.name}}, {{body.spec}}, {{body.unit}}, {{body.qty}}, {{body.unit_price}}, {{body.qty}} * {{body.unit_price}});\nEXEC UPDATE {{t:main}} SET total = total + {{body.qty}} * {{body.unit_price}} WHERE id = {{id}};\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "加项目并累计总额",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "9496adda",
+          "key": "custom",
+          "name": "折扣提交",
+          "method": "PUT",
+          "path": "/quotes/:id/submit",
+          "auth": false,
+          "summary": "按折扣率结价并提交",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC UPDATE {{t:main}} SET total = ROUND(total * (1 - discount / 100), 2), status = 'submitted' WHERE id = {{id}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按折扣率结价并提交",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "32f57eed",
+          "key": "custom",
+          "name": "报价详情",
+          "method": "GET",
+          "path": "/quotes/:id",
+          "auth": false,
+          "summary": "报价 + 明细 + 客户三表联查",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $q = QUERY SELECT * FROM {{t:main}} WHERE id = {{id}} LIMIT 1;\nLET $i = QUERY SELECT * FROM {{t:item}} WHERE quote_id = {{id}} ORDER BY id;\nLET $c = QUERY SELECT * FROM {{t:cust}} WHERE id = (SELECT customer_id FROM {{t:main}} WHERE id = {{id}}) LIMIT 1;\nRETURN 200 { \"quote\": $q.rows, \"items\": $i.rows, \"customer\": $c.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "报价 + 明细 + 客户三表联查",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "6811665f",
+          "key": "custom",
+          "name": "报价列表",
+          "method": "GET",
+          "path": "/quotes",
+          "auth": false,
+          "summary": "报价列表联查客户",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT q.id, q.title, q.area, q.total, q.status, c.name AS customer FROM {{t:main}} q LEFT JOIN {{t:cust}} c ON c.id = q.customer_id ORDER BY q.id DESC;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "报价列表联查客户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "cd30e245",
+          "key": "custom",
+          "name": "审批报价",
+          "method": "PUT",
+          "path": "/quotes/:id/approve",
+          "auth": false,
+          "summary": "客户确认报价",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC UPDATE {{t:main}} SET status = 'approved' WHERE id = {{id}} AND status = 'submitted';\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "客户确认报价",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "装修报价",
+        "description": "面积基价、项目明细、折扣、审批",
+        "owner": "ClickBuild 案例库",
+        "version": "1.0.0",
+        "tags": [
+          "装修",
+          "报价",
+          "审批"
+        ],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "装修报价系统",
+    "version": "1.0.0",
+    "description": "客户、面积、人工/材料单价、项目明细、折扣提交与审批；报价总额随明细累计"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "装修报价系统",
+    "footerText": "ClickBuild · 内置案例",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "updatedAt": "2026-11-19T15:17:09.091Z"
+}

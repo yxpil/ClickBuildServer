@@ -1,0 +1,1425 @@
+{
+  "name": "视频站服务",
+  "description": "视频 / 分区 / 评论 / 收藏，含上传与播放计数",
+  "categories": [
+    {
+      "id": "sys",
+      "name": "平台"
+    },
+    {
+      "id": "media",
+      "name": "视频"
+    },
+    {
+      "id": "social",
+      "name": "互动"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "fe9dae64",
+      "name": "用户",
+      "comment": "注册 / 登录 / 当前用户",
+      "categoryId": "sys",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "vid_user",
+          "schema": "",
+          "conn": "main",
+          "comment": "视频站用户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "only_id",
+              "type": "char",
+              "comment": "唯一ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "username",
+              "type": "varchar",
+              "comment": "用户名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "password_hash",
+              "type": "varchar",
+              "comment": "SM4 密码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "nickname",
+              "type": "varchar",
+              "comment": "昵称",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "12757963",
+          "key": "custom",
+          "name": "注册",
+          "method": "POST",
+          "path": "/register",
+          "auth": false,
+          "summary": "SM4 存密码并发 token",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $e = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($e.rows) > 0\n  RETURN 409 { \"ok\": false, \"error\": \"USER_EXISTS\" };\nEND\nEXEC INSERT INTO {{t:main}} (only_id, username, password_hash, nickname) VALUES ({{onlyId}}, {{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}});\nLET $t = TOKEN NEW { \"onlyId\": {{onlyId}}, \"username\": {{body.username}} };\nRETURN 201 { \"ok\": true, \"token\": $t.token };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "SM4 存密码并发 token",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "9d3bbbc6",
+          "key": "custom",
+          "name": "登录",
+          "method": "POST",
+          "path": "/login",
+          "auth": false,
+          "summary": "账号密码登录",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT only_id, password_hash FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) == 0\n  RETURN 401 { \"ok\": false, \"error\": \"NO_USER\" };\nEND\nIF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}\n  RETURN 401 { \"ok\": false, \"error\": \"BAD_PASSWORD\" };\nEND\nLET $t = TOKEN NEW { \"onlyId\": $u.rows[0].only_id, \"username\": {{body.username}} };\nRETURN 200 { \"ok\": true, \"token\": $t.token };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "账号密码登录",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "5882c204",
+          "key": "custom",
+          "name": "当前用户",
+          "method": "GET",
+          "path": "/me",
+          "auth": true,
+          "summary": "凭 token 取当前用户",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "RETURN 200 { \"user\": $user };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "凭 token 取当前用户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "注册 / 登录 / 当前用户",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "cbdc415c",
+      "name": "分区",
+      "comment": "视频分区（电影/课程/短视频）",
+      "categoryId": "media",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "vid_category",
+          "schema": "",
+          "conn": "main",
+          "comment": "分区",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "分区名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "code",
+              "type": "varchar",
+              "comment": "英文编码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "sort",
+              "type": "int",
+              "comment": "排序",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "bd39efc2",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/categories",
+          "auth": false,
+          "summary": "分区列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "分区列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "4694f373",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/categories",
+          "auth": false,
+          "summary": "新建分区",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建分区",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d0b31ed6",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/categories/:id",
+          "auth": false,
+          "summary": "改分区",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改分区",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "61fd7a99",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/categories/:id",
+          "auth": false,
+          "summary": "删分区",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删分区",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "视频分区（电影/课程/短视频）",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "7ec7b3a4",
+      "name": "视频",
+      "comment": "视频元数据 + 封面/文件上传 + 播放计数",
+      "categoryId": "media",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "vid_video",
+          "schema": "",
+          "conn": "main",
+          "comment": "视频",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "标题",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "category_id",
+              "type": "bigint",
+              "comment": "分区ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "cover_key",
+              "type": "varchar",
+              "comment": "封面对象键",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "file_key",
+              "type": "varchar",
+              "comment": "视频对象键",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "duration",
+              "type": "int",
+              "comment": "时长秒",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "views",
+              "type": "int",
+              "comment": "播放量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "0"
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 待审 1 上架 2 下架",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "datetime",
+              "comment": "更新时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "ba080d39",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/videos",
+          "auth": false,
+          "summary": "视频列表（标题搜索 / 分区筛选）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "视频列表（标题搜索 / 分区筛选）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d23e5d8f",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/videos/:id",
+          "auth": false,
+          "summary": "视频详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "视频详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "ce4dd527",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/videos",
+          "auth": false,
+          "summary": "新建视频",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建视频",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "17a197be",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/videos/:id",
+          "auth": false,
+          "summary": "编辑/上下架",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "编辑/上下架",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "7dec1b07",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/videos/:id",
+          "auth": false,
+          "summary": "删除视频",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删除视频",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "92b08f1c",
+          "key": "upload",
+          "name": "附件",
+          "method": "POST",
+          "path": "/videos/:id/file",
+          "auth": false,
+          "summary": "上传视频文件并回填 file_key",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "# 文件已经由服务器写进对象存储，这里只做入库；{{objectKey}} {{objectUrl}} {{filename}} {{size}} 都是现成的\nEXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"key\": {{objectKey}}, \"url\": {{objectUrl}}, \"name\": {{filename}} };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "上传视频文件并回填 file_key",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "149f7d10",
+          "key": "custom",
+          "name": "播放",
+          "method": "GET",
+          "path": "/videos/:id/play",
+          "auth": false,
+          "summary": "取播放地址并累加播放量",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $v = QUERY SELECT id, title, file_key, views FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nIF LEN($v.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_VIDEO\" };\nEND\nEXEC UPDATE {{t:main}} SET views = views + 1 WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"ok\": true, \"video\": $v.rows[0] };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "取播放地址并累加播放量",
+            "description": "先取 file_key 与标题，再 EXEC 自增 views；播放地址由对象存储返回（没有文件时返回空）。",
+            "requestExample": "",
+            "responseExample": "{\n  \"ok\": true,\n  \"id\": 1,\n  \"title\": \"演示\",\n  \"views\": 11\n}"
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "视频元数据 + 封面/文件上传 + 播放计数",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "f2b90ec4",
+      "name": "评论",
+      "comment": "视频评论 + 删除",
+      "categoryId": "social",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "vid_comment",
+          "schema": "",
+          "conn": "main",
+          "comment": "评论",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "video_id",
+              "type": "bigint",
+              "comment": "视频ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "user_only_id",
+              "type": "char",
+              "comment": "用户",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "content",
+              "type": "text",
+              "comment": "内容",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 待审 1 展示",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "75a1344c",
+          "key": "custom",
+          "name": "视频评论列表",
+          "method": "GET",
+          "path": "/videos/:id/comments",
+          "auth": false,
+          "summary": "按视频取评论",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT * FROM {{t:main}} WHERE video_id = {{id}} AND status = 1 ORDER BY id DESC LIMIT {{limit}} OFFSET {{offset}};\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:comments:{{id}}:{{page}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按视频取评论",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "f5447ed6",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/comments",
+          "auth": true,
+          "summary": "发评论（需要登录）",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "发评论（需要登录）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "608901cf",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/comments/:id",
+          "auth": false,
+          "summary": "删评论",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删评论",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "视频评论 + 删除",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "1b961e2c",
+      "name": "收藏",
+      "comment": "用户收藏视频，支持取消",
+      "categoryId": "social",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "vid_favorite",
+          "schema": "",
+          "conn": "main",
+          "comment": "收藏",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "video_id",
+              "type": "bigint",
+              "comment": "视频ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "user_only_id",
+              "type": "char",
+              "comment": "用户",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "39aa6abd",
+          "key": "custom",
+          "name": "我的收藏",
+          "method": "GET",
+          "path": "/favorites",
+          "auth": true,
+          "summary": "按用户取收藏，联视频表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT f.id, v.title, v.cover_key FROM {{t:main}} f LEFT JOIN {{t:main}} v ON v.id = f.video_id WHERE f.user_only_id = {{user.onlyId}} ORDER BY f.id DESC LIMIT {{limit}} OFFSET {{offset}};\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按用户取收藏，联视频表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "66758aa3",
+          "key": "custom",
+          "name": "收藏/取消",
+          "method": "POST",
+          "path": "/favorites/toggle",
+          "auth": true,
+          "summary": "有就删，没有就插",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $e = QUERY SELECT id FROM {{t:main}} WHERE video_id = {{body.video_id}} AND user_only_id = {{user.onlyId}} LIMIT 1;\nIF LEN($e.rows) > 0\n  EXEC DELETE FROM {{t:main}} WHERE id = $e.rows[0].id;\n  RETURN 200 { \"ok\": true, \"favorited\": false };\nEND\nEXEC INSERT INTO {{t:main}} (video_id, user_only_id) VALUES ({{body.video_id}}, {{user.onlyId}});\nRETURN 200 { \"ok\": true, \"favorited\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "有就删，没有就插",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "用户收藏视频，支持取消",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "视频站服务",
+    "version": "1.0.0",
+    "description": "视频 / 分区 / 评论 / 收藏，含上传与播放计数（已启用插件：请求标记）"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "视频站服务",
+    "footerText": "",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "generatedAt": "2026-11-19T14:37:43.680Z"
+}

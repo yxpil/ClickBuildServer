@@ -1,0 +1,1568 @@
+{
+  "name": "商城服务",
+  "description": "用户 / 商品 / 购物车 / 订单 四条线，含库存防超卖与下单事务",
+  "categories": [
+    {
+      "id": "sys",
+      "name": "平台与用户"
+    },
+    {
+      "id": "goods",
+      "name": "商品"
+    },
+    {
+      "id": "trade",
+      "name": "交易"
+    }
+  ],
+  "functions": [
+    {
+      "name": "MASK_PHONE",
+      "params": [
+        "v"
+      ],
+      "body": "CONCAT(SUBSTR(v, 0, 3), \"****\", SUBSTR(v, 7, 4))"
+    },
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "54575c7e",
+      "name": "用户注册",
+      "comment": "注册 / 登录 / 当前用户，密码 SM4 落库",
+      "categoryId": "sys",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "shop_user",
+          "schema": "",
+          "conn": "main",
+          "comment": "商城用户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "only_id",
+              "type": "char",
+              "comment": "唯一ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "username",
+              "type": "varchar",
+              "comment": "用户名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "password_hash",
+              "type": "varchar",
+              "comment": "SM4 密码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "nickname",
+              "type": "varchar",
+              "comment": "昵称",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "手机号",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "role",
+              "type": "varchar",
+              "comment": "角色 user/admin",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "user"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "a0c3a433",
+          "key": "custom",
+          "name": "注册",
+          "method": "POST",
+          "path": "/register",
+          "auth": false,
+          "summary": "查重后插入，密码 SM4 加密，返回 onlyId 与 token",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($exists.rows) > 0\n  RETURN 409 { \"ok\": false, \"error\": \"USER_EXISTS\" };\nEND\nEXEC INSERT INTO {{t:main}} (only_id, username, password_hash, nickname, phone) VALUES ({{onlyId}}, {{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}}, {{body.phone}});\nLET $t = TOKEN NEW { \"onlyId\": {{onlyId}}, \"username\": {{body.username}}, \"role\": \"user\" };\nRETURN 201 { \"ok\": true, \"onlyId\": {{onlyId}}, \"token\": $t.token };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "查重后插入，密码 SM4 加密，返回 onlyId 与 token",
+            "description": "用户名唯一；密码先 SM4_ENC 再入库；注册成功直接签发 token。",
+            "requestExample": "{\n  \"username\": \"alice\",\n  \"password\": \"123456\",\n  \"nickname\": \"Alice\",\n  \"phone\": \"13800000000\"\n}",
+            "responseExample": "{\n  \"ok\": true,\n  \"onlyId\": \"OL...\",\n  \"token\": \"...\"\n}"
+          }
+        },
+        {
+          "id": "05447632",
+          "key": "custom",
+          "name": "登录",
+          "method": "POST",
+          "path": "/login",
+          "auth": false,
+          "summary": "账号密码登录，SM4 解密校验",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $u = QUERY SELECT only_id, password_hash, role FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) == 0\n  RETURN 401 { \"ok\": false, \"error\": \"NO_USER\" };\nEND\nIF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}\n  RETURN 401 { \"ok\": false, \"error\": \"BAD_PASSWORD\" };\nEND\nLET $t = TOKEN NEW { \"onlyId\": $u.rows[0].only_id, \"username\": {{body.username}}, \"role\": $u.rows[0].role };\nRETURN 200 { \"ok\": true, \"token\": $t.token };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "账号密码登录，SM4 解密校验",
+            "description": "先按用户名取一行，再 SM4_DEC 比对；失败分别返回 NO_USER / BAD_PASSWORD。",
+            "requestExample": "{\n  \"username\": \"alice\",\n  \"password\": \"123456\"\n}",
+            "responseExample": "{\n  \"ok\": true,\n  \"token\": \"...\"\n}"
+          }
+        },
+        {
+          "id": "b12bbd1f",
+          "key": "custom",
+          "name": "当前用户",
+          "method": "GET",
+          "path": "/me",
+          "auth": true,
+          "summary": "凭 token 取当前登录用户",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "RETURN 200 { \"user\": $user };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "凭 token 取当前登录用户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "64405e31",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/users",
+          "auth": false,
+          "summary": "用户列表（后台）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "用户列表（后台）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "注册 / 登录 / 当前用户，密码 SM4 落库",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "d7a0ab8e",
+      "name": "商品",
+      "comment": "SPU + 库存 + 封面上传",
+      "categoryId": "goods",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "shop_product",
+          "schema": "",
+          "conn": "main",
+          "comment": "商品",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "标题",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "category",
+              "type": "varchar",
+              "comment": "分类",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal",
+              "comment": "售价",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "stock",
+              "type": "int",
+              "comment": "库存",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "sales",
+              "type": "int",
+              "comment": "销量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "0"
+            },
+            {
+              "name": "cover_key",
+              "type": "varchar",
+              "comment": "封面对象键",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 下架 1 上架",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "description",
+              "type": "text",
+              "comment": "详情",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "datetime",
+              "comment": "更新时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "4d55e7a3",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/products",
+          "auth": false,
+          "summary": "商品列表（搜索/分类/价格区间）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "商品列表（搜索/分类/价格区间）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "04a10923",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/products/:id",
+          "auth": false,
+          "summary": "商品详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "商品详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "02cea9a3",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/products",
+          "auth": false,
+          "summary": "新建商品",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建商品",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d13afcb6",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/products/:id",
+          "auth": false,
+          "summary": "改价 / 上下架",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改价 / 上下架",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "b4f31a22",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/products/:id",
+          "auth": false,
+          "summary": "删除商品",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删除商品",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "f7bc5adc",
+          "key": "upload",
+          "name": "附件",
+          "method": "POST",
+          "path": "/products/:id/cover",
+          "auth": false,
+          "summary": "上传封面到对象存储并回填 cover_key",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "# 文件已经由服务器写进对象存储，这里只做入库；{{objectKey}} {{objectUrl}} {{filename}} {{size}} 都是现成的\nEXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"key\": {{objectKey}}, \"url\": {{objectUrl}}, \"name\": {{filename}} };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "上传封面到对象存储并回填 cover_key",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "a8a8e0c4",
+          "key": "custom",
+          "name": "扣库存（防超卖）",
+          "method": "POST",
+          "path": "/products/:id/stock",
+          "auth": false,
+          "summary": "库存不足直接 409，更新在事务里",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $p = QUERY SELECT stock FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nIF LEN($p.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_PRODUCT\" };\nEND\nIF $p.rows[0].stock < {{body.qty}}\n  RETURN 409 { \"ok\": false, \"error\": \"OUT_OF_STOCK\", \"stock\": $p.rows[0].stock };\nEND\nEXEC UPDATE {{t:main}} SET stock = stock - {{body.qty}}, sales = sales + {{body.qty}} WHERE {{idColumn:main}} = {{id}} AND stock >= {{body.qty}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "库存不足直接 409，更新在事务里",
+            "description": "先查库存，够才 UPDATE；UPDATE 的 WHERE 再带一次 stock >= qty，避免并发超卖。",
+            "requestExample": "{\n  \"qty\": 2\n}",
+            "responseExample": "{\n  \"ok\": true,\n  \"stock\": 8\n}"
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "SPU + 库存 + 封面上传",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "071be391",
+      "name": "购物车",
+      "comment": "按登录用户维度加购、改数量、清空",
+      "categoryId": "trade",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "shop_cart",
+          "schema": "",
+          "conn": "main",
+          "comment": "购物车行",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "user_only_id",
+              "type": "char",
+              "comment": "用户唯一ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "product_id",
+              "type": "bigint",
+              "comment": "商品ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "qty",
+              "type": "int",
+              "comment": "数量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "checked",
+              "type": "tinyint",
+              "comment": "是否勾选",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "prod",
+          "name": "shop_product",
+          "schema": "",
+          "conn": "main",
+          "comment": "商品（用于联查展示）",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "标题",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal",
+              "comment": "售价",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "cover_key",
+              "type": "varchar",
+              "comment": "封面",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "ffd9cc16",
+          "key": "custom",
+          "name": "我的购物车",
+          "method": "GET",
+          "path": "/cart",
+          "auth": true,
+          "summary": "按 token 里的 onlyId 取购物车，联商品表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT c.id, c.qty, c.checked, p.title, p.price, p.cover_key FROM {{t:main}} c LEFT JOIN {{t:prod}} p ON p.id = c.product_id WHERE c.user_only_id = {{user.onlyId}} ORDER BY c.id DESC;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "按 token 里的 onlyId 取购物车，联商品表",
+            "description": "auth=true 时服务端已把用户放进 $user；这里用 $user.onlyId 过滤，再 JOIN 商品。",
+            "requestExample": "",
+            "responseExample": "{\n  \"rows\": [\n    {\n      \"id\": 1,\n      \"title\": \"键盘\",\n      \"price\": 299,\n      \"qty\": 1\n    }\n  ]\n}"
+          }
+        },
+        {
+          "id": "0cd15c00",
+          "key": "custom",
+          "name": "加入购物车",
+          "method": "POST",
+          "path": "/cart/add",
+          "auth": true,
+          "summary": "同一商品累加数量",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $c = QUERY SELECT id, qty FROM {{t:main}} WHERE user_only_id = {{user.onlyId}} AND product_id = {{body.product_id}} LIMIT 1;\nIF LEN($c.rows) > 0\n  EXEC UPDATE {{t:main}} SET qty = qty + {{body.qty}} WHERE id = $c.rows[0].id;\nELSE\n  EXEC INSERT INTO {{t:main}} (user_only_id, product_id, qty) VALUES ({{user.onlyId}}, {{body.product_id}}, {{body.qty}});\nEND\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "同一商品累加数量",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "da81782a",
+          "key": "custom",
+          "name": "清空购物车",
+          "method": "DELETE",
+          "path": "/cart",
+          "auth": true,
+          "summary": "删当前用户全部行",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC DELETE FROM {{t:main}} WHERE user_only_id = {{user.onlyId}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删当前用户全部行",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "按登录用户维度加购、改数量、清空",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "9d3afa22",
+      "name": "订单",
+      "comment": "订单主表 + 明细，下单写两张表在一个事务里",
+      "categoryId": "trade",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "shop_order",
+          "schema": "",
+          "conn": "main",
+          "comment": "订单主表",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "order_no",
+              "type": "varchar",
+              "comment": "订单号",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "user_only_id",
+              "type": "char",
+              "comment": "下单用户",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "receiver",
+              "type": "varchar",
+              "comment": "收货人",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "address",
+              "type": "varchar",
+              "comment": "地址",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "amount",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 待付 1 已付 2 发货 3 完成 9 取消",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "item",
+          "name": "shop_order_item",
+          "schema": "",
+          "conn": "main",
+          "comment": "订单明细",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "order_id",
+              "type": "bigint",
+              "comment": "订单ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "product_id",
+              "type": "bigint",
+              "comment": "商品ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "商品标题",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "qty",
+              "type": "int",
+              "comment": "数量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal",
+              "comment": "单价",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "0675907e",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/orders",
+          "auth": false,
+          "summary": "订单列表（可按状态/客户筛）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "订单列表（可按状态/客户筛）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "5a9f3805",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/orders/:id",
+          "auth": false,
+          "summary": "订单详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "订单详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "12b34ba2",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/orders/:id",
+          "auth": false,
+          "summary": "删除订单",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删除订单",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "9a202e45",
+          "key": "custom",
+          "name": "下单",
+          "method": "POST",
+          "path": "/orders",
+          "auth": false,
+          "summary": "插订单 + 插明细，同事务提交",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} (order_no, user_only_id, receiver, address, amount) VALUES ({{body.order_no}}, {{onlyId}}, {{body.receiver}}, {{body.address}}, {{body.amount}});\nLET $oid = QUERY SELECT LAST_INSERT_ID() AS id;\nFOREACH $i IN {{body.items}}\n  EXEC INSERT INTO {{t:item}} (order_id, product_id, title, qty, price) VALUES ({{vars.oid.rows.0.id}}, $i.product_id, $i.title, $i.qty, $i.price);\nEND\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "插订单 + 插明细，同事务提交",
+            "description": "两条 INSERT 在同一个事务里，任一条失败整体回滚。",
+            "requestExample": "{\n  \"order_no\": \"SO20261119001\",\n  \"receiver\": \"张三\",\n  \"address\": \"昆明\",\n  \"amount\": 598,\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"title\": \"键盘\",\n      \"qty\": 2,\n      \"price\": 299\n    }\n  ]\n}",
+            "responseExample": "{\n  \"ok\": true,\n  \"id\": 12\n}"
+          }
+        },
+        {
+          "id": "a3cb1b92",
+          "key": "custom",
+          "name": "订单+明细联查",
+          "method": "GET",
+          "path": "/orders/with-items",
+          "auth": false,
+          "summary": "主表 LEFT JOIN 明细",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT o.id, o.order_no, o.receiver, o.amount, o.status, i.title, i.qty, i.price FROM {{t:main}} o LEFT JOIN {{t:item}} i ON i.order_id = o.id WHERE {{where:main}} ORDER BY o.id DESC LIMIT {{limit}} OFFSET {{offset}};\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "主表 LEFT JOIN 明细",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "订单主表 + 明细，下单写两张表在一个事务里",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "商城服务",
+    "version": "1.0.0",
+    "description": "用户 / 商品 / 购物车 / 订单 四条线，含库存防超卖与下单事务（已启用插件：请求标记）"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "商城服务",
+    "footerText": "",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "generatedAt": "2026-11-19T14:37:43.635Z"
+}

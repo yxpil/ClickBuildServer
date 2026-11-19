@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 黑白简约办公风：白纸、细线、单色，不做立体浮雕 */
+@layer base {
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    @apply bg-white text-neutral-900;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  input, select, textarea { font-family: inherit; font-size: inherit; outline: none; background: #fff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #f4f4f4; }
+  ::-webkit-scrollbar-thumb { background: #cfcfcf; border: 2px solid #f4f4f4; }
+  ::-webkit-scrollbar-thumb:hover { background: #9a9a9a; }
+}

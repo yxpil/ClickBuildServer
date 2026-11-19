@@ -1,0 +1,956 @@
+{
+  "name": "工单服务",
+  "description": "客户 / 工单 / 回复，含指派、回复和状态统计",
+  "categories": [
+    {
+      "id": "crm",
+      "name": "客户"
+    },
+    {
+      "id": "ticket",
+      "name": "工单"
+    },
+    {
+      "id": "sys",
+      "name": "平台"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "4b3928bb",
+      "name": "客户",
+      "comment": "客户档案",
+      "categoryId": "crm",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "crm_customer",
+          "schema": "",
+          "conn": "main",
+          "comment": "客户",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "客户名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "电话",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "level",
+              "type": "tinyint",
+              "comment": "等级 1-5",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "owner",
+              "type": "varchar",
+              "comment": "负责人",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "remark",
+              "type": "text",
+              "comment": "备注",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "08a6be0c",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/customers",
+          "auth": false,
+          "summary": "客户列表（按名字/负责人筛）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "客户列表（按名字/负责人筛）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "c4085687",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/customers/:id",
+          "auth": false,
+          "summary": "客户详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "客户详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d037a6e2",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/customers",
+          "auth": false,
+          "summary": "新建客户",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建客户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "135aea54",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/customers/:id",
+          "auth": false,
+          "summary": "改客户",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改客户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "079c1262",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/customers/:id",
+          "auth": false,
+          "summary": "删客户",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删客户",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "客户档案",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "de3a40df",
+      "name": "工单",
+      "comment": "工单 CRUD + 指派 + 状态统计",
+      "categoryId": "ticket",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "biz_ticket",
+          "schema": "",
+          "conn": "main",
+          "comment": "工单",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "title",
+              "type": "varchar",
+              "comment": "标题",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "content",
+              "type": "text",
+              "comment": "问题描述",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": true,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "customer_id",
+              "type": "bigint",
+              "comment": "客户ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 新建 1 处理中 2 已解决 3 关闭",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "priority",
+              "type": "tinyint",
+              "comment": "1 低 2 中 3 高",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "2"
+            },
+            {
+              "name": "assignee",
+              "type": "varchar",
+              "comment": "处理人",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "datetime",
+              "comment": "更新时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "reply",
+          "name": "biz_ticket_reply",
+          "schema": "",
+          "conn": "main",
+          "comment": "工单回复",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "ticket_id",
+              "type": "bigint",
+              "comment": "工单ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "author",
+              "type": "varchar",
+              "comment": "回复人",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "content",
+              "type": "text",
+              "comment": "内容",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "7676cb12",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/tickets",
+          "auth": false,
+          "summary": "工单列表（状态/优先级/处理人）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "工单列表（状态/优先级/处理人）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "02d0f427",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/tickets/:id",
+          "auth": false,
+          "summary": "工单详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "工单详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "36789941",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/tickets",
+          "auth": false,
+          "summary": "新建工单",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建工单",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "ad6178c6",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/tickets/:id",
+          "auth": false,
+          "summary": "改工单",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改工单",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "d12da852",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/tickets/:id",
+          "auth": false,
+          "summary": "删工单",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删工单",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "e7502fa9",
+          "key": "custom",
+          "name": "指派",
+          "method": "POST",
+          "path": "/tickets/:id/assign",
+          "auth": false,
+          "summary": "指定处理人并转处理中",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $t = QUERY SELECT id, status FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nIF LEN($t.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_TICKET\" };\nEND\nEXEC UPDATE {{t:main}} SET assignee = {{body.assignee}}, status = 1 WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "指定处理人并转处理中",
+            "description": "指派必须带 assignee；会把 status 从 0 推到 1。",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "fb9ac2d3",
+          "key": "custom",
+          "name": "回复",
+          "method": "POST",
+          "path": "/tickets/:id/replies",
+          "auth": false,
+          "summary": "加一条回复",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC INSERT INTO {{t:reply}} (ticket_id, author, content) VALUES ({{id}}, {{body.author}}, {{body.content}});\nEXEC UPDATE {{t:main}} SET updated_at = NOW() WHERE {{idColumn:main}} = {{id}};\nRETURN 201 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "加一条回复",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "7d691d84",
+          "key": "custom",
+          "name": "状态统计",
+          "method": "GET",
+          "path": "/tickets/stats",
+          "auth": false,
+          "summary": "按状态 GROUP BY",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT status, COUNT(*) AS n FROM {{t:main}} GROUP BY status;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:ticket-stats",
+            "ttl": 30
+          },
+          "docs": {
+            "summary": "按状态 GROUP BY",
+            "description": "GROUP BY 用 SQL 自己做，返回数组；接口文档就是给前端看这个形状。",
+            "requestExample": "",
+            "responseExample": "{\n  \"rows\": [\n    {\n      \"status\": 0,\n      \"n\": 3\n    },\n    {\n      \"status\": 1,\n      \"n\": 5\n    }\n  ]\n}"
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "工单 CRUD + 指派 + 状态统计",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "工单服务",
+    "version": "1.0.0",
+    "description": "客户 / 工单 / 回复，含指派、回复和状态统计（已启用插件：请求标记）"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "工单服务",
+    "footerText": "",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "generatedAt": "2026-11-19T14:37:43.772Z"
+}

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>接口控制台</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; color: #111; background: #fff; }
+  header { padding: 14px 20px; border-bottom: 1px solid #111; display: flex; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .5px; }
+  header .muted { color: #666; font-size: 12px; }
+  main { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 52px); }
+  .routes { overflow: auto; }
+  .row { display: grid; grid-template-columns: 70px 1fr 110px; gap: 10px; padding: 8px 16px; border-bottom: 1px solid #e5e5e5; align-items: center; }
+  .row:hover { background: #f7f7f7; }
+  .m { font-size: 11px; font-weight: 700; text-align: center; border: 1px solid #111; padding: 1px 0; }
+  .p { font-family: Consolas, monospace; font-size: 12px; }
+  .n { color: #555; font-size: 12px; }
+  .go { border: 1px solid #111; background: #fff; font: inherit; padding: 3px 10px; cursor: pointer; }
+  .go:hover { background: #111; color: #fff; }
+  aside { border-left: 1px solid #111; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  aside h2 { font-size: 13px; margin: 0; }
+  select, textarea, input { width: 100%; font: inherit; border: 1px solid #111; padding: 6px; background: #fff; }
+  textarea { height: 140px; font-family: Consolas, monospace; font-size: 12px; }
+  pre { flex: 1; overflow: auto; border: 1px solid #111; padding: 8px; margin: 0; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+  .bar { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>接口控制台</h1>
+  <span class="muted" id="hint">正在读取 /_meta …</span>
+</header>
+<main>
+  <section class="routes" id="routes"></section>
+  <aside>
+    <h2>请求</h2>
+    <input id="path" placeholder="/api/xxx">
+    <div class="bar">
+      <select id="method" style="width:120px">
+        <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>PATCH</option>
+      </select>
+      <button class="go" id="send">发送</button>
+      <button class="go" id="health">健康</button>
+    </div>
+    <h2>请求体 JSON</h2>
+    <textarea id="body" placeholder='{"name":"值"}'></textarea>
+    <h2>响应</h2>
+    <pre id="out">—</pre>
+  </aside>
+</main>
+<script>
+let meta = null;
+const $ = (id) => document.getElementById(id);
+
+function paint() {
+  const rows = [];
+  for (const it of meta.interfaces) {
+    for (const r of it.routes) {
+      rows.push(`<div class="row">
+        <span class="m">${r.method}</span>
+        <div><div class="p">${meta.prefix}${r.path}</div><div class="n">${it.name} / ${r.name}</div></div>
+        <button class="go" data-m="${r.method}" data-p="${meta.prefix}${r.path}">试一下</button>
+      </div>`);
+    }
+  }
+  $('routes').innerHTML = rows.join('') || '<div class="row">没有路由</div>';
+  $('hint').textContent = `${meta.name} · ${meta.database} · ${meta.interfaces.length} 个接口`;
+}
+
+async function load() {
+  meta = await (await fetch('/_meta')).json();
+  paint();
+}
+
+async function call(method, p, body) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(p, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body || undefined });
+    const j = await r.json();
+    $('out').textContent = `${r.status} · ${Math.round(performance.now() - t0)}ms\n` + JSON.stringify(j, null, 2);
+  } catch (e) {
+    $('out').textContent = '请求失败：' + e.message;
+  }
+}
+
+$('routes').addEventListener('click', (e) => {
+  const b = e.target.closest('.go');
+  if (!b) return;
+  $('method').value = b.dataset.m;
+  $('path').value = b.dataset.p;
+  const body = $('body').value.trim();
+  call(b.dataset.m, b.dataset.p, body);
+});
+
+$('send').onclick = () => call($('method').value, $('path').value, $('body').value.trim());
+$('health').onclick = async () => { $('out').textContent = JSON.stringify(await (await fetch('/_health')).json(), null, 2); };
+
+load().catch((e) => { $('hint').textContent = '读取 /_meta 失败：' + e.message; });
+</script>
+</body>
+</html>

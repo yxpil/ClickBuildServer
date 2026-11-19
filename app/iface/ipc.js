@@ -1,0 +1,336 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { ipcMain, dialog, shell, BrowserWindow } = require('electron');
+
+const spec = require('./spec');
+const render = require('./render');
+const script = require('./script');
+const funcs = require('./funcs');
+const codegen = require('./codegen');
+const services = require('./services');
+const projects = require('./project-store');
+const pkg = require('./package');
+const ai = require('./ai');
+const templates = require('./templates');
+const plugins = require('./plugins');
+const defender = require('./defender');
+const frontend = require('./frontend');
+const store = require('../store');
+
+function ctxOf(payload) {
+  const query = {};
+  for (const [k, v] of Object.entries((payload && payload.query) || {})) {
+    if (v !== '' && v != null) query[k] = v;
+  }
+  let body = {};
+  if (payload && payload.bodyText) {
+    try { body = JSON.parse(payload.bodyText); } catch (e) { body = {}; }
+  }
+  return {
+    query,
+    body,
+    path: {},
+    id: (payload && payload.id) || query.id || body.id || null,
+    uuid: '00000000-0000-0000-0000-000000000000',
+    now: '2026-01-01 00:00:00',
+    file: { filename: 'demo.png', contentType: 'image/png', size: 1024, objectKey: 'demo/object.png', objectUrl: 's3://demo' },
+  };
+}
+
+function pickRoute(iface, routeId) {
+  const it = spec.normalizeIface(iface, { categories: [{ id: 'biz', name: '默认' }] }, 0);
+  const route = it.routes.find((r) => r.id === routeId) || it.routes[0];
+  return { iface: it, route };
+}
+
+function preview(payload) {
+  try {
+    const { iface, route } = pickRoute(payload.iface, payload.routeId);
+    const ctx = ctxOf(payload);
+    const ast = script.parseScript(route.script || '').ast;
+    const statements = [];
+    const walk = (list) => list.forEach((st) => {
+      if ((st.k === 'let' && st.from) || st.k === 'sql') {
+        const built = render.renderSqlText(st.sql, iface, ctx);
+        statements.push({ mode: st.from || st.mode || 'QUERY', name: st.name || '', sql: built.sql, params: built.params });
+      }
+      if (st.k === 'if') st.branches.forEach((b) => walk(b.body));
+      if (st.k === 'if' && st.elseBody) walk(st.elseBody);
+      if (st.k === 'foreach') walk(st.body);
+    });
+    walk(ast);
+    const cacheKey = route.cache && route.cache.enabled ? render.renderText(route.cache.key || '', iface, ctx) : '';
+    return { ok: true, statements, cacheKey, ddl: spec.ddlOf(iface) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function requestServer(payload) {
+  const ports = services.settings().ports;
+  const target = new URL(`http://127.0.0.1:${ports.http}${payload.path}`);
+  for (const [k, v] of Object.entries(payload.query || {})) {
+    if (v !== '' && v != null) target.searchParams.set(k, v);
+  }
+  const init = { method: payload.method || 'GET', headers: {} };
+  if (payload.file && payload.file.base64) {
+    init.headers['content-type'] = payload.file.contentType || 'application/octet-stream';
+    init.headers['x-filename'] = payload.file.filename || 'upload.bin';
+    init.body = Buffer.from(payload.file.base64, 'base64');
+  } else if (payload.bodyText) {
+    init.headers['content-type'] = 'application/json';
+    init.body = payload.bodyText;
+  }
+  const started = Date.now();
+  const res = await fetch(target, init);
+  const text = await res.text();
+  return { status: res.status, ms: Date.now() - started, body: text };
+}
+
+function registerIpc() {
+  ipcMain.handle('iface:boot', async () => {
+    const name = projects.boot();
+    const stored = projects.load(name) || spec.seedProject();
+    const project = spec.normalizeProject(stored);
+    return { name, project, list: projects.list(), services: await services.status(), settings: services.settings() };
+  });
+
+  ipcMain.handle('iface:projects', () => projects.list());
+  ipcMain.handle('iface:load', (e, name) => {
+    const p = projects.load(name);
+    return p ? spec.normalizeProject(p) : null;
+  });
+  ipcMain.handle('iface:save', (e, project) => {
+    const p = spec.normalizeProject(project);
+    const v = spec.validateProject(p);
+    const file = projects.save(p);
+    return { file, problems: v.errors };
+  });
+  ipcMain.handle('iface:delete', (e, name) => projects.remove(name));
+  ipcMain.handle('iface:seed', () => spec.seedProject());
+  ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz'));
+
+  ipcMain.handle('iface:validate', (e, project) => spec.validateProject(spec.normalizeProject(project)));
+  ipcMain.handle('iface:preview', (e, payload) => preview(payload));
+  ipcMain.handle('iface:script:check', (e, text) => script.checkScript(text));
+  ipcMain.handle('iface:help', () => ({
+    builtins: funcs.NAMES,
+    types: spec.TYPES,
+    routes: spec.ROUTE_META,
+    templates: spec.ROUTE_TEMPLATES,
+  }));
+  ipcMain.handle('iface:ddl', (e, iface) => {
+    try { return { ok: true, ddl: spec.ddlOf(spec.normalizeIface(iface, { categories: [{ id: 'biz' }] }, 0)) }; } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('iface:generate', (e, project, outDir, opts) => {
+    const base = spec.normalizeProject(project);
+    const plugged = plugins.apply(base);
+    const p = plugged.project;
+    const v = spec.validateProject(p);
+    if (!v.ok) return { ok: false, error: v.errors.join('\n'), problems: v.errors };
+    const o = opts || {};
+    const dirName = String(o.dirName || p.name || '接口服务').replace(/[\\/:*?"<>|]/g, '_');
+    const target = outDir || path.join(store.defaultGeneratedRoot(), 'iface', dirName);
+    const gen = codegen.writeTo(p, target, { port: services.settings().ports.http, only: o.only, category: o.category });
+    return { ok: true, dir: gen.dir, files: gen.files.map((f) => ({ path: f, size: 0 })), ports: gen.ports, warnings: plugged.warnings, count: gen.project.interfaces.length };
+  });
+
+  ipcMain.handle('iface:services', async () => services.status());
+  ipcMain.handle('iface:services:start', async (e, id) => {
+    if (id === 'mysql') return services.startMysql();
+    if (id === 'redis') return services.startRedis();
+    if (id === 's3') return services.startS3();
+    return services.startAll();
+  });
+  ipcMain.handle('iface:services:stop', async (e, id) => (id ? services.stopOne(id) : services.stopAll()));
+  ipcMain.handle('iface:services:logs', (e, id) => services.logs(id));
+  ipcMain.handle('iface:ports:set', (e, patch) => services.setPorts(patch));
+  ipcMain.handle('iface:root:pick', async () => {
+    const r = await dialog.showOpenDialog({ title: '选择三个本地服务所在的文件夹', properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    services.setServicesRoot(r.filePaths[0]);
+    return r.filePaths[0];
+  });
+
+  ipcMain.handle('iface:server:start', async (e, dir) => services.startServer(dir));
+  ipcMain.handle('iface:server:stop', async () => services.stopServer());
+  ipcMain.handle('iface:server:logs', () => services.logs('server'));
+
+  ipcMain.handle('iface:test', async (e, payload) => {
+    try { return { ok: true, ...(await requestServer(payload)) }; } catch (err) { return { ok: false, error: `请求失败：${err.message}（先启动生成的服务，端口 ${services.settings().ports.http}）` }; }
+  });
+  ipcMain.handle('iface:openConsole', async () => {
+    const port = services.settings().ports.http;
+    await shell.openExternal(`http://127.0.0.1:${port}/`);
+    return `http://127.0.0.1:${port}/`;
+  });
+  ipcMain.handle('iface:openPath', (e, p) => shell.openPath(p));
+  ipcMain.handle('iface:exists', (e, p) => fs.existsSync(p));
+  ipcMain.handle('iface:openUrl', (e, url) => shell.openExternal(String(url)));
+
+  ipcMain.handle('iface:clone', (e, iface, names) => spec.cloneIface(iface, names || []));
+
+  ipcMain.handle('iface:exportYxpn', (e, project) => {
+    try {
+      const p = spec.normalizeProject(project);
+      const outDir = path.join(store.defaultGeneratedRoot(), 'yxpn');
+      const file = path.join(outDir, `${String(p.name || '接口工程').replace(/[\\/:*?"<>|]/g, '_')}.yxpn`);
+      const r = pkg.writeYxpn(p, file, { port: services.settings().ports.http });
+      return { ok: true, file: r.file, size: r.size, manifest: r.manifest };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('iface:importYxpn', async () => {
+    const r = await dialog.showOpenDialog({ title: '打开 .yxpn 工程包', properties: ['openFile'], filters: [{ name: 'ClickBuild 工程包', extensions: ['yxpn'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    try {
+      const got = pkg.readYxpn(r.filePaths[0]);
+      return { ok: true, project: got.project, manifest: got.manifest, files: got.files, file: r.filePaths[0] };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('iface:importYxpnPath', async (e, file) => {
+    if (!file || !fs.existsSync(file)) return { ok: false, error: '找不到这个工程包' };
+    try {
+      const got = pkg.readYxpn(file);
+      return { ok: true, project: got.project, manifest: got.manifest, files: got.files, file };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('app:assocYxpn', async () => {
+    if (process.platform !== 'win32') return { ok: false, error: '目前只处理 Windows 关联' };
+    const { execFile } = require('child_process');
+    const cmd = (args) => new Promise((resolve) => execFile('reg', args, { windowsHide: true }, (err, out, errOut) => resolve({ ok: !err, out: String(out || errOut || '').trim() })));
+    const exe = process.execPath;
+    const appDir = store.resourceRoot();
+    const icon = path.join(appDir, 'logo.png');
+    await cmd(['add', 'HKCU\\Software\\Classes\\.yxpn', '/ve', '/d', 'ClickBuild.Yxpn', '/f']);
+    await cmd(['add', 'HKCU\\Software\\Classes\\ClickBuild.Yxpn', '/ve', '/d', 'ClickBuild 接口工程包', '/f']);
+    await cmd(['add', 'HKCU\\Software\\Classes\\ClickBuild.Yxpn\\DefaultIcon', '/ve', '/d', icon, '/f']);
+    const openCmd = store.isPackaged() ? `"${exe}" "%1"` : `"${exe}" "${appDir}" "%1"`;
+    const r = await cmd(['add', 'HKCU\\Software\\Classes\\ClickBuild.Yxpn\\shell\\open\\command', '/ve', '/d', openCmd, '/f']);
+    return r.ok ? { ok: true, exe, appDir } : r;
+  });
+
+  ipcMain.handle('iface:docs', (e, project) => {
+    const p = spec.normalizeProject(project);
+    return { ok: true, openapi: codegen.buildOpenApi(p, services.settings().ports.http), html: codegen.docsPage(p, services.settings().ports.http) };
+  });
+
+  ipcMain.handle('iface:ai', async (e, prompt) => {
+    try {
+      const conf = (store.readSettings().ai) || {};
+      return await ai.complete(prompt, conf);
+    } catch (err) { return { error: err.message }; }
+  });
+
+  ipcMain.handle('iface:monitor', async (e, tail) => {
+    const base = `http://127.0.0.1:${services.settings().ports.http}`;
+    try {
+      const [logs, health, routes] = await Promise.all([
+        fetch(`${base}/_logs?tail=${Number(tail) || 200}`).then((r) => r.json()),
+        fetch(`${base}/_health`).then((r) => r.json()),
+        fetch(`${base}/_routes`).then((r) => r.json()),
+      ]);
+      return { ok: true, logs: logs.logs || [], health, routes: routes.routes || [] };
+    } catch (err) {
+      return { ok: false, error: `服务没起来或端口不对：${err.message}`, logs: [], health: null, routes: [] };
+    }
+  });
+
+  ipcMain.handle('iface:theme', (e, patch) => {
+    const next = store.writeSettings({ theme: { ...(store.readSettings().theme || {}), ...(patch || {}) } });
+    return next.theme || {};
+  });
+
+  ipcMain.handle('iface:templates:list', () => {
+    try { return { ok: true, list: templates.list() }; } catch (e) { return { ok: false, error: e.message, list: [] }; }
+  });
+  ipcMain.handle('iface:templates:get', (e, id) => {
+    try { return { ok: true, ...templates.get(id) }; } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('iface:templates:save', (e, payload) => {
+    try {
+      const p = spec.normalizeProject(payload.project);
+      const v = spec.validateProject(p);
+      if (!v.ok) return { ok: false, error: v.errors.join('\n'), problems: v.errors };
+      const r = templates.saveAs(payload.name, p, { description: payload.description, tags: payload.tags });
+      return { ...r, list: templates.list() };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:templates:remove', (e, id) => {
+    try { return { ok: true, ...templates.remove(id), list: templates.list() }; } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('iface:plugins:list', () => ({ ok: true, list: plugins.list(), repoDir: plugins.repoPluginsDir(), userDir: plugins.userPluginsDir() }));
+  ipcMain.handle('iface:plugins:enable', (e, id, on) => plugins.setEnabled(id, on));
+  ipcMain.handle('iface:plugins:apply', (e, project) => {
+    const r = plugins.apply(project);
+    return { ok: true, project: r.project, warnings: r.warnings, applied: r.applied };
+  });
+  ipcMain.handle('iface:plugins:install', async () => {
+    const r = await dialog.showOpenDialog({ title: '选择插件文件夹（里面要有 plugin.json）', properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    try { return { ...plugins.installFromDir(r.filePaths[0]), list: plugins.list() }; } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:plugins:uninstall', (e, id) => {
+    try { return { ...plugins.uninstall(id), list: plugins.list() }; } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:plugins:openDir', async (e, which) => {
+    const dir = which === 'user' ? plugins.userPluginsDir() : plugins.repoPluginsDir();
+    await shell.openPath(dir);
+    return dir;
+  });
+
+  ipcMain.handle('iface:defender:list', () => defender.list());
+  ipcMain.handle('iface:defender:trust', async (e, extra) => defender.trust(extra || []));
+
+  ipcMain.handle('iface:settings:get', () => store.readSettings());
+  ipcMain.handle('iface:settings:set', (e, patch) => store.writeSettings(patch || {}));
+
+  ipcMain.handle('window:new', async (e, projectName) => {
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    const win = new BrowserWindow({
+      width: 1480, height: 940, minWidth: 1180, minHeight: 720, show: true,
+      backgroundColor: '#ffffff',
+      title: `ClickBuildServer · ${projectName || '接口工作台'}`,
+      icon: path.join(__dirname, '..', '..', 'assets', 'logo.png'),
+      webPreferences: { preload: path.join(__dirname, '..', '..', 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    });
+    const file = path.join(__dirname, '..', '..', 'renderer', 'wbench.html');
+    win.loadFile(file, { query: projectName ? { project: projectName } : {} });
+    return { ok: true, id: win.id };
+  });
+
+  ipcMain.handle('iface:studioHtml', () => fs.readFileSync(path.join(__dirname, '..', '..', 'renderer', 'studio.html'), 'utf8'));
+  // .yxpp：PageStudio 工程 → 可打包的前端快照
+  ipcMain.handle('iface:frontend:build', (e, payload) => {
+    const p = payload || {};
+    const yxpp = frontend.parseYxpp({
+      format: 'yxpp',
+      name: p.name || '前端工程',
+      framework: p.framework || 'tailwind',
+      project: p.project,
+      html: p.html || '',
+    }, p.name);
+    return { ok: true, yxpp };
+  });
+  ipcMain.handle('iface:frontend:import', async () => {
+    const r = await dialog.showOpenDialog({
+      title: '导入 .yxpp 前端工程', properties: ['openFile'],
+      filters: [{ name: 'PageStudio 前端工程', extensions: ['yxpp', 'json'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    try {
+      const yxpp = frontend.readYxpp(r.filePaths[0]);
+      return { ok: true, yxpp, file: r.filePaths[0] };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+}
+
+module.exports = { registerIpc, preview };

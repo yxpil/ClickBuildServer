@@ -1,22 +1,91 @@
 {
   "name": "click-build-server",
-  "version": "1.0.0",
-  "description": "选择业务模块，直接生成可运行的服务器工程（Java jar/war、Node.js、Go，Rust 实验性）",
+  "version": "1.0.2",
+  "description": "以接口为最小单位的接口工作台：多库多表、脚本 SQL、事务、缓存、文档与一键生成可运行服务",
   "main": "main.js",
-  "author": "ClickBuildServer",
+  "author": "yxpil",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "gen": "node app/gen-cli.js",
-    "gen:all": "node app/gen-cli.js --all-modules --zip",
-    "verify": "node app/verify.js",
-    "self-test": "node app/gen-cli.js --self-test",
-    "test": "node app/check-ui.js && node app/verify.js && node app/gen-cli.js --self-test",
-    "test:runtime": "node app/rt-test.js --install",
-    "test:runtime:go": "node app/rt-test.js --lang go",
-    "test:runtime:db": "node app/rt-test.js --db --install"
+    "build:css": "tailwindcss -i renderer/wbench.src.css -o renderer/wbench.css --minify",
+    "test:templates": "node tools/test-templates.js --gen",
+    "test:pack": "node tools/test-pack.js",
+    "test:ui": "node tools/ui-smoke.js",
+    "test:e2e": "node tools/e2e.js http://127.0.0.1:18100",
+    "test:e2e:crossdb": "node tools/e2e-crossdb.js http://127.0.0.1:18300",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --win --dir"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^2.1.8",
+    "tailwindcss": "^3.4.17"
+  },
+  "dependencies": {
+    "ioredis": "^6.0.0",
+    "minio": "^8.0.7",
+    "mysql2": "^3.24.6"
+  },
+  "build": {
+    "appId": "com.yxpil.clickbuildserver",
+    "productName": "ClickBuildServer",
+    "copyright": "Copyright © 2026 yxpil",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "plugins/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "assets/logo.png",
+        "to": "logo.png"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "ClickBuildServer-Setup-${version}.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": "yxpn",
+        "name": "ClickBuild 接口工程包",
+        "description": "ClickBuild 接口工程包",
+        "icon": "build/icon.ico",
+        "role": "Editor"
+      }
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ClickBuildServer"
+    }
   }
 }

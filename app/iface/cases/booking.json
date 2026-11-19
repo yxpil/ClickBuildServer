@@ -1,0 +1,1016 @@
+{
+  "name": "预约服务",
+  "description": "服务项目 / 时段 / 预约，含容量校验与取消释放",
+  "categories": [
+    {
+      "id": "biz",
+      "name": "预约"
+    },
+    {
+      "id": "sys",
+      "name": "平台"
+    }
+  ],
+  "functions": [
+    {
+      "name": "REQ_TAG",
+      "params": [],
+      "body": "CONCAT(\"REQ-\", SUBSTR(HASH(UUID()), 0, 10))"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "0f4ea00b",
+      "name": "服务项目",
+      "comment": "可预约的服务/课程",
+      "categoryId": "biz",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "bk_service",
+          "schema": "",
+          "conn": "main",
+          "comment": "服务项目",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar",
+              "comment": "名称",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal",
+              "comment": "价格",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "duration",
+              "type": "int",
+              "comment": "时长分钟",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "1 可约 0 停用",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "eabb44dc",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/services",
+          "auth": false,
+          "summary": "服务项目列表",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "服务项目列表",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "30b06b6e",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/services",
+          "auth": false,
+          "summary": "新建服务项目",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建服务项目",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "b002f724",
+          "key": "update",
+          "name": "更新",
+          "method": "PUT",
+          "path": "/services/:id",
+          "auth": false,
+          "summary": "改服务项目",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"changed\": $upd.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改服务项目",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "c5f6d6bd",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/services/:id",
+          "auth": false,
+          "summary": "删服务项目",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删服务项目",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "可预约的服务/课程",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "11891a58",
+      "name": "时段",
+      "comment": "日期 + 起止时间 + 容量",
+      "categoryId": "biz",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "bk_slot",
+          "schema": "",
+          "conn": "main",
+          "comment": "时段",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "service_id",
+              "type": "bigint",
+              "comment": "服务ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "day",
+              "type": "date",
+              "comment": "日期",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "start_time",
+              "type": "varchar",
+              "comment": "开始",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "end_time",
+              "type": "varchar",
+              "comment": "结束",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "capacity",
+              "type": "int",
+              "comment": "容量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "5"
+            },
+            {
+              "name": "booked",
+              "type": "int",
+              "comment": "已约",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "eb5b15f0",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/slots",
+          "auth": false,
+          "summary": "时段列表（按服务/日期）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "时段列表（按服务/日期）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "9ea4513f",
+          "key": "create",
+          "name": "新建",
+          "method": "POST",
+          "path": "/slots",
+          "auth": false,
+          "summary": "新建时段",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $ins = EXEC INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});\nRETURN 201 { \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "新建时段",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "2fe43229",
+          "key": "delete",
+          "name": "删除",
+          "method": "DELETE",
+          "path": "/slots/:id",
+          "auth": false,
+          "summary": "删时段",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { \"deleted\": $del.affectedRows };",
+          "cache": {
+            "enabled": false,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "删时段",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "日期 + 起止时间 + 容量",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    },
+    {
+      "id": "c8284c55",
+      "name": "预约单",
+      "comment": "容量校验 + 写预约 + 占位，同事务",
+      "categoryId": "biz",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "bk_booking",
+          "schema": "",
+          "conn": "main",
+          "comment": "预约单",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "service_id",
+              "type": "bigint",
+              "comment": "服务ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "slot_id",
+              "type": "bigint",
+              "comment": "时段ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "customer",
+              "type": "varchar",
+              "comment": "姓名",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "phone",
+              "type": "varchar",
+              "comment": "电话",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "tinyint",
+              "comment": "0 待确认 1 已确认 2 已到店 9 取消",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "slot",
+          "name": "bk_slot",
+          "schema": "",
+          "conn": "main",
+          "comment": "时段",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "service_id",
+              "type": "bigint",
+              "comment": "服务ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "day",
+              "type": "date",
+              "comment": "日期",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "start_time",
+              "type": "varchar",
+              "comment": "开始",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "end_time",
+              "type": "varchar",
+              "comment": "结束",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "capacity",
+              "type": "int",
+              "comment": "容量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "5"
+            },
+            {
+              "name": "booked",
+              "type": "int",
+              "comment": "已约",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "308a84a3",
+          "key": "list",
+          "name": "列表",
+          "method": "GET",
+          "path": "/bookings",
+          "auth": false,
+          "summary": "预约列表（按电话/状态）",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:main}} WHERE {{where:main}};\nRETURN 200 { \"rows\": $rows.rows, \"total\": $total.rows[0].total };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "预约列表（按电话/状态）",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "7cc9850e",
+          "key": "detail",
+          "name": "详情",
+          "method": "GET",
+          "path": "/bookings/:id",
+          "auth": false,
+          "summary": "预约详情",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $row = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nRETURN 200 { \"row\": $row.rows[0] };",
+          "cache": {
+            "enabled": true,
+            "key": "icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "预约详情",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        },
+        {
+          "id": "c50258f7",
+          "key": "custom",
+          "name": "预约",
+          "method": "POST",
+          "path": "/bookings",
+          "auth": false,
+          "summary": "先查容量，占位后写预约；满员 409",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $s = QUERY SELECT capacity, booked FROM {{t:slot}} WHERE {{idColumn:slot}} = {{body.slot_id}} LIMIT 1;\nIF LEN($s.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_SLOT\" };\nEND\nIF $s.rows[0].booked >= $s.rows[0].capacity\n  RETURN 409 { \"ok\": false, \"error\": \"FULL\" };\nEND\nEXEC UPDATE {{t:slot}} SET booked = booked + 1 WHERE {{idColumn:slot}} = {{body.slot_id}} AND booked < capacity;\nLET $ins = EXEC INSERT INTO {{t:main}} (service_id, slot_id, customer, phone) VALUES ({{body.service_id}}, {{body.slot_id}}, {{body.customer}}, {{body.phone}});\nRETURN 201 { \"ok\": true, \"id\": $ins.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "先查容量，占位后写预约；满员 409",
+            "description": "事务内先 UPDATE 占位（带 booked < capacity 条件），再插预约；占位失败直接 409，不会留下半条数据。",
+            "requestExample": "{\n  \"service_id\": 1,\n  \"slot_id\": 3,\n  \"customer\": \"王五\",\n  \"phone\": \"13900000000\"\n}",
+            "responseExample": "{\n  \"ok\": true,\n  \"id\": 8\n}"
+          }
+        },
+        {
+          "id": "d004e13c",
+          "key": "custom",
+          "name": "取消预约",
+          "method": "POST",
+          "path": "/bookings/:id/cancel",
+          "auth": false,
+          "summary": "改状态并释放时段",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $b = QUERY SELECT slot_id, status FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;\nIF LEN($b.rows) == 0\n  RETURN 404 { \"ok\": false, \"error\": \"NO_BOOKING\" };\nEND\nIF $b.rows[0].status == 9\n  RETURN 200 { \"ok\": true, \"already\": true };\nEND\nEXEC UPDATE {{t:main}} SET status = 9 WHERE {{idColumn:main}} = {{id}};\nEXEC UPDATE {{t:slot}} SET booked = booked - 1 WHERE {{idColumn:slot}} = $b.rows[0].slot_id AND booked > 0;\nRETURN 200 { \"ok\": true };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "改状态并释放时段",
+            "description": "",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "容量校验 + 写预约 + 占位，同事务",
+        "description": "",
+        "owner": "",
+        "version": "1.0.0",
+        "tags": [],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": ""
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "预约服务",
+    "version": "1.0.0",
+    "description": "服务项目 / 时段 / 预约，含容量校验与取消释放（已启用插件：请求标记）"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "预约服务",
+    "footerText": "",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "generatedAt": "2026-11-19T14:37:43.804Z"
+}

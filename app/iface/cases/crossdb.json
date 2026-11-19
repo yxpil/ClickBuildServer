@@ -1,0 +1,413 @@
+{
+  "name": "跨库订单服务",
+  "description": "演示多库同事务：主库订单 + 辅库明细，失败一起回滚",
+  "categories": [
+    {
+      "id": "trade",
+      "name": "交易主库"
+    },
+    {
+      "id": "stock",
+      "name": "明细辅库"
+    }
+  ],
+  "functions": [],
+  "interfaces": [
+    {
+      "id": "4b8bd3f8",
+      "name": "跨库订单",
+      "comment": "订单主表在 clickbuild，明细在独立的 clickbuild_aux，同一事务提交/回滚",
+      "categoryId": "trade",
+      "basePath": "",
+      "tables": [
+        {
+          "key": "main",
+          "name": "cross_order",
+          "schema": "",
+          "conn": "main",
+          "comment": "订单主表（主库）",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "order_no",
+              "type": "varchar",
+              "comment": "订单号",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "bigint",
+              "comment": "用户 ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "amount",
+              "type": "decimal",
+              "comment": "金额",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "int",
+              "comment": "状态 0待付 1已付",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "key": "item",
+          "name": "cross_order_item",
+          "schema": "clickbuild_aux",
+          "conn": "aux",
+          "comment": "订单明细（辅库）",
+          "fields": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "comment": "主键",
+              "pk": true,
+              "autoIncrement": true,
+              "nullable": false,
+              "search": false,
+              "hidden": false,
+              "query": false,
+              "writable": false,
+              "default": ""
+            },
+            {
+              "name": "order_id",
+              "type": "bigint",
+              "comment": "主订单 ID",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "sku",
+              "type": "varchar",
+              "comment": "商品编码",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": true,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "qty",
+              "type": "int",
+              "comment": "数量",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal",
+              "comment": "单价",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": true,
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "datetime",
+              "comment": "创建时间",
+              "pk": false,
+              "autoIncrement": false,
+              "nullable": true,
+              "search": false,
+              "hidden": false,
+              "query": true,
+              "writable": false,
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "id": "0e6183b1",
+          "key": "custom",
+          "name": "跨库下单",
+          "method": "POST",
+          "path": "/orders",
+          "auth": false,
+          "summary": "主库写订单、辅库写明细，任一失败两边都回滚",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": true,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": true,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $o = EXEC INSERT INTO {{t:main}} (order_no, user_id, amount, status) VALUES ({{body.order_no}}, {{body.user_id}}, {{body.amount}}, 0);\nEXEC INSERT INTO {{schema:item}}{{t:item}} (order_id, sku, qty, price) VALUES ($o.insertId, {{body.sku}}, {{body.qty}}, {{body.price}});\nRETURN 201 { \"ok\": true, \"orderId\": $o.insertId };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "主库写订单、辅库写明细，任一失败两边都回滚",
+            "description": "两张表在两个库（clickbuild / clickbuild_aux），由两个连接各自开事务；脚本成功才一起提交，异常一起回滚。",
+            "requestExample": "{\n  \"order_no\": \"SO-001\",\n  \"user_id\": 1,\n  \"amount\": 99.5,\n  \"sku\": \"SKU-1\",\n  \"qty\": 2,\n  \"price\": 49.75\n}",
+            "responseExample": "{\n  \"ok\": true,\n  \"orderId\": 1\n}"
+          }
+        },
+        {
+          "id": "75fcdd37",
+          "key": "custom",
+          "name": "故意失败（验证回滚）",
+          "method": "POST",
+          "path": "/orders/fail",
+          "auth": false,
+          "summary": "写完两边后制造错误，验证跨库回滚与 FATAL 日志",
+          "guard": {
+            "tx": true,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "EXEC INSERT INTO {{t:main}} (order_no, user_id, amount, status) VALUES ({{body.order_no}}, {{body.user_id}}, {{body.amount}}, 0);\nEXEC INSERT INTO {{schema:item}}{{t:item}} (order_id, sku, qty, price) VALUES (0, {{body.sku}}, {{body.qty}}, {{body.price}});\nEXEC INSERT INTO {{schema:item}}{{t:item}} (no_such_column) VALUES (1);",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "写完两边后制造错误，验证跨库回滚与 FATAL 日志",
+            "description": "最后一句写不存在的列，触发异常；正确行为是两个库都查不到这条订单。",
+            "requestExample": "{\n  \"order_no\": \"SO-BAD\",\n  \"user_id\": 1,\n  \"amount\": 1,\n  \"sku\": \"X\",\n  \"qty\": 1,\n  \"price\": 1\n}",
+            "responseExample": "{\n  \"ok\": false,\n  \"error\": \"UNKNOWN_COLUMN\"\n}"
+          }
+        },
+        {
+          "id": "6e6edf2c",
+          "key": "custom",
+          "name": "跨库订单列表",
+          "method": "GET",
+          "path": "/orders",
+          "auth": false,
+          "summary": "主库订单 LEFT JOIN 辅库明细",
+          "guard": {
+            "tx": false,
+            "rate": {
+              "enabled": false,
+              "limit": 60,
+              "window": 60
+            },
+            "schedule": {
+              "enabled": false,
+              "from": "",
+              "to": ""
+            },
+            "breaker": {
+              "enabled": false,
+              "threshold": 5,
+              "cooldown": 30
+            }
+          },
+          "script": "LET $rows = QUERY SELECT o.id, o.order_no, o.amount, o.status, COUNT(i.id) AS item_count FROM {{t:main}} o LEFT JOIN {{schema:item}}{{t:item}} i ON i.order_id = o.id GROUP BY o.id ORDER BY o.id DESC LIMIT 50;\nRETURN 200 { \"rows\": $rows.rows };",
+          "cache": {
+            "enabled": false,
+            "key": "",
+            "ttl": 60
+          },
+          "docs": {
+            "summary": "主库订单 LEFT JOIN 辅库明细",
+            "description": "同实例跨库 JOIN；不同实例请拆成两次 QUERY，再用 HTTP/Redis 串。",
+            "requestExample": "",
+            "responseExample": ""
+          }
+        }
+      ],
+      "storage": {
+        "enabled": true,
+        "bucket": "clickbuild",
+        "bindField": "file_key"
+      },
+      "page": {
+        "size": 20
+      },
+      "docs": {
+        "summary": "订单主表在 clickbuild，明细在独立的 clickbuild_aux，同一事务提交/回滚",
+        "description": "",
+        "owner": "ClickBuild",
+        "version": "1.0.0",
+        "tags": [
+          "跨库",
+          "事务"
+        ],
+        "requestExample": "",
+        "responseExample": "",
+        "notes": "辅库连接 key=aux，database=clickbuild_aux；真实部署可改成另一台 MySQL。"
+      }
+    }
+  ],
+  "connections": {
+    "mysql": [
+      {
+        "key": "main",
+        "label": "本机 MariaDB",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild"
+      },
+      {
+        "key": "aux",
+        "label": "辅库 clickbuild_aux",
+        "host": "127.0.0.1",
+        "port": 13306,
+        "user": "root",
+        "password": "",
+        "database": "clickbuild_aux"
+      }
+    ],
+    "redis": [
+      {
+        "key": "main",
+        "label": "本机 Redis",
+        "host": "127.0.0.1",
+        "port": 16379,
+        "db": 0
+      }
+    ],
+    "s3": [
+      {
+        "key": "main",
+        "label": "本机 RustFS",
+        "endpoint": "127.0.0.1",
+        "port": 19000,
+        "accessKey": "clickbuild",
+        "secretKey": "clickbuild123",
+        "bucket": "clickbuild"
+      }
+    ]
+  },
+  "log": {
+    "enabled": false,
+    "level": "INFO",
+    "conn": "main",
+    "database": "",
+    "table": "sys_log",
+    "console": true
+  },
+  "token": {
+    "ttl": 7200,
+    "header": "authorization",
+    "cookie": "icb_token"
+  },
+  "docs": {
+    "title": "跨库订单服务",
+    "version": "1.0.0",
+    "description": "演示多库同事务：主库订单 + 辅库明细，失败一起回滚"
+  },
+  "services": [],
+  "theme": {
+    "accent": "#111111",
+    "headerTitle": "跨库订单服务",
+    "footerText": "",
+    "pattern": "none",
+    "logo": ""
+  },
+  "isolation": {
+    "resetOnStart": false,
+    "database": ""
+  },
+  "generatedAt": "2026-11-19T14:48:52.211Z"
+}
