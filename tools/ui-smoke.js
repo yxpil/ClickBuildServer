@@ -153,6 +153,13 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await wait(1200);
   t('套用博客模版替换工程', await val(`S.project.name.includes('博客')`), await val(`S.project.name`));
   t('博客模版带 5 个接口', await val(`S.project.interfaces.length === 5`), await val(`S.project.interfaces.length`));
+  t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && S.project.frontend.project.elements && S.project.frontend.project.elements.length > 10 && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
+  await val(`setView('studio')`);
+  await wait(1800);
+  t('前端模式载入案例 PageStudio 工程', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === S.project.frontend.project.elements.length);})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
+  t('前端状态栏显示已绑定案例', await val(`document.querySelector('#studioState').textContent.includes('已绑定') && document.querySelector('#studioState').textContent.includes('案例前端')`), await val(`document.querySelector('#studioState').textContent`));
+  await val(`setView('api')`);
+  await wait(400);
 
   // 接口文档页
   await val(`S.mode='editor'; S.selId=S.project.interfaces[0].id; S.tab='docs'; render()`);

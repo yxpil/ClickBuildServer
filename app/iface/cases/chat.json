@@ -843,5 +843,799 @@
     "resetOnStart": false,
     "database": ""
   },
-  "updatedAt": "2026-11-19T15:17:09.078Z"
+  "updatedAt": "2026-11-19T15:17:09.078Z",
+  "frontend": {
+    "format": "yxpp",
+    "version": 1,
+    "name": "聊天服务 · 案例前端",
+    "framework": "tailwind",
+    "createdAt": "2026-11-20T00:00:00.000Z",
+    "updatedAt": "2026-11-20T00:00:00.000Z",
+    "project": {
+      "name": "聊天服务 · 案例前端",
+      "framework": "tailwind",
+      "page": {
+        "w": 1200,
+        "h": 1080,
+        "bg": "#F4F2EB"
+      },
+      "theme": {
+        "font": "\"Space Grotesk\",\"Noto Sans SC\",sans-serif",
+        "accent": "#2C4A63",
+        "radius": 2,
+        "grid": 8,
+        "showGrid": true
+      },
+      "assets": [],
+      "elements": [
+        {
+          "id": "case-side",
+          "type": "box",
+          "x": 0,
+          "y": 0,
+          "w": 240,
+          "h": 1080,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "clip": true
+          },
+          "style": {
+            "background": "#0B0B0B",
+            "radius": 0
+          },
+          "children": []
+        },
+        {
+          "id": "case-accent",
+          "type": "box",
+          "x": 240,
+          "y": 0,
+          "w": 8,
+          "h": 1080,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#2C4A63",
+            "radius": 0
+          },
+          "children": []
+        },
+        {
+          "id": "case-code",
+          "type": "text",
+          "x": 26,
+          "y": 34,
+          "w": 188,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "CASE / CHAT",
+            "size": 10,
+            "weight": 600,
+            "ls": 2.2,
+            "color": "#B9B5AA"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-title",
+          "type": "heading",
+          "x": 26,
+          "y": 68,
+          "w": 188,
+          "h": 78,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "聊天服务",
+            "size": 24,
+            "weight": 600,
+            "lh": 1.25,
+            "ls": -0.4,
+            "color": "#FFFFFF",
+            "tag": "h2"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-kicker",
+          "type": "text",
+          "x": 26,
+          "y": 158,
+          "w": 188,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "IM / 消息",
+            "size": 10.5,
+            "weight": 400,
+            "ls": 1.2,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-side-line",
+          "type": "divider",
+          "x": 26,
+          "y": 196,
+          "w": 188,
+          "h": 1,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#3A3A36"
+          },
+          "children": []
+        },
+        {
+          "id": "case-side-nav-label",
+          "type": "text",
+          "x": 26,
+          "y": 218,
+          "w": 188,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "案例目录",
+            "size": 10,
+            "weight": 600,
+            "ls": 1.8,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-cat-0",
+          "type": "text",
+          "x": 26,
+          "y": 252,
+          "w": 188,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "01  消息",
+            "size": 11.5,
+            "weight": 400,
+            "color": "#D8D4C8"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-cat-1",
+          "type": "text",
+          "x": 26,
+          "y": 282,
+          "w": 188,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "02  账户",
+            "size": 11.5,
+            "weight": 400,
+            "color": "#D8D4C8"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-side-foot-line",
+          "type": "divider",
+          "x": 26,
+          "y": 992,
+          "w": 188,
+          "h": 1,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#3A3A36"
+          },
+          "children": []
+        },
+        {
+          "id": "case-side-foot",
+          "type": "text",
+          "x": 26,
+          "y": 1008,
+          "w": 188,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "CLICKBUILD / CASE",
+            "size": 9.5,
+            "ls": 1.4,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-badge",
+          "type": "badge",
+          "x": 280,
+          "y": 38,
+          "w": 136,
+          "h": 26,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "IM / 消息",
+            "size": 10,
+            "weight": 500,
+            "align": "center",
+            "color": "#FFFFFF"
+          },
+          "style": {
+            "background": "#2C4A63",
+            "radius": 999,
+            "border": 0
+          },
+          "children": []
+        },
+        {
+          "id": "case-title-main",
+          "type": "heading",
+          "x": 280,
+          "y": 76,
+          "w": 780,
+          "h": 100,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "聊天服务",
+            "size": 42,
+            "weight": 600,
+            "lh": 1.14,
+            "ls": -1,
+            "color": "#0B0B0B",
+            "tag": "h1"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-desc",
+          "type": "text",
+          "x": 280,
+          "y": 190,
+          "w": 740,
+          "h": 60,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "会话、收发、已读回执与未读数。",
+            "size": 14,
+            "weight": 400,
+            "lh": 1.8,
+            "color": "#5F5B52"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-metric-0",
+          "type": "box",
+          "x": 280,
+          "y": 272,
+          "w": 200,
+          "h": 96,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#FFFFFF",
+            "border": 1,
+            "borderColor": "#D8D4C8",
+            "radius": 2
+          },
+          "children": [
+            {
+              "id": "case-metric-v-0",
+              "type": "heading",
+              "x": 18,
+              "y": 14,
+              "w": 164,
+              "h": 44,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "2",
+                "size": 30,
+                "weight": 700,
+                "lh": 1.1,
+                "ls": -0.8,
+                "color": "#0B0B0B",
+                "tag": "h3"
+              },
+              "style": {},
+              "children": []
+            },
+            {
+              "id": "case-metric-l-0",
+              "type": "text",
+              "x": 18,
+              "y": 64,
+              "w": 164,
+              "h": 16,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "业务接口",
+                "size": 10.5,
+                "weight": 400,
+                "ls": 1.1,
+                "color": "#8E8B82"
+              },
+              "style": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "case-metric-1",
+          "type": "box",
+          "x": 500,
+          "y": 272,
+          "w": 200,
+          "h": 96,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#FFFFFF",
+            "border": 1,
+            "borderColor": "#D8D4C8",
+            "radius": 2
+          },
+          "children": [
+            {
+              "id": "case-metric-v-1",
+              "type": "heading",
+              "x": 18,
+              "y": 14,
+              "w": 164,
+              "h": 44,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "8",
+                "size": 30,
+                "weight": 700,
+                "lh": 1.1,
+                "ls": -0.8,
+                "color": "#0B0B0B",
+                "tag": "h3"
+              },
+              "style": {},
+              "children": []
+            },
+            {
+              "id": "case-metric-l-1",
+              "type": "text",
+              "x": 18,
+              "y": 64,
+              "w": 164,
+              "h": 16,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "可调用路由",
+                "size": 10.5,
+                "weight": 400,
+                "ls": 1.1,
+                "color": "#8E8B82"
+              },
+              "style": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "case-metric-2",
+          "type": "box",
+          "x": 720,
+          "y": 272,
+          "w": 200,
+          "h": 96,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#FFFFFF",
+            "border": 1,
+            "borderColor": "#D8D4C8",
+            "radius": 2
+          },
+          "children": [
+            {
+              "id": "case-metric-v-2",
+              "type": "heading",
+              "x": 18,
+              "y": 14,
+              "w": 164,
+              "h": 44,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "4",
+                "size": 30,
+                "weight": 700,
+                "lh": 1.1,
+                "ls": -0.8,
+                "color": "#0B0B0B",
+                "tag": "h3"
+              },
+              "style": {},
+              "children": []
+            },
+            {
+              "id": "case-metric-l-2",
+              "type": "text",
+              "x": 18,
+              "y": 64,
+              "w": 164,
+              "h": 16,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "数据表",
+                "size": 10.5,
+                "weight": 400,
+                "ls": 1.1,
+                "color": "#8E8B82"
+              },
+              "style": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "case-cats-label",
+          "type": "text",
+          "x": 280,
+          "y": 398,
+          "w": 780,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "案例分类",
+            "size": 10,
+            "weight": 600,
+            "ls": 1.8,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-cat-box-0",
+          "type": "box",
+          "x": 280,
+          "y": 426,
+          "w": 200,
+          "h": 76,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#FFFFFF",
+            "border": 1,
+            "borderColor": "#D8D4C8",
+            "radius": 2
+          },
+          "children": [
+            {
+              "id": "case-cat-name-0",
+              "type": "text",
+              "x": 14,
+              "y": 14,
+              "w": 172,
+              "h": 20,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "消息",
+                "size": 13,
+                "weight": 600,
+                "color": "#0B0B0B"
+              },
+              "style": {},
+              "children": []
+            },
+            {
+              "id": "case-cat-count-0",
+              "type": "text",
+              "x": 14,
+              "y": 42,
+              "w": 172,
+              "h": 16,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "1 个接口",
+                "size": 10.5,
+                "color": "#8E8B82"
+              },
+              "style": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "case-cat-box-1",
+          "type": "box",
+          "x": 500,
+          "y": 426,
+          "w": 200,
+          "h": 76,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#FFFFFF",
+            "border": 1,
+            "borderColor": "#D8D4C8",
+            "radius": 2
+          },
+          "children": [
+            {
+              "id": "case-cat-name-1",
+              "type": "text",
+              "x": 14,
+              "y": 14,
+              "w": 172,
+              "h": 20,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "账户",
+                "size": 13,
+                "weight": 600,
+                "color": "#0B0B0B"
+              },
+              "style": {},
+              "children": []
+            },
+            {
+              "id": "case-cat-count-1",
+              "type": "text",
+              "x": 14,
+              "y": 42,
+              "w": 172,
+              "h": 16,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "1 个接口",
+                "size": 10.5,
+                "color": "#8E8B82"
+              },
+              "style": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "case-ifaces-label",
+          "type": "text",
+          "x": 280,
+          "y": 748,
+          "w": 780,
+          "h": 18,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "接口清单",
+            "size": 10,
+            "weight": 600,
+            "ls": 1.8,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-ifaces-0",
+          "type": "list",
+          "x": 280,
+          "y": 778,
+          "w": 380,
+          "h": 140,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "账户  /  3 路由",
+            "size": 11.5,
+            "lh": 1.85,
+            "color": "#3A3A36",
+            "bullet": false,
+            "weight": 400
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-ifaces-1",
+          "type": "list",
+          "x": 680,
+          "y": 778,
+          "w": 380,
+          "h": 140,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "私聊  /  5 路由",
+            "size": 11.5,
+            "lh": 1.85,
+            "color": "#3A3A36",
+            "bullet": false,
+            "weight": 400
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-cta",
+          "type": "box",
+          "x": 280,
+          "y": 944,
+          "w": 860,
+          "h": 62,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#0B0B0B",
+            "radius": 2
+          },
+          "children": [
+            {
+              "id": "case-cta-label",
+              "type": "text",
+              "x": 22,
+              "y": 20,
+              "w": 320,
+              "h": 20,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "打开案例控制台",
+                "size": 14,
+                "weight": 600,
+                "color": "#FFFFFF"
+              },
+              "style": {},
+              "children": []
+            },
+            {
+              "id": "case-cta-path",
+              "type": "text",
+              "x": 700,
+              "y": 21,
+              "w": 136,
+              "h": 18,
+              "name": "",
+              "hidden": false,
+              "locked": false,
+              "props": {
+                "text": "/  ·  /docs  ·  /help",
+                "size": 10,
+                "align": "right",
+                "color": "#B9B5AA"
+              },
+              "style": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "case-footer-line",
+          "type": "divider",
+          "x": 280,
+          "y": 1036,
+          "w": 860,
+          "h": 1,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {},
+          "style": {
+            "background": "#D8D4C8"
+          },
+          "children": []
+        },
+        {
+          "id": "case-footer-l",
+          "type": "text",
+          "x": 280,
+          "y": 1050,
+          "w": 500,
+          "h": 16,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "CLICKBUILD · CASE FRONTEND · 2026",
+            "size": 9.5,
+            "ls": 1.2,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        },
+        {
+          "id": "case-footer-r",
+          "type": "text",
+          "x": 820,
+          "y": 1050,
+          "w": 320,
+          "h": 16,
+          "name": "",
+          "hidden": false,
+          "locked": false,
+          "props": {
+            "text": "CHAT / API READY",
+            "size": 9.5,
+            "align": "right",
+            "ls": 1.2,
+            "color": "#8E8B82"
+          },
+          "style": {},
+          "children": []
+        }
+      ]
+    },
+    "html": "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>聊天服务 · 案例前端</title>\n<style>\n:root{--ink:#0B0B0B;--paper:#F4F2EB;--card:#FFFFFF;--line:#D8D4C8;--soft:#8E8B82;--accent:#2C4A63}\n*{box-sizing:border-box}\nhtml,body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:\"Space Grotesk\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif}\na{color:inherit}\nbutton{font:inherit;cursor:pointer}\n.top{position:sticky;top:0;z-index:30;height:64px;background:var(--ink);color:#fff;display:flex;align-items:center;gap:22px;padding:0 22px;border-bottom:1px solid #000}\n.brand{display:flex;align-items:center;gap:12px;min-width:250px}\n.mark{display:inline-flex;align-items:center;justify-content:center;min-width:54px;height:24px;padding:0 8px;background:var(--accent);color:#fff;font-size:10px;letter-spacing:2px}\n.brand b{font-size:14px;font-weight:600;letter-spacing:.02em}\n.topnav{display:flex;align-items:center;gap:18px;font-size:11px;color:#C9C5BA;margin-left:auto}\n.topnav a{text-decoration:none}\n.topnav a:hover{color:#fff}\n.authbox{display:flex;align-items:center;gap:8px;margin-left:14px}\n.authbox input{width:176px;height:30px;border:1px solid #3A3A36;background:#171715;color:#fff;padding:0 9px;font-size:11px;outline:0}\n.authbox input::placeholder{color:#8E8B82}\n.ghost{height:30px;padding:0 11px;border:1px solid #5C5A54;background:transparent;color:#fff;font-size:11px}\n.ghost:hover{border-color:#fff}\n.shell{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:calc(100vh - 64px)}\n.side{border-right:1px solid var(--line);background:#EEECE4;padding:20px 0 30px;position:sticky;top:64px;height:calc(100vh - 64px);overflow:auto}\n.side-head{padding:0 20px 14px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:1.8px;color:var(--soft);display:flex;justify-content:space-between}\n.side-head span{color:var(--ink)}\n.cat{padding:16px 20px 4px;font-size:10px;letter-spacing:1.2px;color:var(--soft)}\n.nav-item{display:block;width:100%;border:0;background:transparent;text-align:left;padding:8px 20px;color:#3A3A36;font-size:12px}\n.nav-item:hover{background:#fff}\n.nav-item.on{background:#fff;box-shadow:inset 3px 0 0 var(--accent);color:var(--ink);font-weight:600}\n.side-foot{padding:22px 20px;font-size:9.5px;line-height:1.8;letter-spacing:.08em;color:var(--soft);border-top:1px solid var(--line);margin-top:24px}\nmain{padding:32px 36px 56px;min-width:0}\n.home{max-width:1040px}\n.kicker{font-size:10px;letter-spacing:2px;color:var(--soft);text-transform:uppercase}\nh1{font-family:Georgia,\"Songti SC\",\"Noto Serif SC\",serif;font-size:44px;line-height:1.14;letter-spacing:-.04em;margin:14px 0 12px;max-width:820px}\n.lead{font-size:14px;line-height:1.85;color:#5F5B52;max-width:720px;margin:0 0 24px}\n.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px}\n.chip{border:1px solid var(--line);background:#fff;padding:5px 9px;font-size:10px;letter-spacing:.05em}\n.chip.hot{border-color:var(--accent);color:var(--accent)}\n.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0 30px}\n.metric{border:1px solid var(--line);background:#fff;padding:16px 16px 13px;position:relative}\n.metric:after{content:\"\";position:absolute;left:0;top:0;width:4px;height:100%;background:var(--accent)}\n.metric b{display:block;font-size:29px;line-height:1;letter-spacing:-.04em}\n.metric span{display:block;margin-top:10px;font-size:10px;letter-spacing:1.1px;color:var(--soft)}\n.section-title{display:flex;align-items:center;gap:12px;margin:30px 0 12px}\n.section-title h2{font-size:11px;letter-spacing:1.7px;font-weight:600;margin:0;text-transform:uppercase}\n.section-title:after{content:\"\";height:1px;background:var(--line);flex:1}\n.cat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}\n.cat-card{border:1px solid var(--line);background:#fff;padding:14px 15px}\n.cat-card b{display:block;font-size:13px;margin-bottom:6px}\n.cat-card span{font-size:10px;color:var(--soft)}\n.iface-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}\n.iface-card{border:1px solid var(--line);background:#fff;padding:16px;text-align:left;display:flex;flex-direction:column;gap:8px;min-height:120px}\n.iface-card:hover{border-color:var(--ink);transform:translateY(-1px)}\n.iface-card .row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}\n.iface-card b{font-size:15px}\n.iface-card .path{font-family:Consolas,monospace;font-size:10px;color:var(--soft)}\n.iface-card .meta{font-size:10.5px;color:var(--soft);line-height:1.65}\n.breadcrumb{display:flex;align-items:center;gap:10px;margin-bottom:26px}\n.back{border:1px solid var(--line);background:#fff;padding:7px 11px;font-size:11px}\n.back:hover{border-color:var(--ink)}\n.detail-kicker{font-size:10px;letter-spacing:1.8px;color:var(--soft)}\n.detail-head{display:flex;align-items:flex-start;gap:22px;margin:10px 0 16px}\n.detail-head h1{font-size:36px;margin:0}\n.pill{display:inline-flex;align-items:center;height:22px;padding:0 8px;border:1px solid var(--line);font-size:10px;color:var(--soft)}\n.schema{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 22px}\n.field{border:1px solid var(--line);background:#fff;padding:4px 8px;font-size:10px;font-family:Consolas,monospace}\n.field i{font-style:normal;color:var(--soft);margin-left:5px}\n.routes{border:1px solid var(--line);background:#fff}\n.route{display:grid;grid-template-columns:64px minmax(0,1fr) 88px;gap:14px;align-items:center;padding:12px 14px;border-bottom:1px solid #E8E5DC}\n.route:last-child{border-bottom:0}\n.method{display:inline-flex;align-items:center;justify-content:center;height:22px;border:1px solid var(--line);font-family:Consolas,monospace;font-size:10px;letter-spacing:.06em}\n.method.GET{background:#EEF3ED;border-color:#9BAE99;color:#2F5D50}\n.method.POST{background:var(--ink);border-color:var(--ink);color:#fff}\n.method.PUT{background:#F4EFE5;border-color:#BDAE90;color:#715E3D}\n.method.DELETE{background:#F6EAE7;border-color:#C99C91;color:#8A3F32}\n.route .rname{font-size:12.5px;font-weight:600;margin-bottom:4px}\n.route .rpath{font-family:Consolas,monospace;font-size:10px;color:var(--soft)}\n.route .rsum{font-size:10.5px;line-height:1.55;color:#6B675E;margin-top:3px}\n.run{border:1px solid var(--ink);background:#fff;height:30px;font-size:10.5px}\n.run:hover{background:var(--ink);color:#fff}\n.split{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:18px;margin-top:26px;align-items:start}\n.panel{border:1px solid var(--line);background:var(--card);padding:16px}\n.panel h3{font-size:10px;letter-spacing:1.4px;margin:0 0 12px;color:var(--soft);font-weight:600}\n.empty{border:1px dashed var(--line);padding:22px;text-align:center;color:var(--soft);font-size:11.5px;line-height:1.7}\n.resp-status{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-family:Consolas,monospace;font-size:11px}\n.badge-ok{color:#2F5D50}.badge-bad{color:#8A3F32}\npre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:Consolas,monospace;font-size:11px;line-height:1.7;background:#FAF9F4;border:1px solid #E8E5DC;padding:12px;max-height:360px;overflow:auto}\n.tablewrap{overflow:auto;border:1px solid #E8E5DC}\ntable{border-collapse:collapse;width:100%;font-size:11px}\nth,td{border-bottom:1px solid #E8E5DC;padding:7px 8px;text-align:left;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}\nth{background:#F7F5EE;color:#6B675E;font-weight:600}\nlabel{display:block;font-size:10px;letter-spacing:.06em;color:var(--soft);margin:12px 0 6px}\ninput[type=text],textarea{width:100%;border:1px solid var(--line);background:#fff;color:var(--ink);font-family:Consolas,monospace;font-size:11px;padding:9px;outline:0}\ntextarea{min-height:74px;resize:vertical}\n.btn{height:36px;border:1px solid var(--ink);background:var(--ink);color:#fff;padding:0 14px;font-size:11px;letter-spacing:.06em;margin-top:12px;width:100%}\n.btn:hover{background:var(--accent);border-color:var(--accent)}\n.btn.secondary{background:#fff;color:var(--ink);border-color:var(--line);margin-top:8px}\n.btn.secondary:hover{border-color:var(--ink);background:#fff;color:var(--ink)}\n.overlay{position:fixed;inset:0;z-index:50;background:rgba(11,11,11,.55);display:none;align-items:center;justify-content:center;padding:20px}\n.overlay.on{display:flex}\n.modal{width:min(440px,100%);background:var(--paper);border:1px solid var(--ink);box-shadow:8px 8px 0 rgba(0,0,0,.22);padding:22px}\n.modal h2{font-family:Georgia,\"Songti SC\",serif;font-size:24px;margin:0 0 6px;letter-spacing:-.02em}\n.modal p{font-size:11.5px;color:var(--soft);line-height:1.7;margin:0 0 10px}\n.modal .close{float:right;border:0;background:transparent;font-size:18px;line-height:1}\n.msg{font-size:11px;line-height:1.6;margin-top:10px;color:var(--soft)}\n.msg.bad{color:#8A3F32}\n.foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;font-size:9.5px;letter-spacing:.08em;color:var(--soft)}\n@media(max-width:900px){.shell{grid-template-columns:1fr}.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}.side nav{display:grid;grid-template-columns:repeat(2,1fr)}main{padding:24px 18px}.iface-grid,.cat-grid,.metrics,.split{grid-template-columns:1fr}.topnav{display:none}.authbox input{width:130px}h1{font-size:34px}}\n</style>\n</head>\n<body>\n<header class=\"top\">\n  <div class=\"brand\"><span class=\"mark\">CHAT</span><b>聊天服务</b></div>\n  <nav class=\"topnav\"><a href=\"/docs\">接口文档</a><a href=\"/_docs\">OpenAPI</a><a href=\"/console\">控制台</a><a href=\"/help\">帮助</a></nav>\n  <div class=\"authbox\"><input id=\"token\" placeholder=\"Bearer token（可选）\"><button class=\"ghost\" id=\"loginOpen\">登录</button></div>\n</header>\n<div class=\"shell\">\n  <aside class=\"side\">\n    <div class=\"side-head\"><span>案例目录</span><span>2</span></div>\n    <nav id=\"nav\"></nav>\n    <div class=\"side-foot\">IM / 消息<br>8 路由 · 4 表<br>API PREFIX /api</div>\n  </aside>\n  <main>\n    <section class=\"home\" id=\"home\">\n      <div class=\"kicker\">CHAT / CASE FRONTEND</div>\n      <h1>聊天服务</h1>\n      <p class=\"lead\">会话、收发、已读回执与未读数。</p>\n      <div class=\"chips\" id=\"catChips\"></div>\n      <div class=\"metrics\">\n        <div class=\"metric\"><b>2</b><span>业务接口</span></div>\n        <div class=\"metric\"><b>8</b><span>可调用路由</span></div>\n        <div class=\"metric\"><b>4</b><span>数据表</span></div>\n      </div>\n      <div class=\"section-title\"><h2>案例分类</h2></div>\n      <div class=\"cat-grid\" id=\"catGrid\"></div>\n      <div class=\"section-title\"><h2>接口能力</h2></div>\n      <div class=\"iface-grid\" id=\"ifaceGrid\"></div>\n      <div class=\"foot\"><span>CLICKBUILD · CHAT · 2026</span><span>API /api</span></div>\n    </section>\n    <section id=\"detail\" hidden>\n      <div class=\"breadcrumb\"><button class=\"back\" id=\"back\">← 返回案例概览</button><span class=\"kicker\">接口详情</span></div>\n      <div class=\"detail-kicker\" id=\"ifaceCat\"></div>\n      <div class=\"detail-head\"><h1 id=\"ifaceName\"></h1><span class=\"pill\" id=\"ifaceCount\"></span></div>\n      <div class=\"schema\" id=\"schema\"></div>\n      <div class=\"section-title\"><h2>路由与请求</h2></div>\n      <div class=\"routes\" id=\"routes\"></div>\n      <div class=\"split\">\n        <div class=\"panel\"><h3>数据预览</h3><div id=\"table\"><div class=\"empty\">选择左侧路由并点击「运行」，这里会显示返回数据。</div></div><pre id=\"output\" hidden></pre></div>\n        <div class=\"panel\"><h3>请求演练</h3><label>请求路径</label><input type=\"text\" id=\"reqPath\"><label id=\"queryLabel\" hidden>Query JSON</label><textarea id=\"reqQuery\" hidden></textarea><label id=\"bodyLabel\">Body JSON</label><textarea id=\"reqBody\"></textarea><button class=\"btn\" id=\"send\">发送请求</button><button class=\"btn secondary\" id=\"clear\">清空结果</button><div class=\"msg\" id=\"reqMsg\"></div></div>\n      </div>\n    </section>\n  </main>\n</div>\n<div class=\"overlay\" id=\"loginModal\">\n  <div class=\"modal\">\n    <button class=\"close\" id=\"loginClose\">×</button>\n    <h2>登录案例</h2>\n    <p>使用案例自带的登录接口获取 token。首次使用可以先注册一个演示账号。</p>\n    <label>用户名</label><input type=\"text\" id=\"loginUser\" value=\"demo\">\n    <label>密码</label><input type=\"text\" id=\"loginPass\" value=\"123456\">\n    <div id=\"extraFields\"></div>\n    <button class=\"btn\" id=\"doLogin\">登录</button>\n    <button class=\"btn secondary\" id=\"doRegister\">注册并登录</button>\n    <div class=\"msg\" id=\"loginMsg\"></div>\n  </div>\n</div>\n<script>\nconst CASE = {\"code\":\"CHAT\",\"accent\":\"#2C4A63\",\"kicker\":\"IM / 消息\",\"line\":\"会话、收发、已读回执与未读数。\",\"name\":\"聊天服务\",\"description\":\"私聊会话、消息收发、已读回执、未读数；登录 token 识别用户\",\"api\":\"/api\",\"counts\":{\"interfaces\":2,\"categories\":2,\"routes\":8,\"tables\":4},\"categories\":[{\"id\":\"im\",\"name\":\"消息\"},{\"id\":\"sys\",\"name\":\"账户\"}],\"interfaces\":[{\"id\":\"c3d92b20\",\"name\":\"账户\",\"categoryId\":\"sys\",\"basePath\":\"/chat\",\"routes\":[{\"id\":\"81dbee29\",\"method\":\"POST\",\"path\":\"/register\",\"name\":\"注册\",\"summary\":\"注册并签发 token\",\"auth\":false,\"body\":[\"username\",\"password\",\"display_name\"],\"query\":[]},{\"id\":\"87e8e071\",\"method\":\"POST\",\"path\":\"/login\",\"name\":\"登录\",\"summary\":\"登录\",\"auth\":false,\"body\":[\"username\",\"password\"],\"query\":[]},{\"id\":\"8275709a\",\"method\":\"GET\",\"path\":\"/me\",\"name\":\"当前用户\",\"summary\":\"当前用户\",\"auth\":true,\"body\":[],\"query\":[]}],\"tables\":[{\"key\":\"users\",\"name\":\"chat_user\",\"fields\":[{\"name\":\"id\",\"type\":\"bigint\",\"comment\":\"主键\"},{\"name\":\"only_id\",\"type\":\"char\",\"comment\":\"唯一ID\"},{\"name\":\"username\",\"type\":\"char\",\"comment\":\"用户名\"},{\"name\":\"password_hash\",\"type\":\"varchar\",\"comment\":\"SM4 密码\"},{\"name\":\"display_name\",\"type\":\"varchar\",\"comment\":\"显示名\"},{\"name\":\"status\",\"type\":\"tinyint\",\"comment\":\"状态\"},{\"name\":\"created_at\",\"type\":\"datetime\",\"comment\":\"创建时间\"}]}]},{\"id\":\"3adfdbe7\",\"name\":\"私聊\",\"categoryId\":\"im\",\"basePath\":\"/chat\",\"routes\":[{\"id\":\"94609197\",\"method\":\"POST\",\"path\":\"/messages\",\"name\":\"发送消息\",\"summary\":\"发送一条消息，自动建会话\",\"auth\":true,\"body\":[\"to\",\"body\",\"msg_type\"],\"query\":[]},{\"id\":\"16683654\",\"method\":\"GET\",\"path\":\"/messages\",\"name\":\"收件箱\",\"summary\":\"收到的消息\",\"auth\":true,\"body\":[],\"query\":[]},{\"id\":\"fddbd0e7\",\"method\":\"PUT\",\"path\":\"/messages/:id/read\",\"name\":\"标记已读\",\"summary\":\"已读回执\",\"auth\":true,\"body\":[],\"query\":[]},{\"id\":\"d16e8a3f\",\"method\":\"GET\",\"path\":\"/unread\",\"name\":\"未读数\",\"summary\":\"未读消息数\",\"auth\":true,\"body\":[],\"query\":[]},{\"id\":\"6116764f\",\"method\":\"GET\",\"path\":\"/conversations\",\"name\":\"会话列表\",\"summary\":\"我的会话列表\",\"auth\":true,\"body\":[],\"query\":[]}],\"tables\":[{\"key\":\"users\",\"name\":\"chat_user\",\"fields\":[{\"name\":\"id\",\"type\":\"bigint\",\"comment\":\"主键\"},{\"name\":\"only_id\",\"type\":\"char\",\"comment\":\"唯一ID\"},{\"name\":\"username\",\"type\":\"char\",\"comment\":\"用户名\"},{\"name\":\"password_hash\",\"type\":\"varchar\",\"comment\":\"SM4 密码\"},{\"name\":\"display_name\",\"type\":\"varchar\",\"comment\":\"显示名\"},{\"name\":\"status\",\"type\":\"tinyint\",\"comment\":\"状态\"},{\"name\":\"created_at\",\"type\":\"datetime\",\"comment\":\"创建时间\"}]},{\"key\":\"conv\",\"name\":\"chat_conversation\",\"fields\":[{\"name\":\"id\",\"type\":\"bigint\",\"comment\":\"主键\"},{\"name\":\"owner_only_id\",\"type\":\"char\",\"comment\":\"\"},{\"name\":\"peer_only_id\",\"type\":\"char\",\"comment\":\"\"},{\"name\":\"last_message\",\"type\":\"text\",\"comment\":\"\"},{\"name\":\"updated_at\",\"type\":\"datetime\",\"comment\":\"\"}]},{\"key\":\"msg\",\"name\":\"chat_message\",\"fields\":[{\"name\":\"id\",\"type\":\"bigint\",\"comment\":\"主键\"},{\"name\":\"conv_id\",\"type\":\"bigint\",\"comment\":\"\"},{\"name\":\"from_only_id\",\"type\":\"char\",\"comment\":\"\"},{\"name\":\"to_only_id\",\"type\":\"char\",\"comment\":\"\"},{\"name\":\"body\",\"type\":\"text\",\"comment\":\"\"},{\"name\":\"msg_type\",\"type\":\"varchar\",\"comment\":\"\"},{\"name\":\"read_flag\",\"type\":\"tinyint\",\"comment\":\"\"},{\"name\":\"created_at\",\"type\":\"datetime\",\"comment\":\"创建时间\"}]}]}]};\nconst $ = (id) => document.getElementById(id);\nconst state = { iface: null, route: null, token: localStorage.getItem('cbs_case_token_' + CASE.code) || '' };\nconst esc = (v) => String(v == null ? '' : v).replace(/[&<>\"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));\nconst ifaceById = (id) => CASE.interfaces.find((x) => x.id === id);\nconst routeById = (id) => state.iface && state.iface.routes.find((x) => x.id === id);\nconst catName = (id) => (CASE.categories.find((c) => c.id === id) || {}).name || '未分类';\nconst fullPath = (iface, route) => CASE.api + (iface.basePath || '') + route.path;\nconst firstList = (iface) => iface.routes.find((r) => r.method === 'GET' && !r.path.includes(':')) || iface.routes.find((r) => r.method === 'GET') || iface.routes[0];\nconst loginRoute = CASE.interfaces.flatMap((i) => i.routes.map((r) => ({ iface: i, route: r }))).find((x) => !x.route.auth && (x.route.name === '登录' || x.route.path === '/login' || x.route.path.endsWith('/login')));\nconst registerRoute = CASE.interfaces.flatMap((i) => i.routes.map((r) => ({ iface: i, route: r }))).find((x) => !x.route.auth && (x.route.name.includes('注册') || x.route.path.endsWith('/register')));\n\nfunction sampleValue(field, unique) {\n  const f = String(field || '').toLowerCase();\n  if (f.includes('password')) return '123456';\n  if (f.includes('username')) return unique ? 'demo' + String(Date.now()).slice(-6) : 'demo';\n  if (f.includes('phone') || f.includes('mobile')) return '138' + String(Date.now()).slice(-8);\n  if (f.includes('email') || f.includes('mail')) return 'demo' + String(Date.now()).slice(-6) + '@example.com';\n  if (f === 'display_name' || f.includes('nickname') || f === 'name' || f.includes('receiver')) return '演示用户';\n  if (f.includes('title') || f.includes('subject')) return '示例' + (f.includes('title') ? '标题' : '主题');\n  if (f.includes('price') || f.includes('amount') || f.includes('fee') || f.includes('salary')) return 99;\n  if (f.includes('qty') || f.includes('count') || f.includes('stock') || f.includes('seat')) return 1;\n  if (f === 'status' || f.includes('state') || f.includes('enabled')) return 1;\n  if (f.includes('address')) return '昆明市示例路 1 号';\n  if (f.includes('category') || f.includes('type') || f.includes('kind')) return '默认分类';\n  if (f.includes('content') || f.includes('description') || f.includes('remark') || f.includes('reason')) return '这是一条演示数据';\n  if (f.includes('date') || f.includes('time') || f.includes('start') || f.includes('end')) return '2026-11-20 10:00:00';\n  return '示例';\n}\nfunction defaultBody(route, unique) {\n  const out = {};\n  const fields = route.body && route.body.length ? route.body : (route.method === 'POST' ? ['name'] : []);\n  fields.forEach((f) => { out[f] = sampleValue(f, unique); });\n  return out;\n}\nfunction defaultQuery(route) {\n  const out = {};\n  (route.query || []).forEach((f) => {\n    if (f === 'page') out[f] = 1;\n    else if (f === 'pageSize' || f === 'limit') out[f] = 20;\n    else if (f === 'keyword') out[f] = '';\n    else out[f] = '';\n  });\n  return out;\n}\n\nfunction renderNav() {\n  const groups = CASE.categories.map((c) => {\n    const items = CASE.interfaces.filter((i) => i.categoryId === c.id);\n    return '<div class=\"cat\">' + esc(c.name) + '</div>' + items.map((i) => '<button class=\"nav-item\" data-iface=\"' + esc(i.id) + '\">' + esc(i.name) + '<span style=\"float:right;color:#A6A197\">' + i.routes.length + '</span></button>').join('');\n  }).join('');\n  $('nav').innerHTML = groups;\n  $('nav').querySelectorAll('[data-iface]').forEach((b) => { b.onclick = () => openIface(b.dataset.iface); });\n}\nfunction renderHome() {\n  $('catChips').innerHTML = CASE.categories.map((c) => '<span class=\"chip\">' + esc(c.name) + '</span>').join('');\n  $('catGrid').innerHTML = CASE.categories.map((c) => {\n    const n = CASE.interfaces.filter((i) => i.categoryId === c.id).length;\n    return '<div class=\"cat-card\"><b>' + esc(c.name) + '</b><span>' + n + ' 个接口</span></div>';\n  }).join('');\n  $('ifaceGrid').innerHTML = CASE.interfaces.map((i) => {\n    const tables = i.tables.length;\n    return '<button class=\"iface-card\" data-open=\"' + esc(i.id) + '\"><span class=\"row\"><b>' + esc(i.name) + '</b><span class=\"path\">' + esc(CASE.api + (i.basePath || '')) + '</span></span><span class=\"meta\">' + i.routes.length + ' 条路由 · ' + tables + ' 张表<br>' + esc(i.routes.slice(0, 3).map((r) => r.method + ' ' + r.path).join(' / ')) + '</span></button>';\n  }).join('');\n  $('ifaceGrid').querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => openIface(b.dataset.open); });\n}\n\nfunction openIface(id) {\n  state.iface = ifaceById(id);\n  state.route = null;\n  $('home').hidden = true;\n  $('detail').hidden = false;\n  $('ifaceCat').textContent = catName(state.iface.categoryId) + ' / ' + String(CASE.interfaces.indexOf(state.iface) + 1).padStart(2, '0');\n  $('ifaceName').textContent = state.iface.name;\n  $('ifaceCount').textContent = state.iface.routes.length + ' 路由 / ' + state.iface.tables.length + ' 表';\n  const fields = [];\n  (state.iface.tables || []).forEach((t) => (t.fields || []).forEach((f) => { if (!fields.some((x) => x.name === f.name)) fields.push(f); }));\n  $('schema').innerHTML = fields.map((f) => '<span class=\"field\">' + esc(f.name) + '<i>' + esc(f.type || '') + '</i></span>').join('') || '<span class=\"field\">暂无字段</span>';\n  $('routes').innerHTML = state.iface.routes.map((r) => '<div class=\"route\"><span class=\"method ' + r.method + '\">' + r.method + '</span><div><div class=\"rname\">' + esc(r.name) + (r.auth ? ' · <span style=\"font-weight:400;color:#8A3F32\">鉴权</span>' : '') + '</div><div class=\"rpath\">' + esc(fullPath(state.iface, r)) + '</div>' + (r.summary ? '<div class=\"rsum\">' + esc(r.summary) + '</div>' : '') + '</div><button class=\"run\" data-run=\"' + esc(r.id) + '\">运行 →</button></div>').join('');\n  $('routes').querySelectorAll('[data-run]').forEach((b) => { b.onclick = () => selectRoute(b.dataset.run); });\n  const r = firstList(state.iface);\n  if (r) {\n    selectRoute(r.id);\n    if (r.method === 'GET' && !r.auth) setTimeout(send, 50);\n  }\n}\nfunction selectRoute(id) {\n  state.route = routeById(id);\n  if (!state.route) return;\n  const route = state.route;\n  $('reqPath').value = fullPath(state.iface, route).replace(/:([A-Za-z0-9_]+)/g, '1');\n  const q = defaultQuery(route);\n  const qKeys = Object.keys(q);\n  $('queryLabel').hidden = !qKeys.length;\n  $('reqQuery').hidden = !qKeys.length;\n  $('reqQuery').value = qKeys.length ? JSON.stringify(q, null, 2) : '';\n  const showBody = !['GET', 'HEAD', 'DELETE'].includes(route.method) || (route.body || []).length;\n  $('bodyLabel').hidden = !showBody;\n  $('reqBody').hidden = !showBody;\n  $('reqBody').value = showBody ? JSON.stringify(defaultBody(route), null, 2) : '';\n  $('reqMsg').textContent = route.auth ? '该路由需要登录 token 或 cookie。' : '可直接发送。';\n  $('reqMsg').className = 'msg';\n}\nfunction unwrap(obj) {\n  if (!obj || typeof obj !== 'object') return obj;\n  if ('data' in obj && (obj.ok === true || obj.ok === false)) return obj.data;\n  return obj;\n}\nfunction rowsOf(data) {\n  if (Array.isArray(data)) return { rows: data };\n  if (!data || typeof data !== 'object') return null;\n  for (const k of ['rows', 'list', 'items', 'records', 'data']) if (Array.isArray(data[k])) return { rows: data[k], key: k };\n  return null;\n}\nfunction renderTable(rows, iface) {\n  const cols = [];\n  rows.slice(0, 5).forEach((row) => { if (row && typeof row === 'object') Object.keys(row).forEach((k) => { if (!cols.includes(k)) cols.push(k); }); });\n  if (!cols.length) {\n    (iface.tables || []).forEach((t) => (t.fields || []).forEach((f) => { if (!cols.includes(f.name)) cols.push(f.name); }));\n  }\n  const head = cols.slice(0, 9).map((c) => '<th>' + esc(c) + '</th>').join('');\n  const body = rows.slice(0, 20).map((row) => '<tr>' + cols.slice(0, 9).map((c) => '<td>' + esc(typeof row[c] === 'object' && row[c] !== null ? JSON.stringify(row[c]) : row[c]) + '</td>').join('') + '</tr>').join('');\n  $('table').innerHTML = '<div class=\"tablewrap\"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div><div class=\"msg\">共 ' + rows.length + ' 条，显示前 ' + Math.min(rows.length, 20) + ' 条</div>';\n}\nasync function send() {\n  if (!state.route) return;\n  const route = state.route;\n  const path = $('reqPath').value.trim();\n  let query = {};\n  if (!$('reqQuery').hidden && $('reqQuery').value.trim()) {\n    try { query = JSON.parse($('reqQuery').value); } catch (e) { $('reqMsg').textContent = 'Query JSON 无效：' + e.message; $('reqMsg').className = 'msg bad'; return; }\n  }\n  const url = path + (Object.keys(query).length ? '?' + new URLSearchParams(Object.entries(query).map(([k, v]) => [k, v == null ? '' : String(v)])).toString() : '');\n  const headers = {};\n  const opts = { method: route.method, headers };\n  if (state.token) headers.Authorization = 'Bearer ' + state.token;\n  if (!$('reqBody').hidden && $('reqBody').value.trim()) {\n    try { opts.body = JSON.stringify(JSON.parse($('reqBody').value)); headers['content-type'] = 'application/json'; } catch (e) { $('reqMsg').textContent = 'Body JSON 无效：' + e.message; $('reqMsg').className = 'msg bad'; return; }\n  }\n  $('reqMsg').textContent = '请求中…'; $('reqMsg').className = 'msg';\n  const t0 = Date.now();\n  try {\n    const res = await fetch(url, opts);\n    const text = await res.text();\n    let json = null;\n    try { json = JSON.parse(text); } catch (e) { /* 非 JSON */ }\n    const data = json ? unwrap(json) : text;\n    const rows = rowsOf(data);\n    if (rows) renderTable(rows.rows, state.iface);\n    else $('table').innerHTML = '<div class=\"empty\">这条路由不返回列表。</div>';\n    $('output').hidden = false;\n    $('output').textContent = json ? JSON.stringify(json, null, 2) : text;\n    $('reqMsg').textContent = res.status + ' · ' + (Date.now() - t0) + 'ms';\n    $('reqMsg').className = 'msg ' + (res.ok ? '' : 'bad');\n  } catch (e) {\n    $('reqMsg').textContent = '请求失败：' + e.message;\n    $('reqMsg').className = 'msg bad';\n    $('output').hidden = true;\n    $('table').innerHTML = '<div class=\"empty\">请求失败，检查服务是否在运行。</div>';\n  }\n}\nfunction openLogin() {\n  $('loginModal').classList.add('on');\n  const extra = registerRoute ? document.createElement('div') : null;\n  if (extra) {\n    const fields = (registerRoute.route.body || []).filter((f) => !['username', 'password'].includes(f));\n    extra.innerHTML = fields.map((f) => '<label>' + esc(f) + '</label><input type=\"text\" data-extra=\"' + esc(f) + '\" value=\"' + esc(sampleValue(f, true)) + '\">').join('');\n    $('extraFields').replaceChildren(extra);\n  } else $('extraFields').replaceChildren();\n}\nfunction closeLogin() { $('loginModal').classList.remove('on'); }\nfunction loginBody() {\n  return { username: $('loginUser').value.trim(), password: $('loginPass').value.trim() };\n}\nfunction registerBody() {\n  const out = { username: 'demo' + String(Date.now()).slice(-6), password: $('loginPass').value.trim() };\n  const fields = (registerRoute && registerRoute.route.body) || [];\n  fields.forEach((f) => {\n    if (['username', 'password'].includes(f)) return;\n    const el = document.querySelector('[data-extra=\"' + f + '\"]');\n    out[f] = el ? el.value : sampleValue(f, true);\n  });\n  return out;\n}\nasync function callAuth(target, body) {\n  const url = fullPath(target.iface, target.route);\n  const res = await fetch(url, { method: target.route.method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });\n  const data = await res.json().catch(() => ({}));\n  if (!res.ok) throw new Error((data.error || res.status) + (data.message ? ' · ' + data.message : ''));\n  const token = data.token || (data.data && data.data.token);\n  if (token) {\n    state.token = token;\n    localStorage.setItem('cbs_case_token_' + CASE.code, token);\n    $('token').value = token;\n  }\n  return data;\n}\nasync function doLogin() {\n  $('loginMsg').textContent = '登录中…'; $('loginMsg').className = 'msg';\n  try {\n    if (!loginRoute) throw new Error('这个案例没有登录接口');\n    await callAuth(loginRoute, loginBody());\n    $('loginMsg').textContent = '登录成功，token 已保存。';\n    setTimeout(closeLogin, 700);\n  } catch (e) { $('loginMsg').textContent = '登录失败：' + e.message; $('loginMsg').className = 'msg bad'; }\n}\nasync function doRegister() {\n  if (!registerRoute) { $('loginMsg').textContent = '这个案例没有注册接口。'; $('loginMsg').className = 'msg bad'; return; }\n  $('loginMsg').textContent = '注册中…'; $('loginMsg').className = 'msg';\n  try {\n    const body = registerBody();\n    await callAuth(registerRoute, body);\n    $('loginUser').value = body.username;\n    $('loginPass').value = body.password;\n    if (loginRoute) await doLogin(); else { $('loginMsg').textContent = '注册成功。'; setTimeout(closeLogin, 700); }\n  } catch (e) { $('loginMsg').textContent = '注册失败：' + e.message; $('loginMsg').className = 'msg bad'; }\n}\n\n$('token').value = state.token;\n$('token').onchange = () => {\n  state.token = $('token').value.trim();\n  if (state.token) localStorage.setItem('cbs_case_token_' + CASE.code, state.token);\n  else localStorage.removeItem('cbs_case_token_' + CASE.code);\n};\n$('back').onclick = () => { $('home').hidden = false; $('detail').hidden = true; state.iface = null; state.route = null; };\n$('send').onclick = send;\n$('clear').onclick = () => { $('output').hidden = true; $('output').textContent = ''; $('table').innerHTML = '<div class=\"empty\">选择左侧路由并点击「运行」，这里会显示返回数据。</div>'; $('reqMsg').textContent = ''; };\n$('loginOpen').onclick = openLogin;\n$('loginClose').onclick = closeLogin;\n$('doLogin').onclick = doLogin;\n$('doRegister').onclick = doRegister;\nif (!loginRoute && !registerRoute) $('loginOpen').style.display = 'none';\nrenderNav();\nrenderHome();\n</script>\n</body>\n</html>"
+  }
 }

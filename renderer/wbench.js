@@ -1936,6 +1936,8 @@ function bindWindowControls() {
 /* ---------------- 前端模式（PageStudio / .yxpp） ---------------- */
 let studioHtmlCache = '';
 let studioLoaded = false;
+let studioReady = false;
+let studioBound = null;
 let studioSeq = 0;
 const studioReqs = new Map();
 
@@ -2024,6 +2026,7 @@ async function importStudioYxpp() {
   S.project.frontend = got.yxpp;
   await api.save(S.project);
   refreshStudioState();
+  studioBound = got.yxpp.project;
   studioLoadProject(got.yxpp.project);
   toast(`已导入 .yxpp「${got.yxpp.name}」`, 4000);
 }
@@ -2040,6 +2043,11 @@ function setView(view) {
   if (studio) {
     ensureStudio();
     refreshStudioState();
+    const fp = S.project && S.project.frontend && S.project.frontend.project;
+    if (studioReady && fp && studioBound !== fp) {
+      studioBound = fp;
+      studioLoadProject(fp);
+    }
   } else {
     render();
   }
@@ -2052,8 +2060,12 @@ window.addEventListener('message', (ev) => {
     studioReqs.delete(d.requestId);
     fn(d.project);
   }
-  if (d.type === 'cbs:yxpp:ready' && S.project && S.project.frontend && S.project.frontend.project) {
-    studioLoadProject(S.project.frontend.project);
+  if (d.type === 'cbs:yxpp:ready') {
+    studioReady = true;
+    if (S.project && S.project.frontend && S.project.frontend.project) {
+      studioBound = S.project.frontend.project;
+      studioLoadProject(S.project.frontend.project);
+    }
   }
 });
 
