@@ -72,13 +72,15 @@ function writeProject(project, parentDir, opts) {
   if (opts && opts.errors) p.errors = { ...p.errors, ...opts.errors };
   const parent = parentDir || os.tmpdir();
   const dir = uniqueDir(parent, p.name);
-  const gen = codegen.writeTo(p, dir, { port: (opts && opts.port) || codegen.DEFAULT_PORTS.http, ide: true });
+  const runtime = String((opts && opts.runtime) || 'node').toLowerCase();
+  const gen = codegen.writeTo(p, dir, { port: (opts && opts.port) || codegen.DEFAULT_PORTS.http, ide: true, runtime });
   fs.writeFileSync(path.join(dir, 'README-IDEA.md'), readme(p.name), 'utf8');
   fs.writeFileSync(path.join(dir, '.gitignore'), gitignore(), 'utf8');
   return {
     ok: true,
     dir,
     name: p.name,
+    runtime,
     files: [...gen.files, '.gitignore', 'README-IDEA.md'],
   };
 }

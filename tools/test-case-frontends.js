@@ -74,7 +74,7 @@ async function liveMall(dir) {
     } catch (e) { /* ignore */ }
     check('接口过滤器支持正则/前缀/NULL', filterOk, `${filtered.status} ${filtered.text.slice(0, 160)}`);
     const home = await req(base, '/');
-    check('GET / 返回案例前端', home.status === 200 && home.text.includes('MALL / CASE FRONTEND') && home.text.includes('const CASE ='), `${home.status} ${home.text.length} B`);
+    check('GET / 返回真实商城应用', home.status === 200 && home.text.includes('window.CASE =') && home.text.includes('山货集') && home.text.includes('id="app"') && !home.text.includes('MALL / CASE FRONTEND'), `${home.status} ${home.text.length} B`);
     const yxpp = await req(base, '/frontend/index.yxpp');
     let yxppOk = false;
     try {
@@ -104,21 +104,32 @@ async function liveMall(dir) {
     const f = p.frontend;
     const name = t.name;
     const errors = [];
+    const isApp = !!(f && f.project && f.project.app && f.project.app.mode);
     if (!f || !f.project || !Array.isArray(f.project.elements)) errors.push('缺 frontend.project');
     else if (!f.project.elements.length) errors.push('project 无元素');
     if (!f || !f.html) errors.push('缺 frontend.html');
     else {
       if (!f.html.includes(p.name)) errors.push('HTML 缺案例名');
-      if (!f.html.includes('const CASE = ')) errors.push('HTML 缺案例数据');
-      if (!f.html.includes('fetch(')) errors.push('HTML 缺接口调用');
-      if (f.html.length < 8000) errors.push('HTML 过小');
-      const script = f.html.match(/<script>([\s\S]*?)<\/script>/);
-      if (!script) errors.push('HTML 缺脚本');
+      if (isApp) {
+        if (!f.html.includes('id="app"')) errors.push('HTML 缺应用根节点');
+        if (!f.html.includes('window.CASE =')) errors.push('HTML 缺应用配置');
+        if (!f.html.includes('window.UX =')) errors.push('HTML 缺运行时');
+        if (f.html.includes('CASE FRONTEND') || f.html.includes('接口清单')) errors.push('HTML 仍是接口案例页');
+        if (f.html.length < 60000) errors.push('HTML 过小，运行时未带入');
+      } else {
+        if (!f.html.includes('const CASE = ')) errors.push('HTML 缺案例数据');
+        if (!f.html.includes('fetch(')) errors.push('HTML 缺接口调用');
+        if (f.html.length < 8000) errors.push('HTML 过小');
+      }
+      const scripts = [...f.html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      if (!scripts.length) errors.push('HTML 缺脚本');
       else {
-        try { new Function(script[1]); } catch (e) { errors.push('脚本语法错误：' + e.message); }
+        for (const script of scripts) {
+          try { new Function(script); } catch (e) { errors.push('脚本语法错误：' + e.message); break; }
+        }
       }
     }
-    check(`案例「${name}」带完整 .yxpp`, errors.length === 0, errors.length ? errors.join(' | ') : `${f.project.elements.length} 元素 / ${Math.round(f.html.length / 1024)} KB`);
+    check(`案例「${name}」带完整 .yxpp`, errors.length === 0, errors.length ? errors.join(' | ') : `${f.project.elements.length} 元素 / ${isApp ? f.project.app.mode + ' / ' : ''}${Math.round(f.html.length / 1024)} KB`);
 
     if (errors.length) continue;
     const dir = path.join(OUT, name);
@@ -130,7 +141,10 @@ async function liveMall(dir) {
     let parseOk = false;
     if (filesOk) {
       const y = JSON.parse(fs.readFileSync(yxppPath, 'utf8'));
-      parseOk = y.format === 'yxpp' && y.project && Array.isArray(y.project.elements) && y.html === fs.readFileSync(htmlPath, 'utf8');
+      const yHtml = String(y.html || '');
+      const pubHtml = fs.readFileSync(htmlPath, 'utf8');
+      parseOk = y.format === 'yxpp' && y.project && Array.isArray(y.project.elements) && yHtml.replace(/\s+/g, '') === pubHtml.replace(/\s+/g, '');
+      if (parseOk && p.frontend.project.app) parseOk = yHtml.includes('window.CASE =');
     }
     check(`案例「${name}」生成 .yxpp 产物`, filesOk && parseOk, `${g.files.length} 文件`);
     if (name === '商城') liveDir = dir;

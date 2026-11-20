@@ -12,12 +12,13 @@ function ensure(dir) { fs.mkdirSync(dir, { recursive: true }); }
 
 /** 本地磁盘：uploads/<date>/<rand>.<ext> */
 function saveLocal(buffer, filename) {
-  const dir = path.join(cfg.storage.localDir, new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const dir = path.join(cfg.storage.localDir, day);
   ensure(dir);
   const ext = path.extname(filename || '').toLowerCase();
   const key = crypto.randomBytes(12).toString('hex') + ext;
   fs.writeFileSync(path.join(dir, key), buffer);
-  return { objectKey: dir.replace(/\\\\/g, '/') + '/' + key, url: '/uploads/' + key };
+  return { objectKey: day + '/' + key, url: '/uploads/' + day + '/' + key };
 }
 
 /** S3 / MinIO 预签名 URL（SigV4，GET 读 / PUT 写） */
@@ -63,7 +64,7 @@ async function put(buffer, filename) {
 function signedUrl(objectKey, expiresSec = 900) {
   const s = presign('GET', objectKey, expiresSec);
   if (s) return s;
-  return cfg.storage.publicBase ? cfg.storage.publicBase + '/' + objectKey : '/uploads/' + objectKey.split('/').pop();
+  return cfg.storage.publicBase ? cfg.storage.publicBase + '/' + objectKey : '/uploads/' + objectKey;
 }
 
 module.exports = { put, signedUrl, presign, saveLocal };

@@ -3672,6 +3672,7 @@ var TYPES = {
   swimlane:{ label: '泳道图', glyph: 'SW', icon: 'list' },
   topology:{ label: '网络拓扑', glyph: 'TP', icon: 'globe' },
   architecture:{ label: '架构图', glyph: 'AR', icon: 'layers' },
+  appview: { label: '业务应用', glyph: 'AP', icon: 'grid' },
   list:    { label: '列表',   glyph: 'LS', icon: 'list' },
   box:     { label: '容器',   glyph: 'BX', icon: 'box' },
   code:    { label: '代码块', glyph: 'CD', icon: 'code' },
@@ -3685,8 +3686,8 @@ var TYPES = {
   js:      { label: 'JS 脚本', glyph: 'JS', icon: 'code' },
   webconsole: { label: '网页控制台', glyph: '>_', icon: 'code' }
 };
-var TYPE_ORDER = ['heading', 'text', 'button', 'link', 'badge', 'image', 'gif', 'video', 'audio', 'carousel', 'icon', 'shape', 'divider', 'spacer', 'skeleton', 'spinner', 'loadingbar', 'loadingdots', 'input', 'search', 'form', 'auth', 'kpi', 'card', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar', 'api', 'apiimg', 'chart', 'pie', 'csv', 'table', 'markdown', 'flowchart', 'sequence', 'mindmap', 'orgchart', 'gantt', 'timeline', 'state', 'uml', 'er', 'quadrant', 'funnel', 'pyramid', 'matrix', 'fishbone', 'venn', 'swimlane', 'topology', 'architecture', 'list', 'box', 'code', 'math', 'wasm', 'plugin', 'embed', 'dialog', 'subpage', 'html', 'js', 'webconsole'];
-var UI_TYPES = ['kpi', 'card', 'floatcard', 'floaticon', 'floatheader', 'funcgraph', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar'];
+var TYPE_ORDER = ['heading', 'text', 'button', 'link', 'badge', 'image', 'gif', 'video', 'audio', 'carousel', 'icon', 'shape', 'divider', 'spacer', 'skeleton', 'spinner', 'loadingbar', 'loadingdots', 'input', 'search', 'form', 'auth', 'kpi', 'card', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar', 'appview', 'api', 'apiimg', 'chart', 'pie', 'csv', 'table', 'markdown', 'flowchart', 'sequence', 'mindmap', 'orgchart', 'gantt', 'timeline', 'state', 'uml', 'er', 'quadrant', 'funnel', 'pyramid', 'matrix', 'fishbone', 'venn', 'swimlane', 'topology', 'architecture', 'list', 'box', 'code', 'math', 'wasm', 'plugin', 'embed', 'dialog', 'subpage', 'html', 'js', 'webconsole'];
+var UI_TYPES = ['kpi', 'card', 'floatcard', 'floaticon', 'floatheader', 'funcgraph', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar', 'appview'];
 var DIAGRAM_KEYS = ['flowchart', 'sequence', 'mindmap', 'orgchart', 'gantt', 'timeline', 'pie', 'state', 'uml', 'er', 'quadrant', 'funnel', 'pyramid', 'matrix', 'fishbone', 'venn', 'swimlane', 'topology', 'architecture'];
 var DIAGRAM_LABELS = { flowchart: '流程图', sequence: '时序图', mindmap: '脑图', orgchart: '组织架构', gantt: '甘特图', timeline: '时间线', pie: '饼图', state: '状态图', uml: 'UML 类图', er: 'ER 图', quadrant: '四象限', funnel: '漏斗图', pyramid: '金字塔', matrix: '矩阵图', fishbone: '鱼骨图', venn: '维恩图', swimlane: '泳道图', topology: '网络拓扑', architecture: '架构图' };
 function isDiagramType(t) { return DIAGRAM_KEYS.indexOf(t) >= 0; }
@@ -3993,6 +3994,8 @@ function DEF(type) {
       return { w: 460, h: 500, props: { title: '页面助手', subtitle: '基于 Markdown 的对话面板', messages: 'assistant|你好，我是页面助手。可以问我内容、排版或接口问题。\nuser|帮我总结这份页面的重点。', placeholder: '输入消息，Enter 发送，Shift+Enter 换行…', send: '发送', empty: '开始对话', api: '', method: 'post', headers: '', bodyMode: 'openai', model: '', system: '', body: '', replyPath: 'choices.0.message.content', stream: false, streamPath: 'choices.0.delta.content', js: '', markdown: true, interval: 0, bg: '#FFFFFF', panelBg: '#F8F8F5', accent: '#0B0B0B', accentText: '#FFFFFF', borderColor: '#D4D4CE', radius: 10, pad: 14, size: 13, color: '#3A3A36', muted: '#8A8A84', font: '' }, style: { background: 'transparent', border: 0, radius: 0, padding: 0 } };
     case 'sidebar':
       return { w: 248, h: 620, props: { brand: 'yxpilStudio', kicker: 'WORKSPACE', mark: 'P', items: 'dashboard|概览|grid|page:p1\ncontent|内容|file|page:p1\nusers|用户|users|#\nsettings|设置|settings|#', activeId: 'dashboard', listId: 'nav-main', itemPrefix: 'nav-', width: 248, collapsedWidth: 64, position: 'left', collapsed: false, toggle: true, togglePos: 'top', toggleText: '收起', pin: false, persist: true, js: '', bg: '#FFFFFF', color: '#3A3A36', muted: '#8A8A84', accent: '#0B0B0B', accentText: '#FFFFFF', borderColor: '#D4D4CE', radius: 0, pad: 12, size: 13, font: '' }, style: { background: 'transparent', border: 0, radius: 0, padding: 0 } };
+    case 'appview':
+      return { w: 1200, h: 780, props: { mode: 'content', brand: '业务应用', mark: 'APP', kicker: 'BUSINESS APP', title: '真实业务页面', sub: '列表、详情、表单和工作流由接口数据驱动。', view: 'home', nav: '首页|home\n列表|collection\n详情|detail\n新建|create', iface: '', api: '/api', appJson: '', accent: '#2F5D50', bg: '#F6F3EC', color: '#171613', muted: '#8A8A84', radius: 14, pad: 22, size: 13, font: '' }, style: { background: 'transparent', border: 0, radius: 0, padding: 0 } };
     case 'api':
       return { w: 600, h: 260, props: { url: '', method: 'get', headers: '', body: '', root: '', fields: '', limit: 20, auto: true, interval: 0, loading: '正在获取数据…', empty: '暂无数据', error: '数据加载失败', size: 12, color: '#3A3A36', muted: '#8A8A84', bg: '#FFFFFF', rowBg: '#FFFFFF', borderColor: '#D4D4CE', radius: 6 }, style: { background: '#FFFFFF', border: 1, borderColor: '#D4D4CE', radius: 6, padding: 16 } };
     case 'apiimg':
@@ -6247,18 +6250,46 @@ function projectFileName() {
   var stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
   return base + '-' + stamp + '.yxpp';
 }
+function syncAppFromAppView() {
+  if (!S.proj) return;
+  var el = null;
+  (S.proj.pages || []).some(function (pg) {
+    var found = (pg.elements || []).find(function (n) { return n && n.type === 'appview'; });
+    if (found) { el = found; return true; }
+    return false;
+  });
+  if (!el) return;
+  var p = el.props || {};
+  var app = S.proj.app = Object.assign({}, S.proj.app || {});
+  if (p.appJson) {
+    try { Object.assign(app, JSON.parse(p.appJson)); } catch (e) { /* 非法 JSON 不覆盖现有模型 */ }
+  }
+  if (p.mode) app.mode = p.mode;
+  if (p.brand) app.brand = p.brand;
+  if (p.mark) app.mark = p.mark;
+  if (p.kicker) app.kicker = p.kicker;
+  if (p.accent) app.accent = p.accent;
+  var nav = String(p.nav || '').split('\n').map(function (line) {
+    var parts = line.split('|');
+    return parts[0] ? { label: parts[0].trim(), view: (parts[1] || '').trim() || 'home' } : null;
+  }).filter(Boolean);
+  if (nav.length) app.nav = nav;
+}
 function projectFilePayload() {
+  syncAppFromAppView();
   return {
-    format: PROJECT_FORMAT,
-    version: PROJECT_VERSION,
-    app: 'yxpilStudio',
-    exportedAt: new Date().toISOString(),
+    format: 'yxpp',
+    version: 1,
+    name: S.proj.name || '未命名工程',
+    framework: S.proj.framework || S.fw || 'tailwind',
+    createdAt: S.proj.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     project: JSON.parse(serializeProject())
   };
 }
 function projectFileProject(obj) {
   if (!obj || typeof obj !== 'object') throw new Error('文件内容不是有效的工程对象');
-  var raw = obj.project && (obj.format === PROJECT_FORMAT || obj.format === LEGACY_PROJECT_FORMAT) ? obj.project : obj;
+  var raw = obj.project && (obj.format === PROJECT_FORMAT || obj.format === LEGACY_PROJECT_FORMAT || obj.format === 'yxpp') ? obj.project : obj;
   if (!raw || !raw.page || (!Array.isArray(raw.pages) && !Array.isArray(raw.elements))) {
     throw new Error('文件缺少 page 或 pages / elements，不是有效的 yxpilStudio 工程文件');
   }
@@ -9517,6 +9548,54 @@ function uiBlockMarkup(t, p, editor) {
 
   if (t === 'sidebar') return sidebarMarkup(p, editor);
 
+  if (t === 'appview') {
+    var avMode = String(p.mode || 'content');
+    var avNav = lines(p.nav || '首页|home\n列表|collection\n详情|detail\n新建|create');
+    var avActive = String(p.view || 'home');
+    var avRows = ['今天新增 12 条', '待处理 3 条', '本周完成 48 条', '异常 1 条'];
+    var avKpis = [['总记录', '1,284'], ['今日新增', '12'], ['待处理', '3'], ['完成率', '96%']];
+    return '<div style="height:100%;box-sizing:border-box;background:' + uiColor(p.bg, '#F6F3EC') + ';color:' + uiColor(p.color, '#171613') + ';font-family:' + (p.font ? String(p.font).replace(/[<>"';]/g, '') : '-apple-system,"Segoe UI","Microsoft YaHei",sans-serif') + ';overflow:hidden;border-radius:' + radius + 'px;border:1px solid ' + line + '">' +
+      '<div style="height:54px;display:flex;align-items:center;gap:10px;padding:0 18px;background:#fff;border-bottom:1px solid ' + line + '">' +
+        '<span style="width:30px;height:30px;border-radius:9px;background:' + ink + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;letter-spacing:.04em">' + esc(String(p.mark || 'APP').slice(0, 2)) + '</span>' +
+        '<b style="font-size:14px;color:' + ink + '">' + esc(p.brand || '业务应用') + '</b>' +
+        '<span style="font-size:9px;letter-spacing:.12em;color:' + muted + ';text-transform:uppercase">' + esc(p.kicker || 'BUSINESS APP') + '</span>' +
+        '<span style="margin-left:auto;font-size:10px;color:' + muted + '">真实接口 · 真实列表 · 真实表单</span>' +
+      '</div>' +
+      '<div style="display:flex;height:calc(100% - 54px)">' +
+        '<div style="width:176px;flex:none;background:#fff;border-right:1px solid ' + line + ';padding:12px 10px">' +
+          avNav.slice(0, 7).map(function (it) {
+            var parts = String(it).split('|');
+            var label = parts[0] || it;
+            var active = (parts[1] || '').trim() === avActive || label === String(p.title || '');
+            return '<div style="padding:7px 9px;border-radius:7px;margin-bottom:3px;font-size:11px;font-weight:' + (active ? '700' : '500') + ';color:' + (active ? '#fff' : color) + ';background:' + (active ? ink : 'transparent') + '">' + esc(label) + '</div>';
+          }).join('') +
+          '<div style="margin-top:14px;padding:9px;border-radius:8px;background:' + uiColor(p.bg, '#F6F3EC') + ';font-size:9.5px;line-height:1.6;color:' + muted + '">当前视图：<b style="color:' + ink + '">' + esc(avActive) + '</b><br>由 project.app 的接口与字段驱动</div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:0;padding:16px 18px;overflow:hidden">' +
+          '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px">' +
+            '<div><div style="font-size:9px;letter-spacing:.14em;color:' + muted + '">' + esc((p.kicker || avMode).toUpperCase()) + '</div><b style="font-size:20px;color:' + ink + '">' + esc(p.title || p.brand || '业务应用') + '</b><div style="font-size:10.5px;color:' + muted + ';margin-top:3px">' + esc(p.sub || '') + '</div></div>' +
+            '<span style="font-size:10px;padding:5px 10px;border-radius:999px;background:' + ink + ';color:#fff">' + esc(avMode) + '</span>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">' +
+            avKpis.map(function (k) { return '<div style="background:#fff;border:1px solid ' + line + ';border-radius:8px;padding:9px 10px"><div style="font-size:8.5px;color:' + muted + '">' + k[0] + '</div><b style="font-size:16px;color:' + ink + '">' + k[1] + '</b></div>'; }).join('') +
+          '</div>' +
+          '<div style="display:flex;gap:9px;height:calc(100% - 128px);min-height:120px">' +
+            '<div style="flex:1.6;min-width:0;background:#fff;border:1px solid ' + line + ';border-radius:9px;padding:10px;overflow:hidden">' +
+              '<div style="display:flex;gap:6px;margin-bottom:8px"><span style="flex:1;height:24px;border:1px solid ' + line + ';border-radius:5px;background:' + uiColor(p.bg, '#F6F3EC') + ';font-size:9px;line-height:24px;padding-left:8px;color:' + muted + '">搜索真实记录…</span><span style="padding:0 10px;height:24px;line-height:24px;border-radius:5px;background:' + ink + ';color:#fff;font-size:9px">新建</span></div>' +
+              '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:5px 4px;border-bottom:1px solid ' + line + ';font-size:8.5px;color:' + muted + '"><span>标题 / 业务对象</span><span>状态</span><span>时间</span></div>' +
+              avRows.map(function (r, i) { return '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:6px 4px;border-bottom:1px solid ' + uiColor(p.bg, '#F6F3EC') + ';font-size:9.5px;color:' + color + '"><b style="color:' + ink + '">' + esc(r) + '</b><span style="color:' + muted + '">' + (i % 2 ? '处理中' : '已完成') + '</span><span style="color:' + muted + '">今天</span></div>'; }).join('') +
+            '</div>' +
+            '<div style="flex:.75;min-width:0;background:#fff;border:1px solid ' + line + ';border-radius:9px;padding:10px;overflow:hidden">' +
+              '<div style="font-size:9px;letter-spacing:.1em;color:' + muted + ';margin-bottom:7px">业务动作</div>' +
+              ['提交表单', '推进状态', '导出数据', '查看关联'].map(function (x) { return '<div style="margin-bottom:6px;padding:6px 8px;border:1px solid ' + line + ';border-radius:6px;font-size:9px;color:' + color + '">' + x + ' →</div>'; }).join('') +
+              '<div style="margin-top:8px;font-size:8.5px;line-height:1.55;color:' + muted + '">点击右侧预览可打开真实应用；所有数据来自当前工程的接口模块。</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   return '';
 }
 function fillBody(body, n) {
@@ -10703,6 +10782,22 @@ function fieldsFor(n) {
       content.push({ p: 'props.label', l: '标签', k: 'text' });
       content.push({ p: 'props.options', l: '选项（每行一个）', k: 'textarea' });
       content.push({ p: 'props.value', l: '默认选项', k: 'text' });
+    }
+    if (t === 'appview') {
+      content.push({ p: 'props.mode', l: '应用形态', k: 'sel', o: [['content', '内容站'], ['commerce', '交易 / 商城'], ['catalog', '目录 / 预约'], ['desk', '后台工作台'], ['chat', '即时聊天'], ['social', '社交社区']], rerender: true });
+      content.push({ p: 'props.brand', l: '品牌名称', k: 'text' });
+      content.push({ p: 'props.mark', l: '标志字（2 字以内）', k: 'text' });
+      content.push({ p: 'props.kicker', l: '眉题', k: 'text' });
+      content.push({ p: 'props.title', l: '页面标题', k: 'text' });
+      content.push({ p: 'props.sub', l: '说明', k: 'textarea', rows: 3 });
+      content.push({ p: 'props.view', l: '当前视图', k: 'text' });
+      content.push({ p: 'props.nav', l: '视图导航（名称|view，每行一个）', k: 'textarea', rows: 6 });
+      content.push({ p: 'props.iface', l: '主接口名称（留空则由工程 app 描述决定）', k: 'text' });
+      content.push({ p: 'props.api', l: 'API 前缀', k: 'text' });
+      content.push({ p: 'props.appJson', l: '业务模型 JSON（菜单 / 动作 / 首页 / 接口名，可留空）', k: 'textarea', rows: 8 });
+      content.push({ p: 'props.accent', l: '强调色', k: 'color' });
+      content.push({ p: 'props.bg', l: '页面底色', k: 'color' });
+      content.push({ l: '业务应用视图是真实组件：保存 .yxpp 后由 app 运行时读取 project.app 的接口、字段和动作，渲染列表、详情、表单和工作流；不是静态占位图。', k: 'hint' });
     }
     if (t === 'chatbox') {
       content.push({ p: 'props.title', l: '聊天框标题', k: 'text' });

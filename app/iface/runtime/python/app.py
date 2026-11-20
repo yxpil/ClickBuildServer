@@ -15,10 +15,11 @@ import uuid
 import time
 import hashlib
 import datetime
+import decimal
 import traceback
 from urllib.parse import urljoin, urlparse, quote
 
-from flask import Flask, request, Response, jsonify, make_response
+from flask import Flask, request, Response, jsonify, make_response, send_from_directory
 import pymysql
 import requests
 
@@ -122,6 +123,19 @@ S3_CFG = {
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = max(1, int(cfg("MAX_BODY_MB", "64"))) * 1024 * 1024
 
+
+def _json_default(value):
+    if isinstance(value, datetime.datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, datetime.date):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    return str(value)
+
+
+app.json.default = _json_default
+
 UPSTREAMS = {u.get("id") or u.get("name"): u for u in (SERVICE.get("upstreams") or [])}
 PERMISSIONS = SERVICE.get("permissions") or {}
 ROLES_MAX = 5
@@ -203,7 +217,7 @@ def token_store_del(token):
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 NUMERIC = {"bigint", "int", "smallint", "tinyint", "decimal", "float", "double", "bool", "boolean"}
 RE_TOKEN = re.compile(r"\{\{\s*([A-Za-z0-9_.:]+)\s*\}\}")
-STRUCT = {"t", "table", "columns", "insertColumns", "insertValues", "updateSet", "where", "orderBy",
+STRUCT = {"t", "table", "columns", "allColumns", "insertColumns", "insertValues", "updateSet", "where", "orderBy",
           "limit", "offset", "idColumn", "page", "pageSize", "schema", "tableComment", "bindColumn", "bucket"}
 
 
@@ -264,6 +278,10 @@ def cast_value(field, raw):
 
 def columns_sql(binding):
     return ", ".join(ident(f.get("name")) for f in (binding.get("fields") or []) if not f.get("hidden"))
+
+
+def all_columns_sql(binding):
+    return ", ".join(ident(f.get("name")) for f in (binding.get("fields") or []))
 
 
 def id_field(binding):
@@ -419,6 +437,8 @@ def render_sql(text, iface, ctx):
                 out.append((ident(b.get("schema")) + ".") if b.get("schema") else "")
             elif base == "columns":
                 out.append(columns_sql(b))
+            elif base == "allColumns":
+                out.append(all_columns_sql(b))
             elif base == "insertColumns":
                 out.append(", ".join(ident(f.get("name")) for f in writable_fields(b)))
             elif base == "insertValues":
@@ -474,6 +494,8 @@ def render_text(text, iface, ctx):
             return ident(binding_of(iface, key).get("name"))
         if base == "columns":
             return columns_sql(binding_of(iface, key))
+        if base == "allColumns":
+            return all_columns_sql(binding_of(iface, key))
         if base == "idColumn":
             return ident(id_field(binding_of(iface, key)).get("name"))
         if token == "now":
@@ -931,18 +953,22 @@ def dispatch(subpath):
         filename = f.filename or "file"
         key = "%s/%s-%s" % (iface.get("id") or "upload", uuid.uuid4().hex[:8], filename)
         if _s3:
-            bucket = (iface.get("storage") or {}).get("bucket") or "clickbuild"
-            if not _s3.bucket_exists(bucket):
-                _s3.make_bucket(bucket)
-            from io import BytesIO
-            _s3.put_object(bucket, key, BytesIO(data), len(data), content_type=f.content_type or "application/octet-stream")
-            url = _s3.presigned_get_object(bucket, key, expires=datetime.timedelta(hours=1))
-        else:
-            path = os.path.join(ROOT, "uploads")
-            os.makedirs(path, exist_ok=True)
-            with open(os.path.join(path, key.replace("/", "_")), "wb") as out:
+            try:
+                bucket = (iface.get("storage") or {}).get("bucket") or "clickbuild"
+                if not _s3.bucket_exists(bucket):
+                    _s3.make_bucket(bucket)
+                from io import BytesIO
+                _s3.put_object(bucket, key, BytesIO(data), len(data), content_type=f.content_type or "application/octet-stream")
+                url = _s3.presigned_get_object(bucket, key, expires=datetime.timedelta(hours=1))
+            except Exception:
+                _s3 = None
+                url = ""
+        if not _s3:
+            path = os.path.join(ROOT, "uploads", *key.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as out:
                 out.write(data)
-            url = ""
+            url = "/uploads/" + key
         ctx["file"] = {"filename": filename, "contentType": f.content_type, "size": len(data), "objectKey": key, "objectUrl": url}
 
     rt = Runtime(iface, ctx)
@@ -976,6 +1002,28 @@ def dispatch(subpath):
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "runtime": "python-flask", "name": SERVICE.get("name"), "routes": len(ROUTES)})
+
+
+PUBLIC_DIR = os.path.abspath(os.path.join(ROOT, "..", "..", "public"))
+UPLOAD_DIR = os.path.join(ROOT, "uploads")
+
+
+@app.route("/uploads/<path:key>")
+def uploaded_file(key):
+    if ".." in key.split("/"):
+        return jsonify({"ok": False, "error": "BAD_PATH"}), 400
+    return send_from_directory(UPLOAD_DIR, key, conditional=True)
+
+
+@app.route("/", defaults={"asset": ""})
+@app.route("/<path:asset>")
+def frontend(asset):
+    if not asset:
+        return send_from_directory(PUBLIC_DIR, "index.html")
+    target = os.path.join(PUBLIC_DIR, asset)
+    if os.path.isfile(target):
+        return send_from_directory(PUBLIC_DIR, asset)
+    return send_from_directory(PUBLIC_DIR, "index.html")
 
 
 if __name__ == "__main__":

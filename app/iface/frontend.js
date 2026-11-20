@@ -106,6 +106,26 @@ function nodeHtml(n) {
   if (type === 'input') {
     return `<input type="text" placeholder="${esc(p.placeholder || '')}" style="${common};${textStyle('')};padding:0 10px;outline:0;border:1px solid ${esc((n.style && n.style.borderColor) || '#D4D4CE')}">`;
   }
+  if (type === 'appview') {
+    const bg = p.bg || '#F6F3EC';
+    const ink = p.accent || '#2F5D50';
+    const brand = esc(p.brand || p.name || '业务应用');
+    const view = esc(p.view || 'home');
+    const nav = String(p.nav || '').split('\n').map((s) => s.split('|')[0]).filter(Boolean).slice(0, 6);
+    return `<div class="appview-block" data-appview="1" data-view="${view}" style="${common};background:${esc(bg)};border:1px solid #D8D3C8;border-radius:${px(num((n.style || {}).radius, 12))};overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif">
+<div style="height:56px;display:flex;align-items:center;gap:10px;padding:0 18px;background:#fff;border-bottom:1px solid #E4E0D6">
+<span style="width:30px;height:30px;border-radius:9px;background:${esc(ink)};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">${esc(String(p.mark || 'AP').slice(0, 2))}</span>
+<b style="font-size:15px;color:#171613">${brand}</b>
+<span style="margin-left:auto;font-size:10px;color:#8A8A84">真实接口数据</span>
+</div>
+<div style="display:flex;height:calc(100% - 56px)">
+<div style="width:180px;background:#fff;border-right:1px solid #E4E0D6;padding:12px 10px">${nav.map((x) => `<div style="padding:7px 9px;border-radius:7px;font-size:11px;color:#3A3A36">${esc(x)}</div>`).join('')}</div>
+<div style="flex:1;padding:18px;min-width:0">
+<div style="font-size:10px;letter-spacing:.12em;color:#8A8A84">${esc(String(p.kicker || 'BUSINESS APP').toUpperCase())}</div>
+<h2 style="margin:4px 0 6px;font-size:26px;color:#171613">${esc(p.title || brand)}</h2>
+<p style="margin:0;font-size:12px;line-height:1.6;color:#5F5F5A">${esc(p.sub || '')}</p>
+</div></div></div>`;
+  }
   if (type === 'list') {
     const items = String(p.text || '').split('\n').map((line) => `<li>${esc(line)}</li>`).join('');
     const bullets = p.bullet === false ? 'list-style:none;padding-left:0' : 'list-style:disc;padding-left:18px';
@@ -115,8 +135,52 @@ function nodeHtml(n) {
   return `<div style="${common};overflow:${p.clip ? 'hidden' : 'visible'}">${children}</div>`;
 }
 
+function readRuntimeFile(name) {
+  const file = path.join(__dirname, 'runtime', name);
+  try { return fs.readFileSync(file, 'utf8'); } catch (e) { return ''; }
+}
+
+// app 模式：project.app 是业务应用描述（模式、接口、菜单、动作、权限）。
+// 页面由 PageStudio 的「业务应用」组件声明，运行时按同一份描述渲染真实列表、表单、详情和流程。
+function htmlFromApp(studioProject, meta) {
+  const p = studioProject || {};
+  const app = p.app || {};
+  const title = esc(meta && meta.name ? meta.name : (app.name || p.name || 'ClickBuild 应用'));
+  const css = readRuntimeFile('app.css');
+  const js = readRuntimeFile('app-runtime.js');
+  const payload = JSON.stringify(app).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  if (!css || !js) {
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title></head><body>
+<div style="font:14px/1.7 system-ui;padding:40px;max-width:720px;margin:0 auto">
+<h1>应用运行时未安装</h1><p>这个 .yxpp 使用业务应用模式，但当前环境缺少 <code>app/iface/runtime/app-runtime.js</code> 或 <code>app.css</code>。</p>
+</div></body></html>`;
+  }
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<style>
+${css}
+</style>
+</head>
+<body>
+<header id="topbar" class="topbar"></header>
+<main id="app"></main>
+<div id="toasts" class="toast-wrap"></div>
+<script>window.CASE = ${payload}; window.UX = window.CASE;</script>
+<script>
+${js}
+</script>
+</body>
+</html>
+`;
+}
+
 function htmlFromProject(studioProject, meta) {
   const p = studioProject || {};
+  if (p.app && p.app.mode) return htmlFromApp(p, meta);
   const page = p.page || { w: 1200, h: 880, bg: '#FFFFFF' };
   const theme = p.theme || {};
   const nodes = (Array.isArray(p.elements) ? p.elements : []).map(nodeHtml).join('\n');
@@ -146,8 +210,13 @@ ${nodes}
 
 function normalizeStudioProject(input) {
   const p = input && typeof input === 'object' ? input : null;
+  if (p && p.app && p.app.mode) {
+    if (!p.page) p.page = { w: 1200, h: 880, bg: p.app.bg || '#F6F3EC' };
+    if (!Array.isArray(p.elements)) p.elements = [];
+    return p;
+  }
   if (!p || !p.page || !Array.isArray(p.elements)) {
-    throw new Error('不是有效的前端工程：需要 page 和 elements 数组');
+    throw new Error('不是有效的前端工程：需要 page 和 elements 数组，或 app 业务应用描述');
   }
   return p;
 }

@@ -649,14 +649,28 @@ function safeName(name) {
 }
 
 async function putObject(iface, filename, contentType, buffer) {
-  if (!s3 || !bucketReady) throw new Error('对象存储不可用');
   const day = new Date().toISOString().slice(0, 10);
   const bucket = (iface.storage && iface.storage.bucket) || 'clickbuild';
   const key = `${iface.tables[0].name}/${day}/${crypto.randomUUID()}-${safeName(filename)}`;
-  await s3.putObject(bucket, key, buffer, buffer.length, { 'Content-Type': contentType || 'application/octet-stream' });
-  let url = '';
-  try { url = await s3.presignedGetObject(bucket, key, 7 * 24 * 3600); } catch (e) { url = ''; }
-  return { objectKey: key, objectUrl: url, filename, size: buffer.length, contentType: contentType || 'application/octet-stream', bucket };
+  if (!s3 || !bucketReady) {
+    const localDir = (cfg.storage && cfg.storage.localDir) || './uploads';
+    const full = path.join(localDir, key);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, buffer);
+    return { objectKey: key, objectUrl: '/uploads/' + key, filename, size: buffer.length, contentType: contentType || 'application/octet-stream', bucket, local: true };
+  }
+  try {
+    await s3.putObject(bucket, key, buffer, buffer.length, { 'Content-Type': contentType || 'application/octet-stream' });
+    let url = '';
+    try { url = await s3.presignedGetObject(bucket, key, 7 * 24 * 3600); } catch (e) { url = ''; }
+    return { objectKey: key, objectUrl: url, filename, size: buffer.length, contentType: contentType || 'application/octet-stream', bucket };
+  } catch (e) {
+    const localDir = (cfg.storage && cfg.storage.localDir) || './uploads';
+    const full = path.join(localDir, key);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, buffer);
+    return { objectKey: key, objectUrl: '/uploads/' + key, filename, size: buffer.length, contentType: contentType || 'application/octet-stream', bucket, local: true, s3Error: e.message };
+  }
 }
 
 function cacheKeyOf(iface, route, ctx) {
@@ -1438,6 +1452,32 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(fs.readFileSync(path.join(ROOT, 'public', 'console.html')));
+    }
+    if (pathname.startsWith('/uploads/')) {
+      const rel = decodeURIComponent(pathname.slice('/uploads/'.length));
+      if (rel.includes('..')) return send(res, 400, { ok: false, error: 'BAD_PATH' });
+      const localDir = (cfg.storage && cfg.storage.localDir) || './uploads';
+      const f = path.join(localDir, rel);
+      if (!fs.existsSync(f) || !fs.statSync(f).isFile()) return send(res, 404, { ok: false, error: 'NO_FILE' });
+      const ext = path.extname(f).toLowerCase();
+      const types = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.pdf': 'application/pdf' };
+      const stat = fs.statSync(f);
+      const range = req.headers.range;
+      const common = { 'content-type': types[ext] || 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600' };
+      if (range) {
+        const m = /^bytes=(\d*)-(\d*)$/.exec(String(range).trim());
+        if (m && (m[1] || m[2])) {
+          let start = m[1] ? Number(m[1]) : 0;
+          let end = m[2] ? Number(m[2]) : stat.size - 1;
+          if (!m[1] && m[2]) { start = Math.max(0, stat.size - Number(m[2])); end = stat.size - 1; }
+          if (start >= stat.size || end < start) { res.writeHead(416, { 'content-range': 'bytes */' + stat.size }); return res.end(); }
+          end = Math.min(end, stat.size - 1);
+          res.writeHead(206, Object.assign({}, common, { 'content-range': 'bytes ' + start + '-' + end + '/' + stat.size, 'content-length': end - start + 1 }));
+          return fs.createReadStream(f, { start, end }).pipe(res);
+        }
+      }
+      res.writeHead(200, Object.assign({}, common, { 'content-length': stat.size }));
+      return fs.createReadStream(f).pipe(res);
     }
     if (pathname === '/frontend/index.yxpp' || pathname === '/frontend/project.json') {
       const file = path.join(ROOT, 'frontend', path.basename(pathname));

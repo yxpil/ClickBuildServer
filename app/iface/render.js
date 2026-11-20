@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const RE_TOKEN = /\{\{\s*([A-Za-z0-9_.:]+)\s*\}\}/g;
 
 const STRUCT = new Set([
-  't', 'table', 'columns', 'insertColumns', 'insertValues', 'updateSet', 'where',
+  't', 'table', 'columns', 'allColumns', 'insertColumns', 'insertValues', 'updateSet', 'where',
   'orderBy', 'limit', 'offset', 'idColumn', 'page', 'pageSize', 'schema', 'tableComment',
   'bindColumn', 'bucket',
 ]);
@@ -105,6 +105,10 @@ function findField(binding, name) {
 
 function columnsSql(binding) {
   return (binding.fields || []).filter((f) => !f.hidden).map((f) => ident(f.name, 'field')).join(', ');
+}
+
+function allColumnsSql(binding) {
+  return (binding.fields || []).map((f) => ident(f.name, 'field')).join(', ');
 }
 
 function idField(binding) {
@@ -226,6 +230,7 @@ function structValue(token, root, ctx, params) {
     case 'schema': return b.schema ? `${ident(b.schema, 'schema')}.` : '';
     case 'tableComment': return String(b.comment || '');
     case 'columns': return columnsSql(b);
+    case 'allColumns': return allColumnsSql(b);
     case 'insertColumns': return writableFields(b).map((f) => ident(f.name, 'field')).join(', ');
     case 'insertValues': {
       const body = ctx.body || {};
@@ -325,6 +330,7 @@ function renderText(tpl, root, ctx) {
       if (base === 'table') return ident(b.table, 'table');
       if (base === 't') return ident(b.table, 'table');
       if (base === 'columns') return columnsSql(b);
+      if (base === 'allColumns') return allColumnsSql(b);
       if (base === 'idColumn') return ident(idField(b).name, 'field');
       if (base === 'bindColumn') return String((root.storage && root.storage.bindField) || 'file_key');
       if (base === 'bucket') return String((root.storage && root.storage.bucket) || 'clickbuild');

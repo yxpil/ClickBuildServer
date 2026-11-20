@@ -10,7 +10,7 @@ public class Render {
     static final Pattern TOKEN_RE = Pattern.compile("\\{\\{\\s*([A-Za-z0-9_.:]+)\\s*\\}\\}");
     static final Pattern VAR_RE = Pattern.compile("\\$([A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\]|\\.[A-Za-z0-9_]+)*)");
     static final Set<String> STRUCT = new HashSet<>(Arrays.asList(
-        "t", "table", "columns", "insertColumns", "insertValues", "updateSet", "where",
+        "t", "table", "columns", "allColumns", "insertColumns", "insertValues", "updateSet", "where",
         "orderBy", "limit", "offset", "idColumn", "page", "pageSize", "schema",
         "tableComment", "bindColumn", "bucket"));
 
@@ -39,6 +39,12 @@ public class Render {
     static String columnsSQL(Model.Table t) {
         List<String> out = new ArrayList<>();
         for (Model.Field f : t.fields) if (!f.hidden) out.add(safeIdent(f.name));
+        return String.join(", ", out);
+    }
+
+    static String allColumnsSQL(Model.Table t) {
+        List<String> out = new ArrayList<>();
+        for (Model.Field f : t.fields) out.add(safeIdent(f.name));
         return String.join(", ", out);
     }
 
@@ -220,6 +226,7 @@ public class Render {
             case "schema": return t.schema != null && !t.schema.isEmpty() ? safeIdent(t.schema) + "." : "";
             case "tableComment": return t.comment;
             case "columns": return columnsSQL(t);
+            case "allColumns": return allColumnsSQL(t);
             case "insertColumns": {
                 List<String> names = new ArrayList<>();
                 for (Model.Field f : writableFields(t)) names.add(safeIdent(f.name));

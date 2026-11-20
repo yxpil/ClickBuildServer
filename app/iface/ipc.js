@@ -277,7 +277,7 @@ function registerIpc() {
       parent = r.filePaths[0];
     }
     try {
-      return projectExport.writeProject(project, parent, { port: services.settings().ports.http, errors: o.errors || null });
+      return projectExport.writeProject(project, parent, { port: services.settings().ports.http, errors: o.errors || null, runtime: o.runtime || 'node' });
     } catch (err) { return { ok: false, error: err.message }; }
   });
 

@@ -34,7 +34,7 @@ var tokenRe = regexp.MustCompile(`\{\{\s*([A-Za-z0-9_.:]+)\s*\}\}`)
 var varRe = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\]|\.[A-Za-z0-9_]+)*)`)
 
 var structTokens = map[string]bool{
-	"t": true, "table": true, "columns": true, "insertColumns": true, "insertValues": true,
+	"t": true, "table": true, "columns": true, "allColumns": true, "insertColumns": true, "insertValues": true,
 	"updateSet": true, "where": true, "orderBy": true, "limit": true, "offset": true,
 	"idColumn": true, "page": true, "pageSize": true, "schema": true, "tableComment": true,
 	"bindColumn": true, "bucket": true,
@@ -84,6 +84,14 @@ func columnsSQL(t *Table) string {
 		if !f.Hidden {
 			out = append(out, mustIdent(f.Name))
 		}
+	}
+	return strings.Join(out, ", ")
+}
+
+func allColumnsSQL(t *Table) string {
+	var out []string
+	for _, f := range t.Fields {
+		out = append(out, mustIdent(f.Name))
 	}
 	return strings.Join(out, ", ")
 }
@@ -399,6 +407,8 @@ func structValue(token string, root *Service, iface *Interface, ctx *Ctx, params
 		return t.Comment, nil
 	case "columns":
 		return columnsSQL(t), nil
+	case "allColumns":
+		return allColumnsSQL(t), nil
 	case "insertColumns":
 		var names []string
 		for _, f := range writableFields(t) {

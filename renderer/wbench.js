@@ -2170,20 +2170,30 @@ async function act(name, el) {
       <label class="flex items-start gap-2 py-2 cursor-pointer"><input id="epPages" type="checkbox" ${errCfg.pages === false ? '' : 'checked'} class="mt-0.5"><span><b class="text-[12px]">生成 404 / 500 错误页</b><span class="block text-[11px] text-neutral-500">浏览器打开时显示黑白错误页，API 客户端仍收到 JSON。</span></span></label>
       <label class="flex items-start gap-2 py-2 cursor-pointer"><input id="epDetail" type="checkbox" ${errCfg.detail === false ? '' : 'checked'} class="mt-0.5"><span><b class="text-[12px]">500 页面显示错误详情</b><span class="block text-[11px] text-neutral-500">关闭后只显示状态码和 traceId，堆栈写日志。</span></span></label>
       <div class="text-[11px] text-neutral-500 mt-1 mb-3">导出同时带 <span class="mono">dev.js</span> 热部署入口（<span class="mono">node dev.js</span>）。</div>
+      <label class="block text-[11px] font-semibold mb-1">主运行时（服务端）</label>
+      <select id="epRuntime" class="w-full border border-neutral-300 bg-white px-2 py-1.5 text-[12px] mb-2">
+        <option value="node">Node.js（server.js，默认）</option>
+        <option value="bun">Bun（server.js）</option>
+        <option value="go">Go 原生（native/go，不依赖 Node）</option>
+        <option value="java">Java 原生（native/java，JDK 17+）</option>
+        <option value="python">Python Flask（native/python）</option>
+      </select>
+      <div class="text-[11px] text-neutral-500 mb-3">四套服务端实现会一起导出，共用 <span class="mono">config.json</span> / <span class="mono">service.json</span>；这里选择的是默认运行方式和 <span class="mono">RUN.md</span> 的第一启动项。</div>
       <div class="flex justify-end gap-2"><button class="btn thin" id="epCancel">取消</button><button class="btn solid" id="epGo">导出</button></div></div>`, (m) => {
       m.querySelector('#epCancel').onclick = closeModal;
       m.querySelector('#epGo').onclick = async () => {
         const errors = { pages: !!m.querySelector('#epPages').checked, detail: !!m.querySelector('#epDetail').checked };
+        const runtime = m.querySelector('#epRuntime').value || 'node';
         closeModal();
-        const r = await api.exportProject(S.project, { errors });
+        const r = await api.exportProject(S.project, { errors, runtime });
         if (!r) return;
         if (!r.ok) return toast('导出失败：' + String(r.error || '').slice(0, 160), 6000);
         S.exportDir = r.dir;
         modal(`<div class="p-4">
           <div class="text-[13px] font-semibold mb-2">工程已导出 · ${r.files.length} 个文件</div>
           <div class="text-[11px] text-neutral-500 mb-1 mono break-all">${esc(r.dir)}</div>
-          <div class="text-[11px] text-neutral-600 mb-3">已带 <span class="mono">.idea</span> 工程配置和「启动接口服务」运行配置；错误页：${errors.pages ? '开' : '关'}，500 详情：${errors.detail ? '开' : '关'}。</div>
-          <div class="text-[11px] text-neutral-500 mb-4">先 <span class="mono">npm install</span>，再在 IDEA 里运行；数据库、Redis、S3 地址在 <span class="mono">.env</span>。</div>
+          <div class="text-[11px] text-neutral-600 mb-3">主运行时：<span class="mono">${esc(r.runtime || 'node')}</span>；已带 <span class="mono">.idea</span> 工程配置和「启动接口服务」运行配置；错误页：${errors.pages ? '开' : '关'}，500 详情：${errors.detail ? '开' : '关'}。</div>
+          <div class="text-[11px] text-neutral-500 mb-4">先看 <span class="mono">RUN.md</span>；Node 用 <span class="mono">npm install</span>，Go/Java/Python 分别进 <span class="mono">native/go</span> / <span class="mono">native/java</span> / <span class="mono">native/python</span>。数据库、Redis、S3 地址在 <span class="mono">.env</span>。</div>
           <div class="flex justify-end gap-2">
             <button class="btn thin" id="epOpen">打开目录</button>
             <button class="btn solid" id="epIdea">用 IDEA 打开</button>

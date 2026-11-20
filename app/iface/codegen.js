@@ -766,6 +766,40 @@ Write-Host "已创建登录自启任务：$TaskName"
     '- 登录自启：`powershell -ExecutionPolicy Bypass -File daemon/install-service.ps1`（创建计划任务，名字可传参）',
   ].join('\n'));
 
+  const runtime = String(opts.runtime || 'node').toLowerCase();
+  const runtimeName = ({ node: 'Node.js', bun: 'Bun', go: 'Go 原生', java: 'Java 原生', python: 'Python Flask' })[runtime] || 'Node.js';
+  add('runtime.json', JSON.stringify({ runtime, name: runtimeName, port: Number(opts.port || DEFAULT_PORTS.http) }, null, 2));
+  add('RUN.md', [
+    `# ${p.name} · 运行方式`,
+    '',
+    `导出时选择的主运行时：**${runtimeName}**。同一个工程目录已经带 Node / Go / Java / Python 四套服务端实现，共用 \`service.json\`、\`config.json\` 和 \`public/\` 前端。`,
+    '',
+    '## 1. ' + runtimeName,
+    '',
+    ...({
+      node: ['```bash', 'npm install', 'node server.js', '```', '', '热部署：`node dev.js`。'],
+      bun: ['```bash', 'bun install', 'bun server.js', '```', '', '热部署：`bun dev.js`。'],
+      go: ['```bash', 'cd native/go', 'go mod tidy', 'go run .', '```', '', '编译后可直接运行二进制，不依赖 Node。'],
+      java: ['```bash', 'cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', 'java -cp "bin;lib/*" icb.Main', '```', '', '需要 JDK 17+，不依赖 Node。'],
+      python: ['```bash', 'cd native/python', 'python -m venv .venv', '.venv\\Scripts\\activate', 'pip install -r requirements.txt', 'python app.py', '```', '', 'Linux/macOS 用 `source .venv/bin/activate`，不依赖 Node。'],
+    }[runtime] || []),
+    '',
+    '## 2. 其它运行时',
+    '',
+    '- Node.js：`node server.js` / 热部署 `node dev.js`',
+    '- Bun：`bun server.js` / 热部署 `bun dev.js`',
+    '- Go：`cd native/go && go mod tidy && go run .`',
+    '- Java：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
+    '- Python：`cd native/python && pip install -r requirements.txt && python app.py`',
+    '',
+    `数据库、Redis、S3、端口都在根目录 \`config.json\`；系统环境变量优先。启动后打开 http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/ 。`,
+    '',
+    '## 3. 前端',
+    '',
+    '`public/index.html` 由 `.yxpp` 生成，`frontend/index.yxpp` 是 PageStudio 工程源文件。修改 `.yxpp` 后重新导出即可覆盖前端。',
+    '',
+  ].join('\n'));
+
   let routeNo = 0;
   p.interfaces.forEach((it) => {
     const mainTable = ((it.tables || []).find((t) => (t.key || 'main') === 'main') || (it.tables || [])[0] || {}).name || '';
