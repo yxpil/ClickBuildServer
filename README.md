@@ -91,9 +91,11 @@
 dist\ClickBuildServer-Setup-1.1.42.exe
 ```
 
-安装包 226,036,714 B（约 216 MB），构建时间 2026-11-20 21:45:00，SHA256 `8DE6F6D29DB828CDFBA892489B0DE5B18731C1F3BCF3BA9490699901B395D24C`。
+安装包 226,050,160 B（约 216 MB），构建时间 2026-11-20 23:10:00，SHA256 `33DD4EE800087E41B92ED30390658F08488E32C4B53A2E00DF41FDF10B111849`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.43 把 Phase 1 内核接进主生成链路，并把 Rust 全栈渲染器修到真能跑：`app/generator/sql.js` 统一走 `kernel/dialects`，MySQL / PostgreSQL / SQLite 三种方言可由 `project.dialect` 或 `generateSql(ir, { dialect })` 选择；旧 IR 通过 `kernel/ir-adapter` 转成元模型实体。Rust 生成器修掉搜索文本拼接、`QueryBuilder` 绑定生命周期、`AppError` 错误链、S3 SigV4 返回类型和 bootstrap 返回值，`cargo check` 通过；真实 MariaDB 上完成建表、`cargo run`、admin 登录和列表查询。完整导出不再生成转发 Node 的 `launcher/Server.java`、`launcher/main.go`，Java / Go 只走 `native/`。新增 `test-kernel-sqlgen` 4/4、真实 MariaDB 生成脚本 1/1、Rust 编译 5/5、Rust 运行 2/2。
 
 1.1.42 把路由脚本编辑器补成 IDEA 风格：错误和警告直接标在具体列上，不再整行糊成一片。错误用红色波浪线，gutter 显示红色圆形感叹号；警告用琥珀色波浪线，gutter 显示三角感叹号；鼠标悬停显示错误码、消息和修复建议，点问题面板或 gutter 会精确选中出错的 token。底部状态改成带感叹号徽标的“1 个错误 · 2 个警告”，Problems 面板按严重级别排序并显示行:列。语法分析补齐括号不匹配 / 未闭合、块注释未闭合、字符串引号未闭合、占位符未闭合、空 QUERY / EXEC，并保留未声明变量、赋值未使用等警告；全部 17 个工程 390 条路由实测 0 误报。脚本检查器回归 18/18，UI 冒烟 129/129。
 
