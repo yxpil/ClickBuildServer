@@ -67,6 +67,7 @@ const I = {
   stop: '<rect x="4" y="4" width="8" height="8"/>',
   console: '<rect x="2" y="3" width="12" height="10"/><path d="M4.5 6l2 2-2 2M8 10h3"/>',
   grid: '<rect x="2" y="2.5" width="12" height="11"/><path d="M2 6h12M6 6v7.5M10 6v7.5"/>',
+  more: '<circle cx="3" cy="8" r="1.1"/><circle cx="8" cy="8" r="1.1"/><circle cx="13" cy="8" r="1.1"/>',
   help: '<circle cx="8" cy="8" r="6"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.2 2.4c-.4.3-.5.7-.5 1.1M8 11.6v.2"/>',
   page: '<path d="M3 2h7l3 3v9H3z"/><path d="M6 6h4M6 9h4M6 12h3"/>',
   package: '<path d="M8 2l6 3v6l-6 3-6-3V5z"/><path d="M2 5l6 3 6-3M8 8v6"/>',
@@ -686,15 +687,15 @@ function renderRibbon() {
   const infra = svc.items.filter((x) => x.id !== 'server');
   const server = svc.items.find((x) => x.id === 'server');
   const up = infra.filter((x) => x.running).length;
+  const running = server && server.running;
   $('#ribbon').innerHTML = `
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('seed', 'new', '新建', '重置为示例工程')}
     ${rb('open', 'open', '打开', '打开已有工程')}
-    ${rb('save', 'save', '保存', '保存工程')}
-  </div><div class="lbl">文件</div></div>
+  </div><div class="lbl">工程</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('newIface', 'iface', '新建', '在当前分类新建接口')}
+    ${rb('newIface', 'iface', '新建接口', '在当前分类新建接口')}
     ${rb('dupIface', 'copy', '复制', '复制当前接口')}
     ${rb('delIface', 'trash', '删除', '删除当前接口')}
   </div><div class="lbl">接口</div></div>
@@ -702,7 +703,7 @@ function renderRibbon() {
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('addTable', 'table', '加表', '给当前接口加一张表')}
     ${rb('addField', 'field', '加字段', '给当前表加字段')}
-    ${rb('ddl', 'sql', 'DDL', '查看建表语句')}
+    ${rb('ddl', 'sql', '看 DDL', '查看建表语句')}
   </div><div class="lbl">表结构</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
@@ -711,40 +712,67 @@ function renderRibbon() {
   </div><div class="lbl">脚本</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('deployUpdate', 'check', '更新', '保存并重新生成前后端，重启生成服务')}
-    ${rb(server && server.running ? 'stopServer' : 'launchWeb', server && server.running ? 'stop' : 'play', server && server.running ? '停止' : '启动', server && server.running ? '停止生成服务' : '生成当前工程、启动服务并打开网页主页')}
-    <div class="flex items-center gap-1 px-1 text-[10px] text-neutral-500" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length}</div>
+    ${rb(running ? 'stopServer' : 'launchWeb', running ? 'stop' : 'play', running ? '停止' : '启动', running ? '停止生成服务' : '生成当前工程、启动服务并打开网页主页')}
     ${rb('home', 'console', '打开主页', '在浏览器打开当前工程的网页主页')}
-    ${rb('microExport', 'package', '微服务', '按接口或分类导出独立服务')}
-  </div><div class="lbl">服务</div></div>
-
-  <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('grid', 'grid', '表格', '回到 Excel 表格视图')}
-    ${rb('help', 'help', '帮助', '语法与函数手册')}
-  </div><div class="lbl">视图</div></div>
-
-  <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('exportProject', 'package', '导出工程', '导出完整源码工程，IDEA 可直接打开')}
-    ${rb('exportYxpn', 'save', '导出包', '导出 .yxpn 工程包（含运行时与文档）')}
-    ${rb('importYxpn', 'open', '导入包', '打开 .yxpn 工程包')}
-    ${rb('docs', 'page', '文档', '预览自动生成的 API 文档')}
-  </div><div class="lbl">工程</div></div>
-
-  <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('templates', 'page', '模版库', '内置商城/视频/博客/工单/预约，一键套用')}
-    ${rb('saveTemplate', 'save', '存模版', '把当前工程存成自己的模版')}
-    ${rb('ifaceLib', 'field', '接口库', '内置/自存接口，一键插入当前工程')}
-    ${rb('saveIface', 'save', '存接口', '把当前接口存入接口库，同名会被拒绝')}
-    ${rb('plugins', 'field', '插件', '插件启停、安装、信任目录')}
-  </div><div class="lbl">模版与插件</div></div>
-
-  <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('ai', 'iface', 'AI 生成', '用 AI 对话框生成接口工程')}
     ${rb('monitor', 'console', '监控', '实时看请求日志与健康状态')}
-    ${rb('settings', 'field', '设置', 'AI 接口、模型参数与本地服务端口')}
-    ${rb('assoc', 'page', '关联', '把 .yxpn 设为默认打开')}
-    ${rb('newWindow', 'open', '新窗口', '为当前工程再开一个窗口')}
-  </div><div class="lbl">扩展</div></div>`;
+    <div class="ribbon-status" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length} 运行</div>
+  </div><div class="lbl">运行</div></div>
+
+  <div class="ribbon-group ribbon-group-end"><div class="flex gap-1">
+    ${rb('exportProject', 'package', '导出工程', '按所选类型导出源码工程')}
+    ${rb('docs', 'page', '接口文档', '预览自动生成的 API 文档')}
+    ${rb('moreMenu', 'more', '更多…', '模版、接口库、AI、导入导出和设置')}
+  </div><div class="lbl">导出与更多</div></div>`;
+}
+
+function showMoreMenu() {
+  const item = (name, label, desc) => `<button class="more-item" data-more-action="${name}"><b>${esc(label)}</b><span>${esc(desc)}</span></button>`;
+  modal(`<div class="p-5 w-[560px] max-h-[80vh] overflow-auto">
+    <div class="flex items-start gap-3 mb-4">
+      <div class="flex-1">
+        <div class="text-[14px] font-semibold">更多操作</div>
+        <div class="text-[11px] text-neutral-500 mt-1">日常编辑只留了常用入口；模版、导入导出和系统设置收在这里，避免工具栏堆成一片。</div>
+      </div>
+      <button class="btn thin" id="moreClose">关闭</button>
+    </div>
+
+    <div class="more-sect">
+      <h5>内容与复用</h5>
+      <div class="more-grid">
+        ${item('templates', '模版库', '套用内置业务工程')}
+        ${item('ifaceLib', '接口库', '插入现成接口')}
+        ${item('saveTemplate', '存为模版', '把当前工程收进模版库')}
+        ${item('saveIface', '存为接口', '把当前接口放进接口库')}
+      </div>
+    </div>
+
+    <div class="more-sect">
+      <h5>导入导出</h5>
+      <div class="more-grid">
+        ${item('exportYxpn', '导出 .yxpn', '带前端与文档的工程包')}
+        ${item('importYxpn', '导入 .yxpn', '打开已有工程包')}
+        ${item('microExport', '导出微服务', '按接口或分类拆独立服务')}
+        ${item('plugins', '插件', '启停插件与信任目录')}
+      </div>
+    </div>
+
+    <div class="more-sect">
+      <h5>工具与系统</h5>
+      <div class="more-grid">
+        ${item('ai', 'AI 生成', '用对话框生成接口工程')}
+        ${item('settings', '设置', 'AI、模型参数与服务端口')}
+        ${item('assoc', '关联 .yxpn', '设为默认打开方式')}
+        ${item('newWindow', '新窗口', '再开一个工程窗口')}
+        ${item('grid', '表格视图', '回到接口总表')}
+        ${item('help', '帮助', '语法、函数与快捷键')}
+      </div>
+    </div>
+  </div>`, (m) => {
+    m.querySelector('#moreClose').onclick = closeModal;
+    m.querySelectorAll('[data-more-action]').forEach((b) => {
+      b.onclick = () => { closeModal(); act(b.dataset.moreAction); };
+    });
+  });
 }
 
 function renderSheets() {
@@ -781,47 +809,39 @@ function renderSide() {
     routes: S.project.interfaces.reduce((n, i) => n + i.routes.length, 0),
     funcs: (S.project.functions || []).length,
   };
+  const problems = S.problems || [];
+  const infra = (svc.items || []).filter((x) => x.id !== 'server');
+  const up = infra.filter((x) => x.running).length;
   $('#sideTop').innerHTML = `
   <div class="side-sect">
-    <h4>内置服务</h4>
+    <h4>项目概览</h4>
+    <div class="side-stats">
+      <div><b>${counts.ifaces}</b><span>接口</span></div>
+      <div><b>${counts.tables}</b><span>表</span></div>
+      <div><b>${counts.routes}</b><span>路由</span></div>
+    </div>
+    <div class="side-check ${problems.length ? 'bad' : 'ok'}">${problems.length ? `${problems.length} 项待处理` : '结构检查通过'}</div>
+    ${problems.length ? `<div class="text-[11px] space-y-1 mt-2">${problems.slice(0, 6).map((p) => `<div class="border-l-2 border-neutral-900 pl-2">${esc(p)}</div>`).join('')}${problems.length > 6 ? `<div class="text-neutral-500">还有 ${problems.length - 6} 条…</div>` : ''}</div>` : ''}
+  </div>
+
+  <div class="side-sect">
+    <div class="side-head"><h4>运行环境</h4><span>${up}/${infra.length} 运行</span></div>
     ${svc.bundled === false ? `<div class="text-[11px] text-red-600 mb-1">安装包缺少服务文件：${esc((svc.missing || []).join('、'))}</div>` : ''}
     ${svc.items.filter((x) => x.id !== 'server').map((it) => `
-      <div class="flex items-center gap-2 py-1">
+      <div class="side-svc">
         <span class="dot ${it.running ? 'on' : 'off'}"></span>
-        <span class="flex-1">${esc(it.name)}</span>
-        <span class="mono text-[11px] text-neutral-500">${it.port}</span>
-        <button class="btn thin" data-svc="${it.id}" data-on="${it.running ? '0' : '1'}">${it.running ? '停' : '启'}</button>
+        <span class="flex-1 truncate">${esc(it.name)}</span>
+        <span class="mono text-[10px] text-neutral-500">${it.port}</span>
+        <button class="btn thin side-mini" data-svc="${it.id}" data-on="${it.running ? '0' : '1'}">${it.running ? '停止' : '启动'}</button>
       </div>`).join('')}
-    <div class="text-[11px] text-neutral-500 mt-2">端口：MySQL ${svc.ports.mysql} · Redis ${svc.ports.redis} · S3 ${svc.ports.s3}</div>
+    <div class="side-ports">MySQL ${svc.ports.mysql} · Redis ${svc.ports.redis} · S3 ${svc.ports.s3}</div>
   </div>
 
-  <div class="side-sect">
-    <h4>工程统计</h4>
-    <div class="grid grid-cols-2 gap-1 text-[12px]">
-      <div>接口 <b>${counts.ifaces}</b></div><div>表 <b>${counts.tables}</b></div>
-      <div>路由 <b>${counts.routes}</b></div><div>自定义函数 <b>${counts.funcs}</b></div>
-    </div>
-  </div>
-
-  <div class="side-sect">
-    <h4>校验</h4>
-    ${S.problems.length ? `<div class="text-[12px] space-y-1">${S.problems.slice(0, 12).map((p) => `<div class="border-l-2 border-neutral-900 pl-2">${esc(p)}</div>`).join('')}${S.problems.length > 12 ? `<div class="text-neutral-500">还有 ${S.problems.length - 12} 条…</div>` : ''}</div>` : '<div class="text-[12px] text-neutral-600">没有发现问题。</div>'}
-  </div>
-
-  <div class="side-sect">
-    <h4>生成目录</h4>
-    <div class="mono text-[11px] break-all">${esc(S.genDir || '还没有生成')}</div>
-  </div>
-
-  <div class="side-sect">
-    <h4>操作提示</h4>
-    <div class="text-[11px] text-neutral-600 leading-5">
-      双击表格行进入接口编辑。<br>
-      每个接口可挂多张表、多个库。<br>
-      每条路由是一段脚本，SQL 用 {{...}} 取参数。<br>
-      生成后点“启动服务”跑生成的服务。
-    </div>
-  </div>`;
+  <details class="side-sect side-details">
+    <summary>工程详情</summary>
+    <div class="side-kv"><span>自定义函数</span><b>${counts.funcs}</b></div>
+    <div class="side-kv"><span>生成目录</span><b class="mono break-all">${esc(S.genDir || '还没有生成')}</b></div>
+  </details>`;
 
   $$('[data-svc]').forEach((b) => {
     b.onclick = async () => {
@@ -918,11 +938,11 @@ function renderEditor() {
     ['routes', '路由脚本'],
     ['io', '接口类型'],
     ['docs', '接口文档'],
-    ['cache', '缓存与存储'],
+    ['cache', '缓存与存储', 1],
     ['upstream', '上游'],
     ['permissions', '权限'],
     ['objects', '对象表'],
-    ['test', '测试'],
+    ['test', '测试', 1],
     ['export', '生成导出'],
   ];
   $('#workspace').innerHTML = `
@@ -937,7 +957,7 @@ function renderEditor() {
     <button class="btn thin" data-action="delIface">删除接口</button>
   </div>
   <div class="h-9 shrink-0 flex items-center border-b border-neutral-300 px-2 text-[12px]">
-    ${tabs.map(([k, label]) => `<div class="tabbtn ${S.tab === k ? 'on' : ''}" data-tab="${k}">${label}</div>`).join('')}
+    ${tabs.map(([k, label, group]) => `<div class="tabbtn ${group ? 'tab-start' : ''} ${S.tab === k ? 'on' : ''}" data-tab="${k}">${label}</div>`).join('')}
     <div class="ml-auto text-neutral-500 mono">${it.tables.length} 表 · ${it.routes.length} 路由</div>
   </div>
   <div class="flex-1 min-h-0 overflow-hidden" id="tabBody"></div>`;
@@ -2718,6 +2738,7 @@ async function launchWeb() {
 }
 async function act(name, el) {
   const it = activeIface();
+  if (name === 'moreMenu') return showMoreMenu();
   if (name === 'save') return save();
   if (name === 'scriptGuide') return showScriptGuide();
   if (name === 'toggleAssist') {

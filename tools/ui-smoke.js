@@ -97,13 +97,25 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
-  t('Ribbon 有工程/扩展组', await val(`!!document.querySelector('[data-action="exportYxpn"]') && !!document.querySelector('[data-action="ai"]')`));
-  const ribbonFit = await val(`(()=>{const r=document.querySelector('#ribbon');const b=document.querySelector('[data-action="ai"]');return JSON.stringify({sw:r.scrollWidth,cw:r.clientWidth,aiLeft:b?b.getBoundingClientRect().left:-1,aiRight:b?b.getBoundingClientRect().right:-1,vw:innerWidth,ox:getComputedStyle(r).overflowX})})()`);
+  t('Ribbon 收敛为 6 组常用入口', await val(`document.querySelector('#ribbon').querySelectorAll('.ribbon-group').length === 6 && document.querySelector('#ribbon').querySelectorAll('[data-action]').length <= 16`), await val(`document.querySelector('#ribbon').querySelectorAll('.ribbon-group').length + ' 组 / ' + document.querySelector('#ribbon').querySelectorAll('[data-action]').length + ' 项'`));
+  const ribbonFit = await val(`(()=>{const r=document.querySelector('#ribbon');const b=document.querySelector('[data-action="moreMenu"]');return JSON.stringify({sw:r.scrollWidth,cw:r.clientWidth,aiLeft:b?b.getBoundingClientRect().left:-1,aiRight:b?b.getBoundingClientRect().right:-1,vw:innerWidth,ox:getComputedStyle(r).overflowX})})()`);
   const rf = JSON.parse(ribbonFit);
   const ribbonOk = rf.sw <= rf.cw + 1 ? rf.aiRight <= rf.vw : (rf.vw < 1400 && rf.ox === 'auto');
   t('Ribbon 宽屏完整、窄屏可滚动', ribbonOk, ribbonFit);
+  await val(`act('moreMenu')`);
+  await wait(300);
+  t('更多菜单收纳低频入口', await val(`!!document.querySelector('[data-more-action="exportYxpn"]') && !!document.querySelector('[data-more-action="ai"]') && /更多操作/.test(document.querySelector('#modal').innerText)`));
+  await val(`closeModal()`);
   t('表格有接口行', await val(`document.querySelectorAll('#workspace tr[data-iface]').length >= 1`), await val(`document.querySelectorAll('#workspace tr[data-iface]').length`));
   t('分类 sheet 存在', await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length >= 2`), await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length`));
+  const sideLayout = await val(`JSON.stringify({
+    stats: document.querySelectorAll('#sideTop .side-stats > div').length,
+    details: document.querySelectorAll('#sideTop details.side-details').length,
+    tips: /操作提示/.test(document.querySelector('#sideTop').innerText),
+    services: document.querySelectorAll('#sideTop .side-svc').length
+  })`);
+  const sl = JSON.parse(sideLayout);
+  t('侧栏压成项目概览 / 运行环境 / 可折叠详情', sl.stats === 3 && sl.details === 1 && !sl.tips && sl.services >= 1, sideLayout);
 
   // 全局搜索
   const firstName = await val(`S.project.interfaces[0].name`);
@@ -191,16 +203,20 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`document.querySelector('#ctxmenu').classList.add('hidden')`);
 
   // 模版库
-  t('Ribbon 有模版与插件入口', await val(`!!document.querySelector('[data-action="templates"]') && !!document.querySelector('[data-action="plugins"]')`));
-  await val(`act('templates')`);
+  await val(`act('moreMenu')`);
+  await wait(300);
+  t('更多菜单有模版与插件入口', await val(`!!document.querySelector('[data-more-action="templates"]') && !!document.querySelector('[data-more-action="plugins"]')`));
+  await val(`closeModal(); act('templates')`);
   await wait(500);
   t('模版库列出 24 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 24`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
   t('社交接口库卡片统计 9 接口 / 46 表 / 86 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:social"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('9 接口') && card.innerText.includes('46 表') && card.innerText.includes('86 路由');})()`));
   t('模版卡片有接口/表统计', await val(`document.querySelector('#modal').innerText.includes('接口 ·')`));
 
   // 单接口库
-  t('Ribbon 有接口库/存接口入口', await val(`!!document.querySelector('[data-action="ifaceLib"]') && !!document.querySelector('[data-action="saveIface"]')`));
-  await val(`act('ifaceLib')`);
+  await val(`act('moreMenu')`);
+  await wait(300);
+  t('更多菜单有接口库/存接口入口', await val(`!!document.querySelector('[data-more-action="ifaceLib"]') && !!document.querySelector('[data-more-action="saveIface"]')`));
+  await val(`closeModal(); act('ifaceLib')`);
   await wait(500);
   t('接口库内置接口不少于 63 个', await val(`document.querySelectorAll('[data-lib-row][data-kind="builtin"]').length >= 63`), await val(`document.querySelectorAll('[data-lib-row][data-kind="builtin"]').length`));
   t('接口库搜索能过滤', await val(`(()=>{const q=document.querySelector('#libQ');q.value='账户';q.dispatchEvent(new Event('input'));const shown=Array.from(document.querySelectorAll('[data-lib-row]')).filter(x=>x.style.display!='none').length;const all=document.querySelectorAll('[data-lib-row]').length;q.value='';q.dispatchEvent(new Event('input'));return shown>0 && shown<all;})()`));
@@ -268,13 +284,15 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   // 接口文档页
   await val(`S.mode='editor'; S.selId=S.project.interfaces[0].id; S.tab='docs'; render()`);
   await wait(300);
-  t('接口文档页有 7 项接口字段', await val(`document.querySelectorAll('[data-df]').length >= 7`), await val(`document.querySelectorAll('[data-df]').length`));
+  t('接口文档页有 6–8 项接口字段', await val(`document.querySelectorAll('[data-df]').length >= 6`), await val(`document.querySelectorAll('[data-df]').length`));
   t('接口文档页有每条路由的文档', await val(`document.querySelectorAll('[data-route-doc]').length === S.project.interfaces[0].routes.length`), await val(`document.querySelectorAll('[data-route-doc]').length`));
   await val(`(()=>{const el=document.querySelector('[data-df="owner"]');el.value='张三';el.dispatchEvent(new Event('input'));})()`);
   t('文档字段写回模型', await val(`S.project.interfaces[0].docs.owner === '张三'`), await val(`S.project.interfaces[0].docs.owner`));
 
   // 微服务导出
-  t('Ribbon 有微服务导出入口', await val(`!!document.querySelector('[data-action="microExport"]')`));
+  await val(`closeModal(); act('moreMenu')`);
+  await wait(300);
+  t('更多菜单有微服务导出入口', await val(`!!document.querySelector('[data-more-action="microExport"]')`));
   await val(`closeModal(); act('microExport')`);
   await wait(300);
   t('微服务弹窗列出分类/接口', await val(`document.querySelectorAll('.mexIface').length === S.project.interfaces.length && document.querySelectorAll('.mexCat').length === S.project.categories.length`), await val(`document.querySelectorAll('.mexIface').length + '/' + S.project.categories.length`));
@@ -341,7 +359,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const ribbonStop = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:true}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="stopServer"]');const txt=el?el.innerText:'无';S.services=keep;renderRibbon();return txt;})()`);
   t('网页运行时按钮变“停止”', /停止/.test(ribbonStop), ribbonStop);
 
-  // 更新部署入口：顶部、服务组、前端工坊各一个
+  // 更新部署入口：顶部与前端工坊；工具条不再重复放同一个动作
   const deployUI = await val(`JSON.stringify({
     header: !!document.querySelector('header.appbar [data-action="deployUpdate"]'),
     ribbon: !!document.querySelector('#ribbon [data-action="deployUpdate"]'),
@@ -349,7 +367,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   })`);
   const du = JSON.parse(deployUI);
   t('顶部有更新部署按钮', du.header, deployUI);
-  t('服务组有更新按钮', du.ribbon, deployUI);
+  t('Ribbon 不再重复更新部署', !du.ribbon, deployUI);
   t('前端工坊有更新部署按钮', du.studio, deployUI);
 
   // 没有 .yxpp 时进入前端工坊：显示空白画布，首次编辑自动绑定并保存
