@@ -219,10 +219,14 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`setView('studio')`);
   await wait(1800);
   t('前端模式载入当前工程 .yxpp', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === S.project.frontend.project.elements.length);})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
-  t('前端状态栏显示已绑定案例', await val(`document.querySelector('#studioState').textContent.includes('已绑定') && document.querySelector('#studioState').textContent.includes('案例前端') && document.querySelector('#studioState').textContent.includes('自动保存')`), await val(`document.querySelector('#studioState').textContent`));
-  t('前端工坊品牌属于 ClickBuild', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('.brand-name').textContent.includes('CLICKBUILD')&&d.querySelector('.brand-name').textContent.includes('FRONTEND');})()`));
+  t('前端状态栏显示已连接案例工程', await val(`document.querySelector('#studioState').textContent.includes('已连接工程') && document.querySelector('#studioState').textContent.includes('案例前端') && document.querySelector('#studioState').textContent.includes('自动同步')`), await val(`document.querySelector('#studioState').textContent`));
+  t('前端工坊内层顶栏去掉官网品牌', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const b=d.querySelector('.brand-name');return !!(b&&d.defaultView.getComputedStyle(b).display==='none');})()`));
+  t('前端工坊内层顶栏显示当前工程而非官网入口', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const p=d.querySelector('#cbsProjectLabel');const a=d.querySelector('#btnAccount');return !!(p&&p.textContent.includes('当前工程：')&&a&&d.defaultView.getComputedStyle(a).display==='none');})()`), await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return (d.querySelector('#cbsProjectLabel')||{}).textContent;})()`));
   const studioSrc = await val(`api.studioHtml()`);
   t('前端页面已移除外部追踪并保留 ClickBuild 桥', !/static\.cloudflareinsights|__CF\$cv\$params/.test(String(studioSrc || '')) && /cbs:yxpp:load/.test(String(studioSrc || '')) && /cbs:yxpp:dirty/.test(String(studioSrc || '')));
+  t('前端工坊已移除官网游戏逻辑子系统', !/psg-style|PSGameRuntime|btnGameStudio|游戏逻辑工作台/.test(String(studioSrc || '')));
+  t('前端工坊默认隐藏官网素材库与云端入口', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const s=d.querySelector('.cbs-site-only');return !!(s&&d.defaultView.getComputedStyle(s).display==='none'&&!d.querySelector('#btnGameStudio'));})()`));
+  t('前端工坊只保留一条原生顶栏', await val(`(()=>{const h=document.querySelector('#studioPaneHeader');const d=document.querySelector('#studioFrame').contentDocument;return !!(h&&getComputedStyle(h).display==='none'&&d.querySelector('#cbsDeploy')&&d.querySelector('.cbs-ops'));})()`));
   // 编辑画布后自动回写当前工程
   const autoSavedBg = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FBFBFA';w.scheduleSave();return w.S.proj.page.bg;})()`);
   await wait(3600);

@@ -2562,7 +2562,10 @@ function refreshStudioState() {
   const el = $('#studioState');
   if (!el) return;
   const f = S.project && S.project.frontend;
-  el.textContent = f ? `已绑定：${f.name || '前端工程'} · ${f.framework || 'tailwind'} · 自动保存` : '空白画布 · 编辑后自动绑定到当前工程';
+  const pages = f && f.project && Array.isArray(f.project.pages) ? f.project.pages.length : 1;
+  el.textContent = f
+    ? `已连接工程：${f.name || '前端工程'} · ${pages} 页 · 自动同步`
+    : '空白画布 · 编辑后自动绑定到当前工程';
   el.disabled = false;
 }
 
@@ -2619,7 +2622,9 @@ async function ensureStudio() {
 
 function studioLoadProject(project, binding) {
   if (!project) return;
-  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', at: studioLastAt });
+  const language = String((S.settings && S.settings.language) || 'zh-CN').toLowerCase();
+  const lang = language.startsWith('en') ? 'en' : 'zh';
+  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, at: studioLastAt });
 }
 
 function captureStudioProject() {
@@ -2750,6 +2755,11 @@ function setView(view) {
 
 window.addEventListener('message', (ev) => {
   const d = ev.data || {};
+  if (d.type === 'cbs:app:action') {
+    const target = { import: '#yxppImport', export: '#yxppExport', sync: '#yxppAttach', deploy: '#yxppDeploy' }[d.action];
+    const btn = target && $(target);
+    if (btn) btn.click();
+  }
   if (d.type === 'cbs:yxpp:project' && d.requestId && studioReqs.has(d.requestId)) {
     const fn = studioReqs.get(d.requestId);
     studioReqs.delete(d.requestId);
