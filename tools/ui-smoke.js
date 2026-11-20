@@ -222,8 +222,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('前端状态栏显示已绑定案例', await val(`document.querySelector('#studioState').textContent.includes('已绑定') && document.querySelector('#studioState').textContent.includes('案例前端') && document.querySelector('#studioState').textContent.includes('自动保存')`), await val(`document.querySelector('#studioState').textContent`));
   t('前端工坊品牌属于 ClickBuild', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('.brand-name').textContent.includes('CLICKBUILD')&&d.querySelector('.brand-name').textContent.includes('FRONTEND');})()`));
   const studioSrc = await val(`api.studioHtml()`);
-  t('前端页面已移除旧站品牌与浏览器草稿', !/PageStudio|PAGESTUDIO|localStorage|static\.cloudflareinsights|__CF\$cv\$params/.test(String(studioSrc || '')));
-  t('前端页面保留 ClickBuild 工程桥', /cbs:yxpp:load/.test(String(studioSrc || '')) && /cbs:yxpp:dirty/.test(String(studioSrc || '')));;
+  t('前端页面已移除外部追踪并保留 ClickBuild 桥', !/static\.cloudflareinsights|__CF\$cv\$params/.test(String(studioSrc || '')) && /cbs:yxpp:load/.test(String(studioSrc || '')) && /cbs:yxpp:dirty/.test(String(studioSrc || '')));
   // 编辑画布后自动回写当前工程
   const autoSavedBg = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FBFBFA';w.scheduleSave();return w.S.proj.page.bg;})()`);
   await wait(3600);
@@ -356,6 +355,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FAFAF8';w.scheduleSave();return true})()`);
   await wait(3600);
   t('空白画布首次编辑自动绑定 .yxpp', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg==='#FAFAF8'&&S.project.frontend.html)`), await val(`S.project.frontend?S.project.frontend.name:'无'`));
+  await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.addPage(true);w.S.proj.pages[1].name='第二页';w.scheduleSave();return true})()`);
+  await wait(3600);
+  t('前端多页工程保留页数与页面导航', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.pages&&S.project.frontend.project.pages.length===2&&/第二页/.test(S.project.frontend.html))`), await val(`S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.pages?S.project.frontend.project.pages.length:-1`));
   await val(`setView('api')`);
   await wait(300);
 

@@ -2602,6 +2602,10 @@ async function ensureStudio() {
   try {
     studioHtmlCache = await api.studioHtml();
     f.srcdoc = studioHtmlCache;
+    f.addEventListener('load', () => {
+      if (!studioLoaded) return;
+      setTimeout(() => { if (studioLoaded) syncStudioFromProject(true); }, 500);
+    }, { once: true });
     if (!studioAutoTimer) {
       studioAutoTimer = setInterval(() => {
         if (studioDirty && S.view === 'studio') saveStudioToProject('定时保存');
@@ -2622,10 +2626,14 @@ function captureStudioProject() {
   return new Promise((resolve) => {
     if (!studioLoaded) return resolve(null);
     const id = `r${++studioSeq}`;
-    const timer = setTimeout(() => { studioReqs.delete(id); resolve(null); }, 4000);
-    studioReqs.set(id, (project) => { clearTimeout(timer); resolve(project); });
+    const timer = setTimeout(() => { studioReqs.delete(id); resolve(null); }, 8000);
+    studioReqs.set(id, (project, html) => { clearTimeout(timer); resolve({ project, html: html || '' }); });
     postToStudio({ type: 'cbs:yxpp:get', requestId: id });
   });
+}
+
+function isStudioExportHtml(html) {
+  return /^<!--\s*cbs:studio-export\s*-->/.test(String(html || '').trim());
 }
 
 function downloadJson(name, data) {
@@ -2652,16 +2660,17 @@ async function saveStudioToProject(reason, force) {
   studioSaveBusy = true;
   studioDirty = false;
   try {
-    const project = await captureStudioProject();
-    if (!project || !project.page) {
+    const got = await captureStudioProject();
+    if (!got || !got.project || !got.project.page) {
       studioDirty = true;
       postToStudio({ type: 'cbs:yxpp:error', message: '读取画布失败，稍后会重试' });
       return false;
     }
+    const project = got.project;
     // 案例前端自带可交互 HTML（登录、路由试运行等）；设计编辑只更新 project，不把这段运行时脚本冲掉。
     const old = S.project.frontend;
-    const customHtml = !!(old && old.html && /<script[\s>]/i.test(old.html));
-    const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind', html: customHtml ? old.html : '' });
+    const customHtml = !!(old && old.html && /<script[\s>]/i.test(old.html) && !isStudioExportHtml(old.html));
+    const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind', html: customHtml ? old.html : (got.html || '') });
     if (!built || !built.ok) throw new Error((built && built.error) || '生成 .yxpp 失败');
     S.project.frontend = built.yxpp;
     await api.save(S.project);
@@ -2693,9 +2702,11 @@ async function attachStudioToProject() {
 }
 
 async function exportStudioYxpp() {
-  const project = await captureStudioProject();
-  if (!project || !project.page) return toast('读取前端工程失败', 4000);
-  const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind' });
+  const got = await captureStudioProject();
+  if (!got || !got.project || !got.project.page) return toast('读取前端工程失败', 4000);
+  const old = S.project.frontend;
+  const customHtml = !!(old && old.html && /<script[\s>]/i.test(old.html) && !isStudioExportHtml(old.html));
+  const built = await api.frontendBuild({ project: got.project, name: S.project.name, framework: 'tailwind', html: customHtml ? old.html : (got.html || '') });
   if (!built || !built.ok) return toast('生成 .yxpp 失败', 5000);
   downloadJson(`${String(S.project.name || '前端工程').replace(/[\\/:*?"<>|]/g, '_')}.yxpp`, built.yxpp);
   toast('已导出 .yxpp', 3000);
@@ -2742,7 +2753,7 @@ window.addEventListener('message', (ev) => {
   if (d.type === 'cbs:yxpp:project' && d.requestId && studioReqs.has(d.requestId)) {
     const fn = studioReqs.get(d.requestId);
     studioReqs.delete(d.requestId);
-    fn(d.project);
+    fn(d.project, d.html);
   }
   if (d.type === 'cbs:yxpp:ready') {
     studioReady = true;
