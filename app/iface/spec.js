@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const script = require('./script');
+const docs = require('./docs');
 
 const TYPES = [
   { key: 'bigint', sql: 'BIGINT', label: 'BIGINT 长整', input: 'int' },
@@ -568,6 +569,9 @@ function normalizeRoute(r, idx) {
       responseExample: (r.docs && r.docs.responseExample) || '',
     },
     roles: Array.isArray(r.roles) ? r.roles.map(String).filter(Boolean) : [],
+    docsAuto: r.docsAuto && typeof r.docsAuto === 'object'
+      ? { fingerprint: String(r.docsAuto.fingerprint || ''), fields: Array.isArray(r.docsAuto.fields) ? r.docsAuto.fields.map(String) : [] }
+      : null,
     proxy: {
       enabled: !!(r.proxy && r.proxy.enabled) || kind === 'proxy',
       upstream: (r.proxy && r.proxy.upstream) || '',
@@ -603,6 +607,8 @@ function normalizeIface(iface, project, idx) {
       storageBind = field;
     }
   }
+  const docContext = { tables, basePath: iface.basePath || '', name: iface.name || '' };
+  for (const r of routes) docs.applyRouteDocs(docContext, r);
   return {
     id: iface.id || crypto.randomUUID().slice(0, 8),
     name: iface.name || `接口${idx + 1}`,

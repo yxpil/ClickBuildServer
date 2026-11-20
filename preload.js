@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('icb', {
   validate: (project) => invoke('iface:validate', project),
   preview: (payload) => invoke('iface:preview', payload),
   checkScript: (text) => invoke('iface:script:check', text),
+  inferDocs: (iface, route) => invoke('iface:docs:infer', iface, route),
   probeUpstream: (payload) => invoke('iface:upstream:probe', payload || {}),
   listS3: (payload) => invoke('iface:s3:list', payload || {}),
   tryRoute: (payload) => invoke('iface:tryRoute', payload || {}),

@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const spec = require('./spec');
 const script = require('./script');
+const docs = require('./docs');
 const native = require('./native');
 const fe = require('./frontend');
 
@@ -194,34 +195,53 @@ function buildOpenApi(project, port) {
   const paths = {};
   p.interfaces.forEach((iface) => {
     (iface.routes || []).forEach((route) => {
+      const facts = docs.inferRouteDocs(iface, route);
+      const doc = docs.mergeRouteDocs(iface, route);
       const full = (`/api${iface.basePath || ''}${route.path}`).replace(/:([A-Za-z0-9_]+)/g, '{$1}');
+      const responses = { 200: { description: '成功' } };
+      for (const e of facts.errors || []) responses[e.status] = { description: `${e.code}：${e.message}` };
+      if (route.auth && !responses[401]) responses[401] = { description: 'UNAUTHORIZED：未登录或 token 无效' };
       const op = {
         tags: [iface.name],
-        summary: (route.docs && route.docs.summary) || route.summary || route.name,
+        summary: doc.summary,
         description: [
-          (route.docs && route.docs.description) || '',
+          doc.description,
           (iface.docs && iface.docs.description) || iface.comment || '',
           (route.docs && route.docs.notes) || '',
         ].filter(Boolean).join('\n\n'),
         operationId: `${iface.id}_${route.key}_${route.method}`.replace(/[^A-Za-z0-9_]/g, '_'),
-        responses: { 200: { description: 'OK' }, 400: { description: '参数/业务错误' }, 401: { description: '未授权' }, 429: { description: '限流' }, 503: { description: '熔断/时间窗' } },
+        responses,
         security: route.auth ? [{ bearer: [] }] : undefined,
         'x-clickbuild': { kind: route.key, io: route.io, tx: !!(route.guard && route.guard.tx), cache: route.cache },
         'x-examples': {
-          request: (route.docs && route.docs.requestExample) || '',
-          response: (route.docs && route.docs.responseExample) || '',
+          request: doc.requestExample,
+          response: doc.responseExample,
         },
       };
-      const params = [];
-      route.path.split('/').filter((s) => s.startsWith(':')).forEach((s) => params.push({ name: s.slice(1), in: 'path', required: true, schema: { type: 'string' } }));
-      if (route.key === 'list' || route.key === 'custom') ['page', 'size', 'keyword', 'sort'].forEach((q) => params.push({ name: q, in: 'query', required: false, schema: { type: 'string' } }));
+      const params = (facts.parameters || []).filter((x) => x.in !== 'body').map((x) => ({
+        name: x.name,
+        in: x.in,
+        required: !!x.required,
+        description: x.description,
+        example: x.example,
+        schema: x.schema,
+      }));
       if (params.length) op.parameters = params;
-      if (route.method !== 'GET') {
+      const bodyParams = (facts.parameters || []).filter((x) => x.in === 'body');
+      if (bodyParams.length) {
         const props = {};
-        ((iface.tables[0] || {}).fields || []).filter((f) => f.writable !== false && !f.pk).forEach((f) => {
-          props[f.name] = { type: f.type === 'json' ? 'object' : /int|decimal|float|double|bool/i.test(f.type) ? 'number' : 'string', description: f.comment || '' };
-        });
-        op.requestBody = { content: { 'application/json': { schema: { type: 'object', properties: props } } } };
+        for (const x of bodyParams) {
+          props[x.name] = { ...x.schema, description: x.description, example: x.example };
+          if (x.name === 'file') props[x.name] = { type: 'string', format: 'binary', description: x.description };
+        }
+        op.requestBody = {
+          required: true,
+          content: {
+            [bodyParams.some((x) => x.name === 'file') ? 'multipart/form-data' : 'application/json']: {
+              schema: { type: 'object', properties: props },
+            },
+          },
+        };
       }
       paths[full] = { ...(paths[full] || {}), [route.method.toLowerCase()]: op };
     });
@@ -235,20 +255,31 @@ function buildOpenApi(project, port) {
   };
 }
 
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function docsPage(project, port) {
   const specOut = buildOpenApi(project, port);
   const rows = [];
   spec.normalizeProject(project).interfaces.forEach((iface) => {
     (iface.routes || []).forEach((route) => {
-      rows.push(`<tr><td>${route.method}</td><td><code>${'/api' + (iface.basePath || '') + route.path}</code></td><td>${iface.name}</td><td>${route.name}</td><td>${route.summary || ''}</td><td>${route.auth ? 'token' : '—'}</td><td>${route.guard && route.guard.tx ? '事务' : ''}${route.cache && route.cache.enabled ? ' 缓存' : ''}${route.guard && route.guard.rate && route.guard.rate.enabled ? ` ${route.guard.rate.limit}/${route.guard.rate.window}s` : ''}</td></tr>`);
+      const doc = docs.mergeRouteDocs(iface, route);
+      const facts = docs.inferRouteDocs(iface, route);
+      const detail = [
+        doc.requestExample ? `<details><summary>请求示例</summary><pre>${escHtml(doc.requestExample)}</pre></details>` : '',
+        doc.responseExample ? `<details><summary>响应示例</summary><pre>${escHtml(doc.responseExample)}</pre></details>` : '',
+        facts.errors.length ? `<details><summary>错误码</summary><ul>${facts.errors.map((e) => `<li><code>${e.status} ${escHtml(e.code)}</code> ${escHtml(e.message)}</li>`).join('')}</ul></details>` : '',
+      ].join('');
+      rows.push(`<tr><td>${route.method}</td><td><code>${escHtml('/api' + (iface.basePath || '') + route.path)}</code></td><td>${escHtml(iface.name)}</td><td>${escHtml(route.name)}</td><td>${escHtml(doc.summary)}${doc.description ? `<div class="muted">${escHtml(doc.description).replace(/\n/g, '<br>')}</div>` : ''}${detail}</td><td>${route.auth ? 'token' : '—'}</td><td>${route.guard && route.guard.tx ? '事务' : ''}${route.cache && route.cache.enabled ? ' 缓存' : ''}${route.guard && route.guard.rate && route.guard.rate.enabled ? ` ${route.guard.rate.limit}/${route.guard.rate.window}s` : ''}</td></tr>`);
     });
   });
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${specOut.info.title}</title>
-<style>body{font:14px/1.6 -apple-system,Segoe UI,"Microsoft YaHei",sans-serif;margin:32px;color:#111;background:#fff}h1{font-size:20px;font-weight:600}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #e2e2e2;padding:6px 8px;text-align:left}th{background:#fafafa;font-weight:500}code{font-family:ui-monospace,Consolas,monospace}a{color:#111}</style>
-<h1>${specOut.info.title} <small>v${specOut.info.version}</small></h1><p>${specOut.info.description || ''}</p>
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escHtml(specOut.info.title)}</title>
+<style>body{font:13px/1.6 -apple-system,Segoe UI,"Microsoft YaHei",sans-serif;margin:32px;color:#111;background:#fff}h1{font-size:20px;font-weight:600}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #e2e2e2;padding:6px 8px;text-align:left;vertical-align:top}th{background:#fafafa;font-weight:500}code,pre{font-family:ui-monospace,Consolas,monospace}pre{background:#f7f7f4;border:1px solid #e4e4de;padding:8px;max-width:720px;overflow:auto;white-space:pre-wrap}.muted{color:#666;margin-top:4px}details{margin-top:6px}a{color:#111}</style>
+<h1>${escHtml(specOut.info.title)} <small>v${escHtml(specOut.info.version)}</small></h1><p>${escHtml(specOut.info.description || '')}</p>
 <p><a href="/_docs">OpenAPI JSON</a> · <a href="/_meta">元信息</a> · <a href="/_routes">路由</a></p>
-<table><thead><tr><th>方法</th><th>路径</th><th>接口</th><th>名称</th><th>说明</th><th>鉴权</th><th>特性</th></tr></thead><tbody>${rows.join('')}</tbody></table>
-<p style="color:#777;margin-top:24px">由 ClickBuild 生成 · ${new Date().toISOString()}</p></body></html>`;
+<table><thead><tr><th>方法</th><th>路径</th><th>接口</th><th>名称</th><th>说明与示例</th><th>鉴权</th><th>特性</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+<p style="color:#777;margin-top:24px">文档由 ClickBuild 从路由脚本自动推导 · ${new Date().toISOString()}</p></body></html>`;
 }
 
 function addIdeaFiles(add) {

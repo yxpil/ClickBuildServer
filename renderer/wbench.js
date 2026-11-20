@@ -2075,6 +2075,10 @@ function tabDocs(it) {
   const d = it.docs || {};
   return `
   <div class="h-full overflow-auto p-3 text-[12px]">
+    <div class="docs-auto-banner">
+      <span class="docs-auto-mark">AUTO</span>
+      <span>文档由脚本、SQL 字段和接口类型自动生成：请求示例、响应示例、参数、错误码都来自真实脚本。改脚本后打开本页会自动刷新；手动改过的字段会保留。</span>
+    </div>
     <div class="help-h">接口级文档（会写进 OpenAPI 的 tag 描述）</div>
     <table class="help-grid">
       <tbody>
@@ -2083,14 +2087,14 @@ function tabDocs(it) {
         <tr><th>负责人</th><td class="flex gap-2"><input class="cell-in" data-df="owner" value="${esc(d.owner || '')}" placeholder="张三">
           <span class="text-neutral-500">版本</span><input class="cell-in" data-df="version" value="${esc(d.version || '1.0.0')}" style="width:100px"></td></tr>
         <tr><th>标签</th><td><input class="cell-in" data-df="tags" value="${esc((d.tags || []).join(', '))}" placeholder="用户, 登录（逗号分隔）"></td></tr>
-        <tr><th>请求示例</th><td><textarea class="cell-in monoarea" rows="3" data-df="requestExample" placeholder='{"username":"alice"}'>${esc(d.requestExample || '')}</textarea></td></tr>
-        <tr><th>响应示例</th><td><textarea class="cell-in monoarea" rows="3" data-df="responseExample" placeholder='{"ok":true}'>${esc(d.responseExample || '')}</textarea></td></tr>
+        <tr><th>请求示例</th><td>${it.routes.length > 1 ? '<span class="text-neutral-500">这个接口有多条路由，请求示例按路由分别生成，见下方表格。</span>' : `<textarea class="cell-in monoarea" rows="3" data-df="requestExample" placeholder='{"username":"alice"}'>${esc(d.requestExample || '')}</textarea>`}</td></tr>
+        <tr><th>响应示例</th><td>${it.routes.length > 1 ? '<span class="text-neutral-500">响应示例按路由分别生成，来自脚本的 RETURN 与 SQL 字段。</span>' : `<textarea class="cell-in monoarea" rows="3" data-df="responseExample" placeholder='{"ok":true}'>${esc(d.responseExample || '')}</textarea>`}</td></tr>
         <tr><th>备注</th><td><textarea class="cell-in monoarea" rows="2" data-df="notes" placeholder="内部说明，不会公开到 /docs">${esc(d.notes || '')}</textarea></td></tr>
       </tbody>
     </table>
 
     <div class="help-h flex items-center gap-2">每条路由的文档
-      <span class="text-neutral-500 font-normal">填写后自动出现在 /docs 与 openapi.json</span>
+      <span class="text-neutral-500 font-normal">不是手填模板：打开页面时按脚本自动解析并补全</span>
       <button class="btn thin ml-auto" data-action="docs">预览 OpenAPI</button>
     </div>
     <table class="help-grid">
@@ -2098,17 +2102,17 @@ function tabDocs(it) {
       <tbody>
         ${it.routes.map((r) => {
           const rd = r.docs || {};
-          return `<tr data-route-doc="${r.id}">
-            <td><span class="pill">${esc(r.method)}</span><div class="mono text-[11px] text-neutral-500 break-all">${esc(r.path)}</div></td>
+          return `<tr data-route-doc="${r.id}" data-doc-fp="${(r.docsAuto && r.docsAuto.fingerprint) || ''}">
+            <td><span class="pill">${esc(r.method)}</span><div class="mono text-[11px] text-neutral-500 break-all">${esc(r.path)}</div>${(r.docsAuto && r.docsAuto.fields && r.docsAuto.fields.length) ? '<span class="docs-auto-tag">脚本生成</span>' : ''}</td>
             <td><textarea class="cell-in" rows="2" data-rd="summary" placeholder="这条路由做什么">${esc(rd.summary || r.summary || '')}</textarea>
-              <textarea class="cell-in monoarea" rows="2" data-rd="description" placeholder="参数、错误码">${esc(rd.description || '')}</textarea></td>
-            <td><textarea class="cell-in monoarea" rows="3" data-rd="requestExample">${esc(rd.requestExample || '')}</textarea></td>
-            <td><textarea class="cell-in monoarea" rows="3" data-rd="responseExample">${esc(rd.responseExample || '')}</textarea></td>
+              <textarea class="cell-in monoarea" rows="6" data-rd="description" placeholder="参数、错误码">${esc(rd.description || '')}</textarea></td>
+            <td><textarea class="cell-in monoarea" rows="6" data-rd="requestExample">${esc(rd.requestExample || '')}</textarea></td>
+            <td><textarea class="cell-in monoarea" rows="6" data-rd="responseExample">${esc(rd.responseExample || '')}</textarea></td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>
-    <div class="text-neutral-500 mt-2">提示：写操作建议写上成功与失败两种响应示例，其他人看文档就能直接对接。</div>
+    <div class="text-neutral-500 mt-2">说明、参数、错误码、请求/响应示例都从脚本里的 SQL、{{body.x}} / {{query.x}} / {{file.x}} 和 RETURN 分支推导。手改某个字段后，该字段不再自动覆盖。</div>
   </div>`;
 }
 
@@ -2128,11 +2132,41 @@ function bindDocs(it) {
       el.oninput = () => {
         r.docs = r.docs || {};
         r.docs[el.dataset.rd] = el.value;
+        r.docsAuto = r.docsAuto || { fingerprint: '', fields: [] };
+        r.docsAuto.fields = (r.docsAuto.fields || []).filter((f) => f !== el.dataset.rd);
         if (el.dataset.rd === 'summary') r.summary = el.value;
         scheduleSave();
       };
     });
+    refreshRouteDocs(it, r, row).catch(() => {});
   });
+}
+
+async function refreshRouteDocs(it, r, row) {
+  if (!api.inferDocs) return;
+  const facts = await api.inferDocs(it, r);
+  if (!facts || !row.isConnected) return;
+  const fields = ['summary', 'description', 'requestExample', 'responseExample'];
+  const auto = new Set((r.docsAuto && r.docsAuto.fields) || []);
+  r.docs = r.docs || {};
+  let changed = false;
+  const nextAuto = Array.from(auto);
+  for (const field of fields) {
+    if (!r.docs[field] || auto.has(field)) {
+      if (r.docs[field] !== facts[field]) {
+        r.docs[field] = facts[field];
+        changed = true;
+      }
+      if (!nextAuto.includes(field)) nextAuto.push(field);
+      const el = row.querySelector(`[data-rd="${field}"]`);
+      if (el) el.value = facts[field] || '';
+    }
+  }
+  if (changed || !r.docsAuto || r.docsAuto.fingerprint !== facts.fingerprint) {
+    r.docsAuto = { fingerprint: facts.fingerprint, fields: nextAuto };
+    if (r.docs.summary) r.summary = r.docs.summary;
+    scheduleSave();
+  }
 }
 
 /* ----- 缓存与存储 ----- */

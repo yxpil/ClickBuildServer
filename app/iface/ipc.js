@@ -7,6 +7,7 @@ const { ipcMain, dialog, shell, BrowserWindow, app } = require('electron');
 const spec = require('./spec');
 const render = require('./render');
 const script = require('./script');
+const docs = require('./docs');
 const funcs = require('./funcs');
 const codegen = require('./codegen');
 const services = require('./services');
@@ -202,6 +203,7 @@ function registerIpc() {
   ipcMain.handle('iface:validate', (e, project) => spec.validateProject(spec.normalizeProject(project)));
   ipcMain.handle('iface:preview', (e, payload) => preview(payload));
   ipcMain.handle('iface:script:check', (e, text) => script.checkScript(text));
+  ipcMain.handle('iface:docs:infer', (e, iface, route) => docs.inferRouteDocs(iface, route));
   ipcMain.handle('iface:upstream:probe', async (e, payload) => {
     try { return await probeUpstream(payload && payload.baseUrl, payload && payload.timeout); }
     catch (err) { return { ok: false, routes: [], error: err.message }; }
