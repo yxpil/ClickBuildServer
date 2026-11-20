@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ClickBuildServer · 正在关闭</title>
+<style>
+  :root { --paper: #f4f1e9; --ink: #111; --muted: #7a746a; --line: #d9d4c9; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper); color: var(--ink); overflow: hidden;
+    font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background-image: radial-gradient(circle, rgba(30,27,22,.1) 1px, transparent 1px);
+    background-size: 12px 12px;
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000, transparent 75%);
+    mask-image: radial-gradient(circle at 50% 50%, #000, transparent 75%);
+  }
+  .wrap { position: relative; height: 100%; padding: 20px 24px 16px; display: flex; flex-direction: column; }
+  .top { font: 9px/1 "Consolas", monospace; letter-spacing: 2px; color: #8d867b; }
+  .body { flex: 1; display: flex; align-items: center; gap: 16px; }
+  .logo {
+    width: 66px; height: 66px; flex: none; border-radius: 15px; overflow: hidden;
+    border: 3px solid rgba(252,249,241,.95); box-shadow: 0 6px 16px rgba(38,33,25,.14);
+    background: #ded9cd;
+  }
+  .logo img { width: 100%; height: 100%; object-fit: cover; object-position: 64% 36%; display: block; }
+  .copy { min-width: 0; }
+  h1 { margin: 0; font-size: 21px; line-height: 1.1; letter-spacing: -.4px; font-weight: 650; }
+  .sub { margin: 9px 0 0; font-size: 11px; color: #5f5b53; line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track { margin-top: 18px; height: 2px; background: #d8d3c8; overflow: hidden; }
+  .track i { display: block; height: 100%; width: 32%; background: #111; animation: slide 1.15s ease-in-out infinite; }
+  .services { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 11px; font-size: 9px; color: #8a8378; letter-spacing: .4px; }
+  .services span { display: inline-flex; align-items: center; gap: 5px; }
+  .services i { width: 5px; height: 5px; border-radius: 50%; background: #111; }
+  .foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 9px; font: 9px/1.1 "Consolas", monospace; letter-spacing: 1px; color: #948d82; }
+  @keyframes slide {
+    0% { transform: translateX(-120%); }
+    60%, 100% { transform: translateX(420%); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">CLICKBUILD / SHUTDOWN</div>
+  <div class="body">
+    <div class="logo"><img src="../assets/logo.png" alt="ClickBuildServer"></div>
+    <div class="copy">
+      <h1>正在关闭内置服务</h1>
+      <div class="sub" id="status">正在停止生成的服务与内置服务器</div>
+      <div class="track"><i></i></div>
+    </div>
+  </div>
+  <div class="services"><span><i></i>生成的服务</span><span><i></i>MariaDB</span><span><i></i>Redis</span><span><i></i>RustFS</span></div>
+  <div class="foot"><span>停服务 · 释放端口 · 再退出</span><span>LOCAL</span></div>
+</div>
+<script>
+(() => {
+  const status = document.getElementById('status');
+  const set = (t) => { if (t) status.textContent = t; };
+  try { window.icb.shutdownState().then(set); } catch (e) { /* 静态提示也可 */ }
+  try { window.icb.onShutdown(set); } catch (e) { /* ignore */ }
+})();
+</script>
+</body>
+</html>

@@ -128,6 +128,52 @@ function isBundledProcess(info, exeName) {
   return path.resolve(info.path).toLowerCase().startsWith(root);
 }
 
+function listBundledProcesses() {
+  try {
+    const ps = [
+      "$names=@('mariadbd.exe','redis-server.exe','rustfs-windows-x86_64.exe')",
+      "Get-CimInstance Win32_Process | Where-Object { $names -contains $_.Name } | ForEach-Object { \"$($_.ProcessId)|$($_.ExecutablePath)\" }",
+    ].join('; ');
+    const out = String(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 12000 }) || '');
+    const root = path.resolve(bundledServicesRoot()).toLowerCase();
+    return out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+      const [pidText, ...rest] = line.split('|');
+      return { pid: Number(pidText), path: rest.join('|') };
+    }).filter((x) => x.pid && x.path && path.resolve(x.path).toLowerCase().startsWith(root));
+  } catch (e) {
+    return [];
+  }
+}
+
+async function killTree(pid) {
+  await new Promise((resolve) => {
+    const k = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+    k.on('close', () => resolve());
+    k.on('error', () => resolve());
+  });
+}
+
+async function waitPidGone(pid, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 5000);
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); } catch (e) { return true; }
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  try { process.kill(pid, 0); return false; } catch (e) { return true; }
+}
+
+async function cleanupOrphans() {
+  const stale = listBundledProcesses().filter((x) => x.pid !== process.pid);
+  if (!stale.length) return { ok: true, stopped: [] };
+  for (const x of stale) await killTree(x.pid);
+  await Promise.all(stale.map((x) => waitPidGone(x.pid, 6000)));
+  boot.ports = null;
+  boot.conflicts = [];
+  boot.adopted = {};
+  boot.adoptedPid = {};
+  return { ok: true, stopped: stale.map((x) => ({ pid: x.pid, name: path.basename(x.path) })) };
+}
+
 async function nextFreePort(start) {
   for (let p = start; p < start + 40; p += 1) {
     if (!(await isPortOpen(p))) return p;
@@ -595,6 +641,40 @@ async function stopAll() {
   return { ok: true };
 }
 
+// 退出应用时用：先停掉本次启动的所有服务，再等端口真正释放。
+async function shutdown(onStep) {
+  const notify = typeof onStep === 'function' ? onStep : () => {};
+  const ports = settings().ports;
+  const owned = {
+    server: !!state.server.child,
+    mysql: !!state.mysql.child || !!boot.adopted.mysql,
+    redis: !!state.redis.child || !!boot.adopted.redis,
+    s3: !!state.s3.child || !!boot.adopted.s3,
+  };
+  const steps = [
+    ['server', '生成的服务'],
+    ['redis', 'Redis'],
+    ['s3', 'RustFS'],
+    ['mysql', 'MariaDB'],
+  ];
+  for (const [id, label] of steps) {
+    notify({ id, status: 'running', text: `正在停止 ${label}` });
+    try { await stopOne(id); } catch (e) { /* 继续关下一个 */ }
+    notify({ id, status: 'done', text: `${label} 已停止` });
+  }
+  const waits = [];
+  if (owned.server) waits.push(waitPortClosed(ports.http, 8000));
+  if (owned.redis) waits.push(waitPortClosed(ports.redis, 8000));
+  if (owned.s3) waits.push(waitPortClosed(ports.s3, 8000));
+  if (owned.mysql) waits.push(waitPortClosed(ports.mysql, 8000));
+  const closed = await Promise.all(waits);
+  boot.ports = null;
+  boot.conflicts = [];
+  boot.adopted = {};
+  boot.adoptedPid = {};
+  return { ok: closed.every(Boolean), closed, ports, owned };
+}
+
 function logs(id) {
   const s = state[id];
   return s ? s.log.slice(-200).join('\n') : '';
@@ -609,5 +689,5 @@ function setPorts(patch) {
 
 module.exports = {
   PORTS, settings, status, startMysql, startRedis, startS3, startAll, stopOne, stopAll, logs, setPorts, isPortOpen, waitPort,
-  preparePorts, environment, runtimes, startServer, stopServer, serverInfo, waitPortClosed,
+  preparePorts, environment, cleanupOrphans, shutdown, runtimes, startServer, stopServer, serverInfo, waitPortClosed,
 };

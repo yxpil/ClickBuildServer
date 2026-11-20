@@ -23,6 +23,7 @@ async function runStartup(onUpdate) {
     tools: [],
     services: {},
     conflicts: [],
+    orphans: [],
     ports: null,
     projectCount: 0,
     errors: [],
@@ -52,6 +53,12 @@ async function runStartup(onUpdate) {
     step('env', 'error', '环境检查失败', { detail: e.message, progress: 0.22 });
   }
 
+  step('ports', 'running', '清理上次遗留的内置服务，再分配端口', { progress: 0.26 });
+  let cleaned = { stopped: [] };
+  try {
+    cleaned = await services.cleanupOrphans();
+    report.orphans = cleaned.stopped || [];
+  } catch (e) { report.errors.push(`清理遗留服务失败：${e.message}`); }
   step('ports', 'running', '检查端口占用，必要时自动避让', { progress: 0.28 });
   let ports = null;
   try {
@@ -59,12 +66,16 @@ async function runStartup(onUpdate) {
     report.ports = ports;
     report.conflicts = services.settings().conflicts || [];
     const first = report.conflicts[0];
-    const text = report.conflicts.length === 0
+    const portText = report.conflicts.length === 0
       ? '首选端口全部可用'
       : (report.conflicts.length === 1
         ? `${first.label} 的 ${first.from} 被占用，已改用 ${first.to}`
         : `${report.conflicts.length} 个端口被占用，已自动避让（${first.label} ${first.from}→${first.to} 等）`);
-    step('ports', 'done', text, { detail: report.conflicts.map((c) => `${c.label} ${c.from} → ${c.to}（${c.reason}）`).join('；') || `${ports.mysql} / ${ports.redis} / ${ports.s3}`, progress: 0.34, conflicts: report.conflicts });
+    const cleanText = `上次遗留进程 ${report.orphans.length} 个；`;
+    const parts = [];
+    if (report.orphans.length) parts.push(`已停止 ${report.orphans.map((x) => `${x.name}(${x.pid})`).join('、')}`);
+    parts.push(...report.conflicts.map((c) => `${c.label} ${c.from} → ${c.to}（${c.reason}）`));
+    step('ports', 'done', cleanText + portText, { detail: parts.join('；') || `${ports.mysql} / ${ports.redis} / ${ports.s3}`, progress: 0.34, conflicts: report.conflicts });
   } catch (e) {
     report.errors.push(`端口分配失败：${e.message}`);
     step('ports', 'error', '端口分配失败', { detail: e.message, progress: 0.34 });

@@ -5,6 +5,7 @@ const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron')
 const { registerIpc } = require('./app/ipc');
 const { registerIpc: registerIfaceIpc } = require('./app/iface/ipc');
 const { runStartup, STEPS } = require('./app/startup');
+const services = require('./app/iface/services');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -12,9 +13,14 @@ if (!gotLock) {
 } else {
   let win = null;
   let splash = null;
+  let closing = null;
   let mainReady = false;
   let bootDone = false;
   let lastStartupReport = null;
+  let startupPromise = null;
+  let shuttingDown = false;
+  let shutdownDone = false;
+  let shutdownText = '正在关闭内置服务';
   const startupSnapshot = {
     version: app.getVersion(),
     steps: STEPS.map((s) => ({ ...s, status: 'waiting', text: s.hint })),
@@ -55,6 +61,57 @@ if (!gotLock) {
     win.show();
     win.focus();
     if (splash && !splash.isDestroyed()) setTimeout(() => { if (splash && !splash.isDestroyed()) splash.close(); }, 620);
+  }
+
+  function createClosing() {
+    if (closing && !closing.isDestroyed()) return;
+    closing = new BrowserWindow({
+      width: 440,
+      height: 246,
+      center: true,
+      frame: false,
+      resizable: false,
+      show: false,
+      alwaysOnTop: true,
+      backgroundColor: '#f4f1e9',
+      title: 'ClickBuildServer · 正在关闭',
+      icon: path.join(__dirname, 'assets', 'logo.png'),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        spellcheck: false,
+      },
+    });
+    closing.loadFile(path.join(__dirname, 'renderer', 'closing.html'));
+    closing.once('ready-to-show', () => { if (closing && !closing.isDestroyed()) closing.show(); });
+    closing.on('closed', () => { closing = null; });
+  }
+
+  function sendShutdown(text) {
+    shutdownText = text;
+    if (closing && !closing.isDestroyed()) closing.webContents.send('shutdown:update', text);
+  }
+
+  async function cleanupAndQuit() {
+    const started = Date.now();
+    createClosing();
+    sendShutdown('正在停止生成的服务与内置服务器');
+    try {
+      // 如果用户是在启动途中退出，先等启动编排结束，再统一停服务，避免刚停又被拉起。
+      if (startupPromise) await startupPromise;
+      const r = await services.shutdown((s) => sendShutdown(s.text));
+      lastStartupReport = lastStartupReport || {};
+      lastStartupReport.shutdown = r;
+    } catch (e) {
+      console.log('[shutdown] ' + e.message);
+    }
+    shutdownDone = true;
+    // 至少让关闭窗口完整出现一次，避免服务已经停了却像“直接消失”。
+    const left = 900 - (Date.now() - started);
+    if (left > 0) await new Promise((r) => setTimeout(r, left));
+    if (closing && !closing.isDestroyed()) closing.close();
+    app.quit();
   }
 
   function windowState(w) {
@@ -233,6 +290,11 @@ if (!gotLock) {
     });
 
     win.on('closed', () => { win = null; });
+    win.on('close', (e) => {
+      if (shutdownDone) return;
+      e.preventDefault();
+      if (!shuttingDown) app.quit();
+    });
   }
 
   app.whenReady().then(async () => {
@@ -241,6 +303,7 @@ if (!gotLock) {
     registerIfaceIpc();
     ipcMain.handle('startup:state', () => startupSnapshot);
     ipcMain.handle('startup:report', () => lastStartupReport);
+    ipcMain.handle('shutdown:state', () => shutdownText);
     ipcMain.on('startup:quit', () => app.quit());
 
     createSplash();
@@ -250,7 +313,8 @@ if (!gotLock) {
     const started = Date.now();
     const minSplash = Math.max(1200, Number(process.env.CBS_SPLASH_MIN_MS || 2600));
     try {
-      lastStartupReport = await runStartup(applyStartupUpdate);
+      startupPromise = runStartup(applyStartupUpdate);
+      lastStartupReport = await startupPromise;
     } catch (e) {
       lastStartupReport = { ok: false, errors: [e.message], tools: [], services: {}, conflicts: [], steps: startupSnapshot.steps };
       applyStartupUpdate({ type: 'done', progress: 1, current: '启动失败，正在进入工作台', report: lastStartupReport });
@@ -276,7 +340,19 @@ if (!gotLock) {
     }
   });
 
+  app.on('before-quit', (e) => {
+    if (shutdownDone) return;
+    e.preventDefault();
+    if (!shuttingDown) {
+      shuttingDown = true;
+      cleanupAndQuit();
+    }
+  });
+
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
+
+  process.on('SIGINT', () => app.quit());
+  process.on('SIGTERM', () => app.quit());
 }

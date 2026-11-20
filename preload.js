@@ -101,6 +101,12 @@ contextBridge.exposeInMainWorld('icb', {
     return () => ipcRenderer.removeListener('startup:report-ready', handler);
   },
   startupQuit: () => ipcRenderer.send('startup:quit'),
+  shutdownState: () => invoke('shutdown:state'),
+  onShutdown: (cb) => {
+    const handler = (_event, data) => cb(data);
+    ipcRenderer.on('shutdown:update', handler);
+    return () => ipcRenderer.removeListener('shutdown:update', handler);
+  },
 });
 
 contextBridge.exposeInMainWorld('cbs', {

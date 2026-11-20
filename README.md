@@ -84,12 +84,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.28.exe
+dist\ClickBuildServer-Setup-1.1.41.exe
 ```
 
-安装包 225,819,190 B（约 215 MB），构建时间 2026-11-20 13:51:47，SHA256 `F6A1F6E7BDA7395A6A2F959AF4FFCF9B595B4727618F3F4D365913CE98DA4B33`。
+安装包 226,033,241 B（约 216 MB），构建时间 2026-11-20 21:24:45，SHA256 `F080CEC14E66ECB37779FB1CF848BBEDA8074C64B7C365B365F43BC4EC75F764`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.41 把启动和退出真正收尾干净：启动时先枚举本安装包 `resources/services` 下的 `mariadbd.exe`、`redis-server.exe`、`rustfs-windows-x86_64.exe`，把上次异常退出留下的进程停掉，再分配端口、启动三台服务；退出时弹出关闭提示页，按“生成的服务 → Redis → RustFS → MariaDB”逐个停止，等本次自己启动的端口真正释放后才退出。只处理本安装包路径下的进程，系统安装的 MariaDB 不会被误杀；启动页会写明“上次遗留进程 N 个”，关闭页会显示当前停到哪一台。
 
 1.1.40 启动阶段改成先准备、再进界面：新增独立启动页，显示品牌图、世界轨道加载动画、四段任务（环境与工具链 / 端口分配 / 内置服务 / 工作台）和实时百分比；启动时自动检测 Node、Bun、Java/JDK、Go、Python、Rust、Git，并自动启动 MariaDB、Redis、RustFS。端口被别的程序占用时向后自动避让（最多 40 个），本安装包自己的服务可认领现有进程，启动页和右侧栏都会写明“从哪个端口换到哪个端口”；二次启动或上次异常退出后不会误杀别人的进程。新增 `tools/test-port-fallback.js` 8/8，UI 冒烟 127/127。
 
