@@ -1,63 +1,23 @@
 'use strict';
 
-const N = require('./naming');
+const { dialectOf } = require('../kernel/dialects');
+const { entityFromIrTable } = require('../kernel/ir-adapter');
 
-const q = (s) => '`' + String(s).replace(/`/g, '') + '`';
 const esc = (s) => String(s == null ? '' : s).replace(/'/g, "''");
 
-function columnSql(col, idStrategy) {
-  let type = col.type;
-  if (col.pk) {
-    if (idStrategy === 'auto') return `${q(col.name)} BIGINT NOT NULL AUTO_INCREMENT COMMENT '${esc(col.comment)}'`;
-    if (type === 'bigint') return `${q(col.name)} BIGINT NOT NULL COMMENT '${esc(col.comment)}'`;
-    return `${q(col.name)} ${type.toUpperCase()} NOT NULL COMMENT '${esc(col.comment)}'`;
-  }
-  let nullable = col.required ? 'NOT NULL' : 'NULL';
-  let def = '';
-  const lower = type.toLowerCase();
-  if (lower.startsWith('varchar') || lower.startsWith('char') || lower === 'text' || lower === 'json') {
-    if (col.required && !col.pk) def = " DEFAULT ''";
-  } else if (lower === 'datetime') {
-    if (col.name === 'created_at') def = ' DEFAULT CURRENT_TIMESTAMP';
-    else if (col.name === 'updated_at') def = ' DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';
-    else if (!col.required) def = ' DEFAULT NULL';
-    else def = ' DEFAULT CURRENT_TIMESTAMP';
-  } else if (lower === 'date') {
-    def = col.required ? " DEFAULT '1970-01-01'" : ' DEFAULT NULL';
-  } else if (lower.includes('int') || lower === 'tinyint' || lower === 'smallint') {
-    def = ' DEFAULT 0';
-    if (col.name === 'deleted' || col.name === 'version') nullable = 'NOT NULL';
-  } else if (lower.startsWith('decimal') || lower.startsWith('numeric')) {
-    def = ' DEFAULT 0.00';
-  }
-  return `${q(col.name)} ${type.toUpperCase()} ${nullable}${def} COMMENT '${esc(col.comment)}'`;
-}
-
-function ddl(table, idStrategy) {
-  const cols = table.columns.map((c) => '  ' + columnSql(c, idStrategy));
-  const keys = [];
-  const pk = table.columns.find((c) => c.pk);
-  if (pk) keys.push(`  PRIMARY KEY (${q(pk.name)})`);
-  table.columns.filter((c) => c.unique && !c.pk).forEach((c) => {
-    keys.push(`  UNIQUE KEY ${q('uk_' + table.name + '_' + c.name)} (${q(c.name)})`);
-  });
-  const indexed = table.columns.filter((c) => (c.indexed || (table.search.includes(c.name))) && !c.pk && !c.unique);
-  indexed.forEach((c) => keys.push(`  KEY ${q('idx_' + table.name + '_' + c.name)} (${q(c.name)})`));
-  (table.indexes || []).forEach((idx) => {
-    const list = (idx.columns || []).map(q).join(', ');
-    if (list) keys.push(`  KEY ${q(idx.name || 'idx_' + table.name + '_' + (idx.columns || []).join('_'))} (${list})`);
-  });
-
-  return [
-    `-- ------------------------------------------------------------`,
-    `-- ${table.name} · ${table.comment}  [${table.moduleId}]`,
-    `-- ------------------------------------------------------------`,
-    `DROP TABLE IF EXISTS ${q(table.name)};`,
-    `CREATE TABLE ${q(table.name)} (`,
-    [...cols, ...keys].join(',\n'),
-    `) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='${esc(table.comment)}';`,
-    '',
-  ].join('\n');
+function ddl(table, idStrategy, dialectName) {
+  const d = dialectOf(dialectName || 'mysql');
+  const entity = entityFromIrTable(table, idStrategy);
+  const lines = [
+    '-- ------------------------------------------------------------',
+    `-- ${table.name} · ${table.comment || ''}  [${table.moduleId || ''}]`,
+    '-- ------------------------------------------------------------',
+    d.dropTable(entity.name, { ifExists: true, entity }),
+    ...d.createTable(entity),
+  ];
+  for (const idx of entity.indexes || []) lines.push(d.createIndex(entity, idx));
+  lines.push('');
+  return lines.join('\n');
 }
 
 function seedSql(ir) {
@@ -115,31 +75,43 @@ function seedSql(ir) {
   return lines.join('\n');
 }
 
-function generateSql(ir) {
+function generateSql(ir, opts) {
   const p = ir.project;
+  const dialectName = (opts && opts.dialect) || p.dialect || 'mysql';
+  const d = dialectOf(dialectName);
   const files = [];
 
   const header = [
     '-- ============================================================',
     `-- ${p.name} · 数据库初始化脚本`,
     `-- 生成器：ClickBuildServer  |  语言：${p.lang}/${p.packageType}  |  ID 策略：${p.idStrategy}`,
-    `-- 生成时间：${new Date().toISOString()}`,
+    `-- 方言：${d.label}  |  生成时间：${new Date().toISOString()}`,
     '-- 说明：先执行 00_database.sql，再按序号执行各模块脚本，最后执行 99_seed.sql',
     '-- ============================================================',
     '',
   ].join('\n');
 
-  files.push({
-    path: 'sql/00_database.sql',
-    content: `${header}
+  const dbContent = d.id === 'mysql'
+    ? `${header}
 CREATE DATABASE IF NOT EXISTS \`${p.database.name}\`
   DEFAULT CHARACTER SET utf8mb4
   COLLATE utf8mb4_0900_ai_ci;
 USE \`${p.database.name}\`;
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
-`,
-  });
+`
+    : d.id === 'postgres'
+      ? `${header}
+-- PostgreSQL 不能在这里 CREATE DATABASE；先执行：
+--   createdb ${p.database.name}
+-- 再连到该库执行本目录脚本。
+SET client_encoding = 'UTF8';
+`
+      : `${header}
+-- SQLite 没有独立“数据库服务”，数据库文件由连接串决定。
+PRAGMA foreign_keys = ON;
+`;
+  files.push({ path: 'sql/00_database.sql', content: dbContent });
 
   // 按模块分组
   const byModule = new Map();
@@ -156,13 +128,20 @@ SET FOREIGN_KEY_CHECKS = 0;
       `${header}`,
       `-- 模块：${mod ? mod.name : moduleId}（${tables.length} 张表）`,
       '',
-      tables.map((t) => ddl(t, p.idStrategy)).join('\n'),
+      tables.map((t) => ddl(t, p.idStrategy, d.id)).join('\n'),
     ].join('\n');
     files.push({ path: `sql/${String(i).padStart(2, '0')}_${moduleId}.sql`, content });
     i += 1;
   }
 
-  files.push({ path: `sql/${String(i).padStart(2, '0')}_seed.sql`, content: `${header}\n${seedSql(ir)}\n` });
+  if (d.id === 'mysql') {
+    files.push({ path: `sql/${String(i).padStart(2, '0')}_seed.sql`, content: `${header}\n${seedSql(ir)}\n` });
+  } else {
+    files.push({
+      path: `sql/${String(i).padStart(2, '0')}_seed.sql`,
+      content: `${header}\n-- 当前种子脚本仍按 MySQL 语法编写，${d.label} 请按项目实际数据改写；\n-- 管理员账号与权限点由应用启动流程初始化。\n`,
+    });
+  }
 
   if (ir.fileTables.length) {
     const lines = [

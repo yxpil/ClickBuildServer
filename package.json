@@ -28,7 +28,9 @@
     "test:export:single": "node tools/test-export-single-runtime.js",
     "test:ports": "node tools/test-port-fallback.js",
     "test:kernel": "node tools/test-kernel.js",
-    "test:kernel:mysql": "node tools/test-kernel-mysql.js"
+    "test:kernel:mysql": "node tools/test-kernel-mysql.js",
+    "test:kernel:sqlgen": "node tools/test-kernel-sqlgen.js",
+    "test:kernel:sqlgen:mysql": "node tools/test-kernel-sqlgen-mysql.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",

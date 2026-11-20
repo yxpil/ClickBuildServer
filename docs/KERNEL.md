@@ -24,10 +24,13 @@
 | `app/kernel/dialects.js` | MySQL / PostgreSQL / SQLite 的标识符、类型、默认值、自增、ALTER |
 | `app/kernel/migrate.js` | 初始化迁移、元模型 diff、UP/DOWN、checksum、SQLite 执行器 |
 | `app/kernel/project-adapter.js` | 现有 ClickBuild 工程 JSON → registry |
+| `app/kernel/ir-adapter.js` | 旧生成器 IR（`generator/ir.js` 的 tables）→ registry |
 | `app/kernel/introspect.js` | MySQL / SQLite 数据库 → registry（反向工程） |
 | `app/kernel/to-project.js` | registry → ClickBuild 工程 JSON（导入桥） |
 | `tools/kernel-cli.js` | 命令行：inspect / ddl / init / diff / reverse |
 | `tools/test-kernel.js` | 15 项离线回归（SQLite 真执行） |
+| `tools/test-kernel-sqlgen.js` | 生成器 SQL 接线回归：三种方言、SQLite 真执行 |
+| `tools/test-kernel-sqlgen-mysql.js` | 生成器 MySQL 脚本在真实 MariaDB 整套执行 |
 | `tools/test-kernel-mysql.js` | 真实 MariaDB 的 init / ALTER / 反向工程回归 |
 
 ## 元模型
@@ -124,6 +127,7 @@ node tools/kernel-cli.js diff old.json new.json ./db/migrations --dialect sqlite
 ## 已验证
 
 - `node tools/test-kernel.js`：15 项通过。26 套内置案例全部能转成 registry、0 个元模型错误、全部能在 SQLite 初始化。
+- `node tools/test-kernel-sqlgen.js`：4 项通过。旧 IR 能出三种方言 SQL，SQLite 产物能真正执行。
 - `node tools/test-kernel-mysql.js`：真实 MariaDB 上初始化、加字段、改字段、加索引、反向工程通过。
 - PostgreSQL 只做了 DDL/ALTER 字符串断言，本机没有 PostgreSQL 服务，未做真实执行。
 - 同名物理表在多个接口里重复出现时，适配器按表名合并并写入 `importWarnings`；26 套案例里实际存在这种情况。
@@ -132,7 +136,7 @@ node tools/kernel-cli.js diff old.json new.json ./db/migrations --dialect sqlite
 
 这一轮是内核层，不是发布版。以下仍然待做：
 
-1. 现有生成器 `app/generator/sql.js` 还没切到 `dialects`；它仍生成 MySQL 全量 `DROP TABLE + CREATE TABLE`。内核迁移器是并行新增能力，尚未替换主生成链路。
+1. `app/generator/sql.js` 已切到 `dialects`（`generateSql(ir, { dialect })` 可出 MySQL / PostgreSQL / SQLite），但仍是全量 `DROP TABLE + CREATE TABLE`，还没有把 `migrate` 的增量 diff 接进主生成链路。
 2. UI 还没有“迁移计划 / 反向工程”入口；`projectFromRegistry` 只是桥，不写用户工程目录。
 3. 字段改名识别还没做（表改名已按稳定实体 id 识别）；复合主键已支持，复合外键还没做。
 4. PostgreSQL 反向工程 reader、真实 PostgreSQL 执行回归没做。

@@ -221,6 +221,9 @@ function normalizeProject(input) {
   project.artifact = N.artifact(project.artifact || project.name);
   project.groupId = N.safePkg(project.groupId || 'com.clickbuild');
   project.lang = ['rust', 'node', 'go'].includes(project.lang) ? project.lang : 'java';
+  project.dialect = ['mysql', 'postgres', 'sqlite'].includes(String(project.dialect || '').toLowerCase())
+    ? String(project.dialect).toLowerCase()
+    : 'mysql';
   project.packageType = project.packageType === 'war' ? 'war' : 'jar';
   project.modules = Array.isArray(project.modules) ? project.modules : [];
   project.tableConfig = project.tableConfig && typeof project.tableConfig === 'object' ? project.tableConfig : {};
