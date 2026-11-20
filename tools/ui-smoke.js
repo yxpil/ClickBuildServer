@@ -116,6 +116,15 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   })`);
   const sl = JSON.parse(sideLayout);
   t('侧栏压成项目概览 / 运行环境 / 可折叠详情', sl.stats === 3 && sl.details === 1 && !sl.tips && sl.services >= 1, sideLayout);
+  const infra = await val(`window.icb.services().then((s)=>JSON.stringify({
+    mysql: !!s.items.find((x)=>x.id==='mysql' && x.running),
+    redis: !!s.items.find((x)=>x.id==='redis' && x.running),
+    s3: !!s.items.find((x)=>x.id==='s3' && x.running),
+    ports: s.ports,
+    conflicts: s.conflicts || []
+  }))`);
+  const infraJ = JSON.parse(infra);
+  t('启动时三台内置服务已自动就绪', infraJ.mysql && infraJ.redis && infraJ.s3, infra);
 
   // 全局搜索
   const firstName = await val(`S.project.interfaces[0].name`);

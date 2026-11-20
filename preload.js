@@ -88,6 +88,19 @@ contextBridge.exposeInMainWorld('icb', {
   studioHtml: () => invoke('iface:studioHtml'),
   frontendBuild: (payload) => invoke('iface:frontend:build', payload),
   frontendImport: () => invoke('iface:frontend:import'),
+  startupState: () => invoke('startup:state'),
+  startupReport: () => invoke('startup:report'),
+  onStartup: (cb) => {
+    const handler = (_event, data) => cb(data);
+    ipcRenderer.on('startup:update', handler);
+    return () => ipcRenderer.removeListener('startup:update', handler);
+  },
+  onStartupReport: (cb) => {
+    const handler = (_event, data) => cb(data);
+    ipcRenderer.on('startup:report-ready', handler);
+    return () => ipcRenderer.removeListener('startup:report-ready', handler);
+  },
+  startupQuit: () => ipcRenderer.send('startup:quit'),
 });
 
 contextBridge.exposeInMainWorld('cbs', {

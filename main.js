@@ -4,12 +4,58 @@ const path = require('path');
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const { registerIpc } = require('./app/ipc');
 const { registerIpc: registerIfaceIpc } = require('./app/iface/ipc');
+const { runStartup, STEPS } = require('./app/startup');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   let win = null;
+  let splash = null;
+  let mainReady = false;
+  let bootDone = false;
+  let lastStartupReport = null;
+  const startupSnapshot = {
+    version: app.getVersion(),
+    steps: STEPS.map((s) => ({ ...s, status: 'waiting', text: s.hint })),
+    tools: [],
+    services: [],
+    progress: 0,
+    current: '正在准备启动环境',
+    done: false,
+  };
+
+  function splashSend(data) {
+    if (splash && !splash.isDestroyed() && !splash.webContents.isDestroyed()) splash.webContents.send('startup:update', data);
+  }
+
+  function applyStartupUpdate(u) {
+    if (!u || typeof u !== 'object') return;
+    if (Array.isArray(u.steps)) startupSnapshot.steps = u.steps;
+    if (u.step) {
+      const hit = startupSnapshot.steps.find((s) => s.id === u.step.id);
+      if (hit) Object.assign(hit, u.step); else startupSnapshot.steps.push(u.step);
+    }
+    if (Array.isArray(u.tools)) startupSnapshot.tools = u.tools;
+    if (u.service) {
+      const hit = startupSnapshot.services.find((s) => s.id === u.service.id);
+      if (hit) Object.assign(hit, u.service); else startupSnapshot.services.push(u.service);
+    }
+    if (typeof u.progress === 'number') startupSnapshot.progress = Math.max(startupSnapshot.progress, Math.min(1, u.progress));
+    if (u.current) startupSnapshot.current = u.current;
+    if (u.type === 'done') {
+      startupSnapshot.done = true;
+      startupSnapshot.report = u.report || null;
+    }
+    splashSend({ ...u, snapshot: startupSnapshot });
+  }
+
+  function maybeShowMain() {
+    if (!mainReady || !bootDone || !win || win.isDestroyed()) return;
+    win.show();
+    win.focus();
+    if (splash && !splash.isDestroyed()) setTimeout(() => { if (splash && !splash.isDestroyed()) splash.close(); }, 620);
+  }
 
   function windowState(w) {
     return { maximized: !!(w && w.isMaximized()), minimized: !!(w && w.isMinimized()), fullScreen: !!(w && w.isFullScreen()) };
@@ -119,6 +165,29 @@ if (!gotLock) {
     return require('fs').existsSync(hit) ? hit : '';
   }
 
+  function createSplash() {
+    splash = new BrowserWindow({
+      width: 780,
+      height: 548,
+      center: true,
+      frame: false,
+      resizable: false,
+      show: false,
+      backgroundColor: '#f4f1e9',
+      title: 'ClickBuildServer · 正在启动',
+      icon: path.join(__dirname, 'assets', 'logo.png'),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        spellcheck: false,
+      },
+    });
+    splash.loadFile(path.join(__dirname, 'renderer', 'splash.html'));
+    splash.once('ready-to-show', () => { if (splash && !splash.isDestroyed()) splash.show(); });
+    splash.on('closed', () => { splash = null; });
+  }
+
   function createWindow(openFile) {
     win = new BrowserWindow({
       width: 1480,
@@ -140,7 +209,10 @@ if (!gotLock) {
     });
 
     win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: openFile ? { openFile } : {} });
-    win.once('ready-to-show', () => win.show());
+    win.once('ready-to-show', () => {
+      mainReady = true;
+      maybeShowMain();
+    });
     win.setMenuBarVisibility(false);
     const pushState = () => { if (!win.isDestroyed()) win.webContents.send('win:state', windowState(win)); };
     win.on('maximize', pushState);
@@ -163,12 +235,33 @@ if (!gotLock) {
     win.on('closed', () => { win = null; });
   }
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     registerWindowIpc();
     registerIpc(win);
     registerIfaceIpc();
+    ipcMain.handle('startup:state', () => startupSnapshot);
+    ipcMain.handle('startup:report', () => lastStartupReport);
+    ipcMain.on('startup:quit', () => app.quit());
+
+    createSplash();
     createWindow(openFileArg(process.argv));
     Menu.setApplicationMenu(null);
+
+    const started = Date.now();
+    const minSplash = Math.max(1200, Number(process.env.CBS_SPLASH_MIN_MS || 2600));
+    try {
+      lastStartupReport = await runStartup(applyStartupUpdate);
+    } catch (e) {
+      lastStartupReport = { ok: false, errors: [e.message], tools: [], services: {}, conflicts: [], steps: startupSnapshot.steps };
+      applyStartupUpdate({ type: 'done', progress: 1, current: '启动失败，正在进入工作台', report: lastStartupReport });
+    }
+    const remain = minSplash - (Date.now() - started);
+    const hold = lastStartupReport && lastStartupReport.ok === false ? Math.max(remain, 5000 - (Date.now() - started)) : remain;
+    if (hold > 0) await new Promise((r) => setTimeout(r, hold));
+    bootDone = true;
+    if (win && !win.isDestroyed()) win.webContents.send('startup:report-ready', lastStartupReport);
+    maybeShowMain();
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

@@ -15,6 +15,9 @@ const state = {
   server: { child: null, log: [], dir: '' },
 };
 
+// 本次运行实际使用的端口。用户设置里的端口只是“首选”，被占用时会依次向上避让。
+const boot = { ports: null, conflicts: [], adopted: {}, adoptedPid: {} };
+
 // 服务二进制只从安装包资源里找，不记录、不依赖任何用户目录。
 // 源码运行用仓库 vendor/services，安装版用 resources/services。
 function bundledServicesRoot() {
@@ -25,11 +28,20 @@ function bundledServicesRoot() {
   return candidates.find((dir) => fs.existsSync(path.join(dir, 'MariaDB', 'bin', 'mariadbd.exe'))) || candidates[0];
 }
 
-function settings() {
+function desiredPorts() {
   const s = store.readSettings();
+  return { ...PORTS, ...(s.ports || {}) };
+}
+
+function settings() {
+  const want = desiredPorts();
+  const ports = { ...want, ...(boot.ports || {}) };
   return {
     servicesRoot: bundledServicesRoot(),
-    ports: { ...PORTS, ...(s.ports || {}) },
+    ports,
+    desiredPorts: want,
+    conflicts: boot.conflicts.slice(),
+    adopted: { ...boot.adopted },
   };
 }
 
@@ -80,6 +92,87 @@ function isPortOpen(port) {
   });
 }
 
+function listenerInfo(port) {
+  try {
+    const out = execFileSync('netstat.exe', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+    const line = String(out).split(/\r?\n/).find((l) => {
+      const m = l.match(/^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/);
+      return m && Number(m[1]) === Number(port);
+    });
+    if (!line) return null;
+    const pid = Number((line.match(/LISTENING\s+(\d+)\s*$/) || [])[1]);
+    if (!pid) return null;
+    let exePath = '';
+    try {
+      const ps = `$p=(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue); if($p){$p.ExecutablePath}`;
+      exePath = String(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 6000 }) || '').trim();
+    } catch (e) { /* 后面退回 tasklist 的进程名 */ }
+    let name = exePath ? path.basename(exePath) : '';
+    if (!name) {
+      try {
+        const rows = String(execFileSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 5000 }) || '');
+        const m = rows.match(/^"([^"]+)"/);
+        name = m ? m[1] : '';
+      } catch (e) { /* 忽略 */ }
+    }
+    return { pid, name, path: exePath };
+  } catch (e) {
+    return null;
+  }
+}
+
+function isBundledProcess(info, exeName) {
+  if (!info || !info.path) return false;
+  if (path.basename(info.path).toLowerCase() !== exeName.toLowerCase()) return false;
+  const root = path.resolve(bundledServicesRoot()).toLowerCase();
+  return path.resolve(info.path).toLowerCase().startsWith(root);
+}
+
+async function nextFreePort(start) {
+  for (let p = start; p < start + 40; p += 1) {
+    if (!(await isPortOpen(p))) return p;
+  }
+  return 0;
+}
+
+// 首选端口可用就直接用；如果是本安装包自己的服务，认领现有进程；
+// 否则向后找第一个空端口，并记下“从哪避让到哪”，供启动页和侧栏显示。
+async function preparePorts(wantOverride) {
+  if (boot.ports && !wantOverride) return settings().ports;
+  const want = { ...desiredPorts(), ...(wantOverride || {}) };
+  const ports = { ...want };
+  const conflicts = [];
+  const adopted = {};
+  const adoptedPid = {};
+  const targets = [
+    { key: 'mysql', owner: 'mariadbd.exe', label: 'MariaDB' },
+    { key: 'redis', owner: 'redis-server.exe', label: 'Redis' },
+    { key: 's3', owner: 'rustfs-windows-x86_64.exe', label: 'RustFS' },
+    { key: 's3Console', owner: 'rustfs-windows-x86_64.exe', label: 'RustFS 控制台' },
+    { key: 'http', owner: '', label: '生成的服务' },
+  ];
+  for (const item of targets) {
+    const preferred = Number(want[item.key]);
+    if (!(await isPortOpen(preferred))) { ports[item.key] = preferred; continue; }
+    const owner = listenerInfo(preferred);
+    if (item.key !== 'http' && item.owner && isBundledProcess(owner, item.owner)) {
+      ports[item.key] = preferred;
+      adopted[item.key] = true;
+      adoptedPid[item.key] = owner.pid;
+      continue;
+    }
+    const free = await nextFreePort(preferred + 1);
+    if (!free) throw new Error(`${item.label} 端口 ${preferred} 被占用，且后面 40 个端口也不可用`);
+    ports[item.key] = free;
+    conflicts.push({ key: item.key, label: item.label, from: preferred, to: free, reason: (owner && owner.name) || 'unknown' });
+  }
+  boot.ports = ports;
+  boot.conflicts = conflicts;
+  boot.adopted = adopted;
+  boot.adoptedPid = adoptedPid;
+  return ports;
+}
+
 async function status() {
   const { ports, servicesRoot } = settings();
   const mysqlOpen = await isPortOpen(ports.mysql);
@@ -98,11 +191,14 @@ async function status() {
     bundled: missing.length === 0,
     missing,
     ports,
+    desiredPorts: settings().desiredPorts,
+    conflicts: settings().conflicts,
+    adopted: settings().adopted,
     binaries: Object.fromEntries(Object.entries(bin).map(([k, v]) => [k, { path: v, exists: fs.existsSync(v) }])),
     items: [
-      { id: 'mysql', name: 'MariaDB', port: ports.mysql, running: mysqlOpen, pid: state.mysql.pid || null, note: 'skip-grant-tables 本地测试实例' },
-      { id: 'redis', name: 'Redis', port: ports.redis, running: redisOpen, pid: state.redis.pid || null, note: 'Cygwin 构建，RedisService 托管' },
-      { id: 's3', name: 'RustFS', port: ports.s3, running: s3Open, pid: state.s3.pid || null, note: `S3 兼容，控制台 ${ports.s3Console}` },
+      { id: 'mysql', name: 'MariaDB', port: ports.mysql, running: mysqlOpen, pid: state.mysql.pid || boot.adoptedPid.mysql || null, note: 'skip-grant-tables 本地测试实例', adopted: !!boot.adopted.mysql },
+      { id: 'redis', name: 'Redis', port: ports.redis, running: redisOpen, pid: state.redis.pid || boot.adoptedPid.redis || null, note: 'Cygwin 构建，RedisService 托管', adopted: !!boot.adopted.redis },
+      { id: 's3', name: 'RustFS', port: ports.s3, running: s3Open, pid: state.s3.pid || boot.adoptedPid.s3 || null, note: `S3 兼容，控制台 ${ports.s3Console}`, adopted: !!boot.adopted.s3 },
       { id: 'server', name: '生成的服务', port: ports.http, running: httpOpen, pid: state.server.pid || null, dir: state.server.dir, hot: !!state.server.hot, runtime: state.server.runtime || 'node' },
     ],
   };
@@ -123,7 +219,9 @@ async function waitPort(ports, timeoutMs) {
 }
 
 async function startMysql() {
-  const { servicesRoot, ports } = settings();
+  const ports = await preparePorts();
+  const servicesRoot = bundledServicesRoot();
+  if (boot.adopted.mysql) return { ok: true, already: true, adopted: true, port: ports.mysql };
   const bin = path.join(servicesRoot, 'MariaDB', 'bin');
   const datadir = path.join(runtimeRoot(), 'mariadb');
   const installDb = path.join(bin, 'mariadb-install-db.exe');
@@ -154,8 +252,11 @@ async function startMysql() {
     '--innodb-buffer-pool-size=64M',
     '--console',
   ]);
-  if (res.ok) await waitPort(ports.mysql, 20000);
-  return res;
+  if (res.ok) {
+    const up = await waitPort(ports.mysql, 20000);
+    if (!up) return { ...res, ok: false, port: ports.mysql, error: `MariaDB 没有在 20 秒内监听 ${ports.mysql}` };
+  }
+  return { ...res, port: ports.mysql };
 }
 
 function cygPath(p) {
@@ -164,7 +265,9 @@ function cygPath(p) {
 }
 
 async function startRedis() {
-  const { servicesRoot, ports } = settings();
+  const ports = await preparePorts();
+  const servicesRoot = bundledServicesRoot();
+  if (boot.adopted.redis) return { ok: true, already: true, adopted: true, port: ports.redis };
   const exe = path.join(servicesRoot, 'Redis', 'redis-server.exe');
   if (!fs.existsSync(exe)) return { ok: false, error: `找不到 ${exe}` };
   const dir = path.join(runtimeRoot(), 'redis');
@@ -172,12 +275,17 @@ async function startRedis() {
   // 这个构建是 Cygwin 版，--dir 只认 /cygdrive/... 形式；RedisService 包装器会先退出，
   // 直接托管 redis-server.exe 才能拿到稳定的进程句柄用于停止。
   const res = spawnSvc('redis', exe, ['--port', String(ports.redis), '--dir', cygPath(dir)]);
-  if (res.ok) await waitPort(ports.redis, 12000);
-  return res;
+  if (res.ok) {
+    const up = await waitPort(ports.redis, 12000);
+    if (!up) return { ...res, ok: false, port: ports.redis, error: `Redis 没有在 12 秒内监听 ${ports.redis}` };
+  }
+  return { ...res, port: ports.redis };
 }
 
 async function startS3() {
-  const { servicesRoot, ports } = settings();
+  const ports = await preparePorts();
+  const servicesRoot = bundledServicesRoot();
+  if (boot.adopted.s3) return { ok: true, already: true, adopted: true, port: ports.s3 };
   const exe = path.join(servicesRoot, 'RustFS', 'rustfs-windows-x86_64.exe');
   if (!fs.existsSync(exe)) return { ok: false, error: `找不到 ${exe}` };
   const dir = path.join(runtimeRoot(), 'rustfs');
@@ -189,14 +297,42 @@ async function startS3() {
       RUSTFS_SECRET_KEY: 'clickbuild123',
     },
   });
-  if (res.ok) await waitPort(ports.s3, 20000);
-  return res;
+  if (res.ok) {
+    const up = await waitPort(ports.s3, 20000);
+    if (!up) return { ...res, ok: false, port: ports.s3, error: `RustFS 没有在 20 秒内监听 ${ports.s3}` };
+  }
+  return { ...res, port: ports.s3 };
+}
+
+function clearBootPort(name) {
+  if (!boot.ports) return;
+  delete boot.ports[name];
+  if (name === 's3') delete boot.ports.s3Console;
+  if (name === 'server') delete boot.ports.http;
+  delete boot.adopted[name];
+  delete boot.adoptedPid[name];
+  if (name === 's3') { delete boot.adopted.s3Console; delete boot.adoptedPid.s3Console; }
+  boot.conflicts = boot.conflicts.filter((c) => c.key !== name && !(name === 's3' && c.key === 's3Console'));
 }
 
 async function stopOne(name) {
   const s = state[name];
   if (!s || !s.child) {
-    // 没有子进程句柄时，按端口找进程会误伤，直接返回
+    // 没有子进程句柄时，只有确认监听进程就是本安装包的服务才允许停，避免误伤别的程序。
+    const owners = { mysql: 'mariadbd.exe', redis: 'redis-server.exe', s3: 'rustfs-windows-x86_64.exe' };
+    const port = boot.ports && boot.ports[name];
+    const owner = port ? listenerInfo(port) : null;
+    if (owners[name] && owner && isBundledProcess(owner, owners[name])) {
+      await new Promise((resolve) => {
+        const k = spawn('taskkill', ['/PID', String(owner.pid), '/T', '/F'], { windowsHide: true });
+        k.on('close', () => resolve());
+        k.on('error', () => resolve());
+      });
+      clearBootPort(name);
+      pushLog(name, '已停止认领的进程');
+      return { ok: true, pid: owner.pid, adopted: true };
+    }
+    clearBootPort(name);
     return { ok: true, already: true };
   }
   const pid = s.child.pid;
@@ -207,6 +343,7 @@ async function stopOne(name) {
   });
   s.child = null;
   s.pid = null;
+  clearBootPort(name);
   pushLog(name, '已停止');
   return { ok: true, pid };
 }
@@ -244,6 +381,17 @@ function probe(exe, args) {
   }
 }
 
+function shortVersion(text) {
+  return String(text || '')
+    .replace(/^java version\s+/i, '')
+    .replace(/^go version\s+/i, '')
+    .replace(/^git version\s+/i, '')
+    .replace(/^rustc\s+/i, '')
+    .replace(/^Python\s+/i, '')
+    .replace(/"/g, '')
+    .split(/\s+/)[0] || '';
+}
+
 function runtimes() {
   const node = nodeBin();
   const bun = which('bun.exe') || which('bun.cmd') || which('bun');
@@ -254,16 +402,34 @@ function runtimes() {
   return [
     // 显示真正用来跑服务的 node.exe 版本，而不是 Electron 内置的 process.version
     { id: 'node', name: 'Node', version: probe(node, ['--version']) || process.version, path: node, available: fs.existsSync(node) || node === 'node', native: true, note: '内置 Node.js，直接运行 server.js' },
-    { id: 'bun', name: 'Bun', version: probe(bun, ['--version']), path: bun, available: !!bun, native: true, note: '需要系统已安装 Bun，兼容 Node API' },
-    { id: 'java', name: 'Java', version: probe(java, ['-version']), path: java, available: !!(java && javac), native: true, note: javac ? 'Java 原生服务：javac 编译 native/java 后直连 MySQL，不调用 Node' : '只找到 java，没有 javac；请安装完整 JDK 17+' },
-    { id: 'go', name: 'Go', version: probe(go, ['version']), path: go, available: !!go, native: true, note: 'Go 原生服务：go build 后直接运行 native/go，不调用 Node' },
-    { id: 'python', name: 'Python', version: python ? probe(python, ['--version']) : '', path: python, available: !!python, native: true, note: 'Python Flask 原生服务：python native/python/app.py，依赖见 requirements.txt' },
+    { id: 'bun', name: 'Bun', version: shortVersion(probe(bun, ['--version'])), path: bun, available: !!bun, native: true, note: '需要系统已安装 Bun，兼容 Node API' },
+    { id: 'java', name: 'Java', version: shortVersion(probe(java, ['-version'])), path: java, available: !!(java && javac), native: true, note: javac ? 'Java 原生服务：javac 编译 native/java 后直连 MySQL，不调用 Node' : '只找到 java，没有 javac；请安装完整 JDK 17+' },
+    { id: 'go', name: 'Go', version: shortVersion(probe(go, ['version'])), path: go, available: !!go, native: true, note: 'Go 原生服务：go build 后直接运行 native/go，不调用 Node' },
+    { id: 'python', name: 'Python', version: shortVersion(python ? probe(python, ['--version']) : ''), path: python, available: !!python, native: true, note: 'Python Flask 原生服务：python native/python/app.py，依赖见 requirements.txt' },
   ];
 }
 
+function environment() {
+  const list = runtimes();
+  const rustc = which('rustc.exe') || which('rustc');
+  const cargo = which('cargo.exe') || which('cargo');
+  const git = which('git.exe') || which('git');
+  const extras = [
+    { id: 'rust', name: 'Rust', version: shortVersion(rustc ? probe(rustc, ['--version']) : ''), path: cargo || rustc, available: !!(rustc && cargo), native: true, kind: 'compiler', note: 'Rust 代码生成用；需要 rustc + cargo' },
+    { id: 'git', name: 'Git', version: shortVersion(git ? probe(git, ['--version']) : ''), path: git, available: !!git, native: false, kind: 'tool', note: '导入模版、拉取依赖时用' },
+  ];
+  const tools = list.map((r) => ({ ...r, kind: 'runtime' }));
+  return {
+    tools: tools.concat(extras),
+    runtimes: list,
+    available: tools.concat(extras).filter((t) => t.available).length,
+    total: tools.length + extras.length,
+  };
+}
+
 async function startServer(dir, opts) {
-  const { ports } = settings();
-  if (state.server.child && !state.server.child.killed) return { ok: true, already: true, pid: state.server.pid, hot: state.server.hot, runtime: state.server.runtime };
+  const ports = await preparePorts();
+  if (state.server.child && !state.server.child.killed) return { ok: true, already: true, pid: state.server.pid, hot: state.server.hot, runtime: state.server.runtime, port: ports.http };
   const o = opts || {};
   const runtime = o.runtime || 'node';
   const hot = !!o.hot;
@@ -371,7 +537,10 @@ async function startServer(dir, opts) {
   state.server.dir = dir;
   state.server.hot = hot;
   state.server.runtime = runtime;
-  if (res.ok) await waitPort(ports.http, 20000);
+  if (res.ok) {
+    const up = await waitPort(ports.http, 20000);
+    if (!up) return { ...res, ok: false, port: ports.http, error: `生成的服务没有在 20 秒内监听 ${ports.http}` };
+  }
   return { ...res, port: ports.http, hot, runtime, entry };
 }
 
@@ -398,13 +567,31 @@ async function waitPortClosed(port, timeoutMs) {
   return !(await isPortOpen(port));
 }
 
-async function startAll() {
-  const out = { mysql: await startMysql(), redis: await startRedis(), s3: await startS3() };
+async function startAll(progress) {
+  const notify = typeof progress === 'function' ? progress : () => {};
+  const items = [
+    { id: 'mysql', name: 'MariaDB', start: startMysql },
+    { id: 'redis', name: 'Redis', start: startRedis },
+    { id: 's3', name: 'RustFS', start: startS3 },
+  ];
+  const out = {};
+  for (const it of items) {
+    notify({ id: it.id, name: it.name, status: 'running', text: `正在启动 ${it.name}` });
+    let r;
+    try { r = await it.start(); } catch (e) { r = { ok: false, error: e.message }; }
+    out[it.id] = r;
+    const port = r && r.port ? `:${r.port}` : '';
+    notify({ id: it.id, name: it.name, status: r && r.ok ? 'done' : 'error', text: r && r.ok ? `${it.name} 已就绪${port}${r.adopted ? '（认领现有进程）' : ''}` : `${it.name} 启动失败`, detail: (r && r.error) || '' });
+  }
   return out;
 }
 
 async function stopAll() {
   for (const n of ['server', 'mysql', 'redis', 's3']) await stopOne(n);
+  boot.ports = null;
+  boot.conflicts = [];
+  boot.adopted = {};
+  boot.adoptedPid = {};
   return { ok: true };
 }
 
@@ -422,5 +609,5 @@ function setPorts(patch) {
 
 module.exports = {
   PORTS, settings, status, startMysql, startRedis, startS3, startAll, stopOne, stopAll, logs, setPorts, isPortOpen, waitPort,
-  runtimes, startServer, stopServer, serverInfo, waitPortClosed,
+  preparePorts, environment, runtimes, startServer, stopServer, serverInfo, waitPortClosed,
 };

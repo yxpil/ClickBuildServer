@@ -1,12 +1,13 @@
 'use strict';
-// 用 CDP 截渲染进程整页：node tools/ui-shot.js <out.png> [port] [可选JS]
+// 用 CDP 截渲染进程整页：node tools/ui-shot.js <out.png> [port] [可选JS] [目标页关键字]
 const fs = require('fs');
 const out = process.argv[2] || 'ui.png';
 const port = Number(process.argv[3] || 9222);
 const evalJs = process.argv[4] || '';
+const target = process.argv[5] || 'wbench';
 (async () => {
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-  const page = list.find((x) => x.type === 'page' && /wbench/.test(x.url)) || list.find((x) => x.type === 'page');
+  const page = list.find((x) => x.type === 'page' && new RegExp(target).test(x.url)) || list.find((x) => x.type === 'page');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((r) => { ws.onopen = r; });
   let seq = 0;

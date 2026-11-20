@@ -834,7 +834,7 @@ function renderSide() {
         <span class="mono text-[10px] text-neutral-500">${it.port}</span>
         <button class="btn thin side-mini" data-svc="${it.id}" data-on="${it.running ? '0' : '1'}">${it.running ? '停止' : '启动'}</button>
       </div>`).join('')}
-    <div class="side-ports">MySQL ${svc.ports.mysql} · Redis ${svc.ports.redis} · S3 ${svc.ports.s3}</div>
+    <div class="side-ports">MySQL ${svc.ports.mysql} · Redis ${svc.ports.redis} · S3 ${svc.ports.s3}${(svc.conflicts && svc.conflicts.length) ? `<br><span title="${esc(svc.conflicts.map((c) => `${c.label} ${c.from}→${c.to}（${c.reason}）`).join('；'))}">${svc.conflicts.length} 个端口已自动避让</span>` : ''}</div>
   </div>
 
   <details class="side-sect side-details">
@@ -4923,12 +4923,29 @@ window.addEventListener('blur', hideHubMenu);
 /* ---------------- 启动 ---------------- */
 (async function boot() {
   bindWindowControls();
+  let startupToastDone = false;
+  const applyStartupReport = async (report) => {
+    try {
+      S.services = await api.services();
+      if (S.project) { renderRibbon(); renderSide(); }
+    } catch (e) { /* 启动页还没完成时忽略 */ }
+    if (report && !startupToastDone) {
+      startupToastDone = true;
+      if (report.conflicts && report.conflicts.length) {
+        const text = report.conflicts.map((c) => `${c.label} ${c.from}→${c.to}`).join('，');
+        toast(`端口被占用，已自动避让：${text}`, 7000);
+      }
+      if (report.errors && report.errors.length) toast(`启动时有 ${report.errors.length} 项需要留意，右侧运行环境会保留状态`, 7000);
+    }
+  };
+  try { api.onStartupReport((report) => applyStartupReport(report)); } catch (e) { /* 旧 preload 时忽略 */ }
   try {
     const b = await api.boot();
     S.list = b.list;
     S.services = b.services;
     S.settings = b.settings;
     try { S.runtimes = await api.runtimes(); } catch (e) { S.runtimes = []; }
+    try { await applyStartupReport(await api.startupReport()); } catch (e) { /* 启动报告不存在时忽略 */ }
     applyTheme(S.settings.theme || {});
     S.help = await api.help();
 
@@ -4988,8 +5005,14 @@ window.addEventListener('blur', hideHubMenu);
     setInterval(async () => {
       if (!S.project) return;
       if ($('#drawer').classList.contains('hidden')) {
+        const detailsOpen = !!(document.querySelector('#sideTop .side-details') && document.querySelector('#sideTop .side-details').open);
         S.services = await api.services();
         renderRibbon();
+        renderSide();
+        if (detailsOpen) {
+          const d = document.querySelector('#sideTop .side-details');
+          if (d) d.open = true;
+        }
       }
     }, 4000);
   } catch (e) {

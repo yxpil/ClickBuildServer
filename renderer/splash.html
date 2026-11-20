@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ClickBuildServer · 正在启动</title>
+<style>
+  :root {
+    --paper: #f4f1e9;
+    --ink: #111;
+    --muted: #78736a;
+    --line: #d9d4c9;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    overflow: hidden;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image: radial-gradient(circle, rgba(30, 27, 22, .11) 1px, transparent 1px);
+    background-size: 13px 13px;
+    -webkit-mask-image: radial-gradient(circle at 26% 50%, #000 0%, rgba(0,0,0,.55) 37%, transparent 70%);
+    mask-image: radial-gradient(circle at 26% 50%, #000 0%, rgba(0,0,0,.55) 37%, transparent 70%);
+    pointer-events: none;
+  }
+  .frame { position: relative; height: 100%; padding: 22px 30px 18px; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; justify-content: space-between; height: 20px; -webkit-app-region: drag; }
+  .stamp { font: 10px/1 "Consolas", monospace; letter-spacing: 2.4px; color: #5f5a51; }
+  .stamp b { color: #111; font-weight: 600; }
+  #quit {
+    -webkit-app-region: no-drag;
+    width: 26px; height: 26px; border: 1px solid transparent; background: transparent; color: #6d685f;
+    font-size: 18px; line-height: 1; cursor: pointer; border-radius: 50%;
+  }
+  #quit:hover { border-color: #b9b3a7; color: #111; }
+  main {
+    flex: 1; display: grid; grid-template-columns: 214px 1fr; gap: 38px;
+    align-items: center; padding: 10px 6px 0;
+  }
+  .world { position: relative; width: 210px; height: 210px; margin: 0 auto; }
+  .globe {
+    position: absolute; inset: 22px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255,255,255,.9), rgba(255,255,255,0) 55%),
+      radial-gradient(circle at 50% 50%, #eeeae0 0%, #e4dfd4 70%, #d6d0c3 100%);
+    border: 1px solid var(--line);
+    box-shadow: 0 18px 44px rgba(60, 54, 43, .12), inset -8px -12px 24px rgba(80, 72, 60, .08);
+    overflow: hidden;
+  }
+  .globe::before, .globe::after {
+    content: ""; position: absolute; inset: 8%;
+    border: 1px solid rgba(50, 45, 38, .18); border-radius: 50%;
+    transform: rotate(18deg) scaleX(.52);
+  }
+  .globe::after { transform: rotate(-32deg) scaleY(.55); }
+  .scan {
+    position: absolute; inset: -36%;
+    background: conic-gradient(from 0deg, rgba(17,17,17,0) 0 78%, rgba(17,17,17,.18) 92%, rgba(17,17,17,0) 100%);
+    animation: spin 6.8s linear infinite;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(17,17,17,.08) 0 1px, transparent 1px 18px),
+      repeating-linear-gradient(90deg, rgba(17,17,17,.08) 0 1px, transparent 1px 18px);
+    -webkit-mask-image: radial-gradient(circle, #000 45%, transparent 72%);
+    mask-image: radial-gradient(circle, #000 45%, transparent 72%);
+    opacity: .75;
+  }
+  .orbit {
+    position: absolute; inset: 7px; border: 1px solid rgba(33, 29, 23, .28); border-radius: 50%;
+    transform: rotate(-16deg) scaleX(.9);
+    animation: orbit 14s linear infinite;
+  }
+  .orbit.b { inset: -2px; transform: rotate(24deg) scaleY(.84); border-color: rgba(33, 29, 23, .16); animation-duration: 20s; animation-direction: reverse; }
+  .orbit i {
+    position: absolute; top: 50%; left: -3px; width: 5px; height: 5px; border-radius: 50%;
+    background: #111; box-shadow: 0 0 0 3px rgba(244,241,233,.8);
+    transform: translateY(-50%);
+  }
+  .brand {
+    position: absolute; left: 50%; top: 50%; width: 118px; height: 118px;
+    transform: translate(-50%, -50%); border-radius: 24px; overflow: hidden;
+    border: 6px solid rgba(252, 249, 241, .94);
+    box-shadow: 0 10px 26px rgba(38, 33, 25, .16), 0 0 0 1px rgba(24, 21, 16, .1);
+    z-index: 3; background: #ddd8cb;
+  }
+  .brand img { width: 100%; height: 100%; object-fit: cover; object-position: 64% 36%; display: block; }
+  .brand::after {
+    content: ""; position: absolute; inset: 0; border-radius: 18px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
+  }
+  .boot { min-width: 0; padding-bottom: 8px; }
+  .kicker { font: 10px/1.2 "Consolas", monospace; letter-spacing: 2.2px; color: var(--muted); margin-bottom: 12px; }
+  h1 { margin: 0; font-size: 34px; line-height: 1.08; letter-spacing: -1.2px; font-weight: 650; }
+  .sub { margin: 10px 0 20px; font-size: 13px; color: #5f5b53; line-height: 1.65; min-height: 22px; }
+  .bar { height: 3px; background: #d8d3c8; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #111; transition: width .35s ease; }
+  .meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11px; color: #4b4740; }
+  .live { width: 7px; height: 7px; border-radius: 50%; background: #111; animation: pulse 1.3s ease-in-out infinite; flex: none; }
+  #current { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #pct { font: 10px/1 "Consolas", monospace; color: #777168; flex: none; }
+  .steps { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 7px; }
+  .steps li { display: grid; grid-template-columns: 16px 1fr auto; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(217,212,201,.55); }
+  .steps li:last-child { border-bottom: 0; }
+  .mark { width: 13px; height: 13px; border-radius: 50%; border: 1px solid #aaa397; position: relative; transform: translateY(2px); }
+  .steps li[data-s="running"] .mark { border-color: #111; background: #111; box-shadow: 0 0 0 3px rgba(17,17,17,.08); }
+  .steps li[data-s="done"] .mark { border-color: #111; background: #111; }
+  .steps li[data-s="done"] .mark::after { content: ""; position: absolute; left: 3px; top: 1px; width: 4px; height: 7px; border-right: 1.5px solid #fff; border-bottom: 1.5px solid #fff; transform: rotate(42deg); }
+  .steps li[data-s="error"] .mark { border-color: #9b2e2e; background: #9b2e2e; }
+  .steps li[data-s="error"] .mark::after { content: "×"; position: absolute; inset: -4px 0 0 2px; color: #fff; font-size: 11px; }
+  .steps b { font-size: 12px; font-weight: 600; letter-spacing: .1px; }
+  .steps span { display: block; margin-top: 2px; font-size: 10px; color: #837d73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 330px; }
+  .steps em { font: 9px/1 "Consolas", monospace; font-style: normal; color: #a0998e; text-transform: uppercase; }
+  .tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 0 6px; }
+  .tools .cap { font: 9px/1 "Consolas", monospace; letter-spacing: 1.4px; color: #918a7f; margin-right: 3px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border: 1px solid #d6d0c5; background: rgba(255,255,255,.38); border-radius: 11px; font-size: 10px; color: #3f3b34; white-space: nowrap; }
+  .chip i { width: 5px; height: 5px; border-radius: 50%; background: #111; }
+  .chip.off { color: #999287; border-color: #e0dbd1; background: transparent; }
+  .chip.off i { background: #c4bdb1; }
+  .chip b { font-weight: 600; }
+  footer { display: flex; align-items: center; justify-content: space-between; padding: 12px 6px 0; border-top: 1px solid var(--line); font: 9px/1.2 "Consolas", monospace; letter-spacing: 1.2px; color: #8b8479; }
+  body.done .live { animation: none; background: #111; }
+  body.done h1 { letter-spacing: -1px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes orbit { to { transform: rotate(344deg) scaleX(.9); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .25; transform: scale(.72); } }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header>
+    <div class="stamp">CLICKBUILD <b>/ BOOT SEQUENCE</b></div>
+    <button id="quit" title="退出">×</button>
+  </header>
+
+  <main>
+    <div class="world" aria-hidden="true">
+      <div class="globe">
+        <div class="grid"></div>
+        <div class="scan"></div>
+      </div>
+      <div class="orbit"><i></i></div>
+      <div class="orbit b"><i></i></div>
+      <div class="brand"><img src="../assets/logo.png" alt="ClickBuildServer"></div>
+    </div>
+
+    <section class="boot">
+      <div class="kicker">LOCAL WORKBENCH · ENVIRONMENT READY</div>
+      <h1 id="title">正在准备工作台</h1>
+      <div class="sub" id="sub">检查本机的解释器、编译环境与端口，然后把内置服务先跑起来。</div>
+      <div class="bar"><i id="fill"></i></div>
+      <div class="meta"><span class="live"></span><span id="current">正在读取启动配置</span><span id="pct">0%</span></div>
+      <ol class="steps" id="steps"></ol>
+    </section>
+  </main>
+
+  <div class="tools" id="tools"><span class="cap">TOOLCHAINS</span></div>
+  <footer>
+    <span>本地运行 · 工程不上传 · 端口冲突自动避让</span>
+    <span id="version">v—</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let renderedTools = '';
+  let lastDone = false;
+
+  function statusText(s) {
+    if (!s) return '';
+    if (s.status === 'running') return '进行中';
+    if (s.status === 'done') return '完成';
+    if (s.status === 'error') return '失败';
+    return '等待';
+  }
+
+  function render(snap) {
+    if (!snap) return;
+    document.body.classList.toggle('done', !!snap.done);
+    $('fill').style.width = Math.round((snap.progress || 0) * 100) + '%';
+    $('pct').textContent = Math.round((snap.progress || 0) * 100) + '%';
+    if (snap.current) $('current').textContent = snap.current;
+    $('version').textContent = snap.version ? 'v' + snap.version : 'v—';
+
+    if (snap.done) {
+      const bad = snap.report && snap.report.errors && snap.report.errors.length;
+      $('title').textContent = bad ? '启动完成，有项目需要留意' : '准备完成';
+      $('sub').textContent = bad
+        ? '工作台马上打开；启动页里的失败项会在右侧状态栏继续保留。'
+        : '环境、端口和内置服务都准备好了，正在进入工作台。';
+    } else if ((snap.progress || 0) > .3) {
+      $('title').textContent = '正在启动内置服务';
+      $('sub').textContent = '先让数据库、缓存和对象存储就绪，再进入编辑界面。';
+    }
+
+    $('steps').innerHTML = (snap.steps || []).map((s, i) => `
+      <li data-s="${esc(s.status || 'waiting')}">
+        <span class="mark"></span>
+        <div><b>${esc(s.label)}</b><span>${esc(s.text || s.hint || '等待')}</span></div>
+        <em>${String(i + 1).padStart(2, '0')} · ${esc(statusText(s))}</em>
+      </li>`).join('');
+
+    const tools = snap.tools || [];
+    const key = tools.map((t) => t.id + (t.available ? '1' : '0') + (t.version || '')).join('|');
+    if (key !== renderedTools) {
+      renderedTools = key;
+      $('tools').innerHTML = '<span class="cap">TOOLCHAINS</span>' + tools.map((t) => `
+        <span class="chip ${t.available ? '' : 'off'}" title="${esc(t.path || t.note || '')}"><i></i><b>${esc(t.name)}</b>${t.available ? esc(String(t.version || '').split(/\r?\n/)[0].trim()) : '未找到'}</span>`).join('');
+    }
+    lastDone = !!snap.done;
+  }
+
+  async function init() {
+    $('quit').addEventListener('click', () => { try { window.icb.startupQuit(); } catch (e) { window.close(); } });
+    try {
+      const snap = await window.icb.startupState();
+      if (snap) render(snap);
+    } catch (e) { /* 启动页只读，失败时继续显示静态内容 */ }
+    try {
+      window.icb.onStartup((u) => { if (u && u.snapshot) render(u.snapshot); });
+    } catch (e) { /* ignore */ }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

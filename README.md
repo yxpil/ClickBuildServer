@@ -91,6 +91,8 @@ dist\ClickBuildServer-Setup-1.1.28.exe
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
+1.1.40 启动阶段改成先准备、再进界面：新增独立启动页，显示品牌图、世界轨道加载动画、四段任务（环境与工具链 / 端口分配 / 内置服务 / 工作台）和实时百分比；启动时自动检测 Node、Bun、Java/JDK、Go、Python、Rust、Git，并自动启动 MariaDB、Redis、RustFS。端口被别的程序占用时向后自动避让（最多 40 个），本安装包自己的服务可认领现有进程，启动页和右侧栏都会写明“从哪个端口换到哪个端口”；二次启动或上次异常退出后不会误杀别人的进程。新增 `tools/test-port-fallback.js` 8/8，UI 冒烟 127/127。
+
 1.1.39 把工作台从“按钮全摊开”改成按主任务分组：顶部 Ribbon 从 9 组 30 多个图标收到 6 组 15 个，只保留新建 / 打开、接口、表结构、脚本、运行和导出；模版库、接口库、导入导出、AI、设置、帮助等低频操作收进“更多…”两列说明卡片。右侧固定栏删掉“操作提示”和与底栏重复的工程统计，改成三格项目概览、内置服务运行状态（运行数 / 端口 / 单服务启停）和可折叠的工程详情，宽度 288 → 264；顶部“保存 / 生成服务 / 更新部署”保持唯一主入口，工具条不再重复“保存 / 更新”。源码版 UI 冒烟 126/126。
 
 1.1.38 导出工程改成先选类型、只生成选中一套：Node / Bun、Go、Java、Python 分别只写自己的服务入口、依赖、原生目录与 IDEA 运行配置，不再把四套运行时一起塞进工程；Node 导出不再夹带 `native/java` 和 Java jar，`.run` 启动配置只给 Node / Bun。新增 `tools/test-export-single-runtime.js` 31/31。
