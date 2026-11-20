@@ -16,7 +16,7 @@
   .btn.solid { background: var(--cb-accent); border-color: var(--cb-accent); }
   .gt { border-collapse: collapse; width: 100%; table-layout: fixed; }
   .gt thead th { background: #f4f4f4; border: 1px solid #cccccc; font-weight: 600; padding: 5px 8px; text-align: left; position: sticky; top: 0; z-index: 2; }
-  .gt td { border: 1px solid #dcdcdc; padding: 4px 8px; vertical-align: middle; }
+  .gt td { border: 1px solid #dcdcdc; padding: 4px 8px; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gt tbody tr:hover td { background: #fafafa; }
   .gt tbody tr.sel td { background: #eeeeee; }
   .gt .rownum { background: #f4f4f4; color: #777; text-align: center; width: 36px; }
@@ -98,6 +98,8 @@
   .searchbox { width: 300px; }
   .result-item:hover { background: #f2f2f2; }
   .kbd { border: 1px solid #bbb; border-bottom-width: 2px; padding: 0 4px; font-size: 11px; border-radius: 2px; background: #fff; }
+  .chip { border: 1px solid #bbb; background: #fff; padding: 1px 5px; font-size: 10px; line-height: 1.5; border-radius: 2px; }
+  .chip:hover { background: #111; color: #fff; border-color: #111; }
   textarea.code { resize: vertical; }
   .help-h { font-weight: 600; border-bottom: 1px solid #111; padding-bottom: 4px; margin: 14px 0 8px; }
   .help-grid { border-collapse: collapse; width: 100%; }
@@ -118,8 +120,8 @@
       <button data-view="studio" class="viewtab px-3 text-[11px] border-l border-neutral-300">前端</button>
     </div>
     <div class="relative ml-auto no-drag">
-      <input id="search" class="searchbox border border-neutral-400 px-2 py-1 text-[12px]" placeholder="全局搜索：接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)">
-      <div id="searchPanel" class="hidden absolute right-0 top-8 w-[420px] max-h-[360px] overflow-auto border border-neutral-900 bg-white z-30"></div>
+      <input id="search" class="searchbox border border-neutral-400 px-2 py-1 text-[12px]" placeholder="搜索接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)">
+      <div id="searchPanel" class="hidden absolute right-0 top-8 w-[480px] max-h-[380px] overflow-auto border border-neutral-900 bg-white z-30"></div>
     </div>
     <button class="btn thin" data-action="save">保存</button>
     <button class="btn thin" data-action="generate">生成服务</button>
@@ -139,7 +141,7 @@
     <aside class="w-72 shrink-0 border-l border-neutral-300 flex flex-col min-h-0 bg-neutral-50">
       <div id="sideTop" class="flex-1 overflow-auto"></div>
       <div class="border-t border-neutral-300 p-2 flex gap-2">
-        <button class="btn thin flex-1" data-action="logs">日志</button>
+        <button class="btn thin flex-1" data-action="logs">控制台</button>
         <button class="btn thin flex-1" data-action="help">帮助</button>
       </div>
     </aside>
@@ -158,6 +160,24 @@
     </div>
     <iframe id="studioFrame" title="ClickBuild 前端工坊" class="flex-1 w-full border-0 bg-[#F3F3F0]"></iframe>
   </div>
+
+  <section id="consoleDock" class="hidden shrink-0 flex-col border-t border-neutral-900 bg-white min-h-[120px]" style="height:200px">
+    <div id="consoleResize" class="h-[4px] shrink-0 cursor-row-resize bg-neutral-200 hover:bg-neutral-400" title="拖动调整控制台高度"></div>
+    <div class="flex-1 flex flex-col min-h-0">
+      <div id="consoleHead" class="h-8 shrink-0 border-b border-neutral-300 bg-neutral-100 flex items-stretch"></div>
+      <div class="h-8 shrink-0 border-b border-neutral-200 flex items-center gap-2 px-2 text-[11px]">
+        <input id="consoleFilter" class="border border-neutral-300 px-1 py-0.5 w-48" placeholder="过滤当前控制台输出…">
+        <label class="flex items-center gap-1 text-neutral-600"><input type="checkbox" id="consoleFollow" checked>自动滚动</label>
+        <span id="consoleMeta" class="text-neutral-500"></span>
+        <span class="ml-auto flex gap-1">
+          <button class="btn thin" id="consoleClear">清屏</button>
+          <button class="btn thin" id="consoleCopy">复制</button>
+          <button class="btn thin" id="consoleClose">关闭</button>
+        </span>
+      </div>
+      <pre id="consoleBody" class="flex-1 min-h-0 overflow-auto m-0 p-2 bg-[#fcfcfa] text-[11px] leading-[1.45] font-mono whitespace-pre-wrap"></pre>
+    </div>
+  </section>
 
   <footer id="sheetbar" class="h-9 shrink-0 border-t border-neutral-300 flex items-center px-1 gap-[2px] overflow-x-auto bg-neutral-100"></footer>
 </div>

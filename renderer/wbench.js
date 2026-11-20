@@ -722,7 +722,8 @@ function renderGrid() {
   $('#workspace').innerHTML = `
   <div class="h-9 shrink-0 flex items-center gap-3 px-3 border-b border-neutral-300 text-[12px]">
     <b>${esc(cat.name)}</b>
-    <span class="text-neutral-500">${rows.length} 个接口 · 双击行进入编辑</span>
+    <input id="gridFilter" class="border border-neutral-300 px-2 py-0.5 w-56" placeholder="筛选当前分类：接口 / 表 / 备注…" value="${esc(gridQuery)}">
+    <span class="text-neutral-500" id="gridCount">${rows.length} 个接口 · 双击行进入编辑</span>
     <span class="ml-auto flex gap-1">
       <button class="btn thin" data-action="newIface">＋ 新建接口</button>
       <button class="btn thin" data-action="addCat">＋ 新建分类</button>
@@ -733,18 +734,36 @@ function renderGrid() {
       <thead><tr><th class="rownum"></th>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
       <tbody>
         ${rows.map((i, n) => `
-          <tr data-iface="${i.id}" class="${i.id === S.selId ? 'sel' : ''}">
+          <tr data-iface="${i.id}" class="${i.id === S.selId ? 'sel' : ''}" data-search="${esc((i.name + ' ' + i.comment + ' ' + i.tables.map((t) => t.name + ' ' + t.comment).join(' ')).toLowerCase())}">
             <td class="rownum">${n + 1}</td>
-            <td class="font-medium">${esc(i.name)}</td>
-            <td class="mono text-[12px]">${i.tables.map((t) => esc(t.name)).join(', ')}</td>
+            <td class="font-medium" title="${esc(i.name)}">${esc(i.name)}</td>
+            <td class="mono text-[12px]" title="${esc(i.tables.map((t) => t.name).join(', '))}">${i.tables.map((t) => esc(t.name)).join(', ')}</td>
             <td class="mono text-[12px]">${i.tables.reduce((s, t) => s + t.fields.length, 0)}</td>
             <td class="mono text-[12px]">${i.routes.length}</td>
-            <td class="text-[12px] text-neutral-600 truncate">${esc(i.comment)}</td>
+            <td class="text-[12px] text-neutral-600 truncate" title="${esc(i.comment)}">${esc(i.comment)}</td>
           </tr>`).join('') || `<tr><td class="rownum">1</td><td colspan="5" class="text-neutral-500">这个分类还没有接口，点右上角新建。</td></tr>`}
+        ${rows.length ? `<tr id="gridNoHit" class="hidden"><td class="rownum"></td><td colspan="5" class="text-neutral-500">没有匹配的接口，换个关键词试试。</td></tr>` : ''}
       </tbody>
     </table>
   </div>`;
 
+  const filter = $('#gridFilter');
+  if (filter) {
+    filter.oninput = () => {
+      gridQuery = filter.value;
+      const q = gridQuery.trim().toLowerCase();
+      let shown = 0;
+      $$('#workspace tr[data-iface]').forEach((tr) => {
+        const hit = !q || (tr.dataset.search || '').includes(q);
+        tr.classList.toggle('hidden', !hit);
+        if (hit) shown += 1;
+      });
+      const noHit = $('#gridNoHit');
+      if (noHit) noHit.classList.toggle('hidden', !q || shown > 0);
+      const count = $('#gridCount');
+      if (count) count.textContent = q ? `${shown} / ${rows.length} 个接口` : `${rows.length} 个接口 · 双击行进入编辑`;
+    };
+  }
   $$('#workspace tr[data-iface]').forEach((tr) => {
     tr.addEventListener('click', () => { S.selId = tr.dataset.iface; $$('#workspace tr[data-iface]').forEach((x) => x.classList.remove('sel')); tr.classList.add('sel'); renderSide(); });
     tr.addEventListener('dblclick', () => openIface(tr.dataset.iface));
@@ -982,6 +1001,96 @@ function bindTables(it) {
 }
 
 /* ----- 路由脚本 ----- */
+function scriptTable(it) {
+  return it.tables[0] || { name: 'table', key: 'main', fields: [] };
+}
+
+function scriptTemplates(it) {
+  const t = scriptTable(it);
+  const key = t.key || 'main';
+  return [
+    ['列表', '分页查询并返回 rows', `LET $rows = QUERY SELECT {{columns:${key}}} FROM {{t:${key}}} WHERE {{where:${key}}} ORDER BY {{orderBy:${key}}} LIMIT {{limit}} OFFSET {{offset}};\nRETURN 200 { "ok": true, "rows": $rows.rows };`],
+    ['新增', '插入一条并返回 insertId', `LET $ins = EXEC INSERT INTO {{t:${key}}} ({{insertColumns:${key}}}) VALUES ({{insertValues:${key}}});\nRETURN 201 { "ok": true, "id": $ins.insertId };`],
+    ['校验', '先查重，再决定是否继续', `LET $exists = QUERY SELECT {{idColumn:${key}}} FROM {{t:${key}}} WHERE {{idColumn:${key}}} = {{body.id}} LIMIT 1;\nIF LEN($exists.rows) > 0\n  RETURN 409 { "ok": false, "error": "EXISTS" };\nEND`],
+    ['事务', '手动提交或回滚', `TX BEGIN;\nLET $a = EXEC INSERT INTO {{t:${key}}} ({{insertColumns:${key}}}) VALUES ({{insertValues:${key}}});\nTX COMMIT;\nRETURN 201 { "ok": true, "id": $a.insertId };`],
+    ['抓取', '抓网页并按大小/超时限制', `LET $page = CRAWL 'https://example.com' { maxBytes: 200000, timeout: 8000 };\nRETURN 200 { "ok": $page.ok, "title": $page.title, "bytes": $page.bytes };`],
+    ['等待', '显式延时，最长 60 秒', `WAIT 500;\nLOG DEBUG '等待完成';`],
+  ];
+}
+
+function scriptAssistHtml(it) {
+  const t = scriptTable(it);
+  const key = t.key || 'main';
+  const fields = (t.fields || []).slice(0, 8);
+  return `<aside id="scriptAssist" class="w-[264px] shrink-0 border-l border-neutral-300 bg-neutral-50 flex flex-col min-h-0">
+    <div class="h-8 shrink-0 border-b border-neutral-300 px-2 flex items-center gap-2">
+      <b class="text-[11px]">脚本助手</b>
+      <span class="text-[10px] text-neutral-500">Ctrl+空格</span>
+      <button class="ml-auto text-[11px] text-neutral-500 hover:text-neutral-900" data-assist-hide="1" title="收起脚本助手">收起</button>
+    </div>
+    <div class="flex-1 overflow-auto p-2 text-[11px]">
+      <div class="text-neutral-500 leading-5 mb-2">每条路由就是一段脚本：先 <span class="mono">LET</span> 取数，再 <span class="mono">IF</span> 判断，最后 <span class="mono">RETURN</span> 返回。</div>
+      <div class="font-semibold border-b border-neutral-300 pb-1 mb-1">插入常用写法</div>
+      <div class="grid grid-cols-2 gap-1 mb-3">
+        ${scriptTemplates(it).map(([label, , code], i) => `<button class="btn thin text-left" data-snp="${i}" title="${esc(code)}">${esc(label)}</button>`).join('')}
+      </div>
+      <div class="font-semibold border-b border-neutral-300 pb-1 mb-1">当前表：<span class="mono">${esc(t.name)}</span></div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        <button class="chip" data-chip="{{t:${esc(key)}}}" title="表名">表 {{t:${esc(key)}}}</button>
+        <button class="chip" data-chip="{{columns:${esc(key)}}}" title="全部字段">字段列表</button>
+        <button class="chip" data-chip="{{where:${esc(key)}}}" title="按 query 生成条件">WHERE</button>
+        <button class="chip" data-chip="{{idColumn:${esc(key)}}}" title="主键列">主键</button>
+      </div>
+      <div class="font-semibold border-b border-neutral-300 pb-1 mb-1">字段</div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        ${fields.map((f) => `<button class="chip" data-chip="{{body.${esc(f.name)}}}" title="请求体字段">${esc(f.name)}</button>`).join('') || '<span class="text-neutral-500">没有字段</span>'}
+      </div>
+      <div class="font-semibold border-b border-neutral-300 pb-1 mb-1">常用变量</div>
+      <div class="flex flex-wrap gap-1 mb-3">
+        ${['{{body.x}}', '{{query.x}}', '{{path.x}}', '{{id}}', '{{now}}', '{{uuid}}'].map((x) => `<button class="chip mono" data-chip="${esc(x)}">${esc(x)}</button>`).join('')}
+      </div>
+      <div class="text-neutral-500 leading-5 mb-2">参数写进 <span class="mono">{{...}}</span> 会自动参数化，不要自己拼 SQL 字符串。</div>
+      <button class="btn thin w-full" data-action="scriptGuide">完整语法速查</button>
+    </div>
+  </aside>`;
+}
+
+function insertScriptText(text) {
+  const ta = $('#rScript');
+  if (!ta) return;
+  const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+  const end = ta.selectionEnd == null ? start : ta.selectionEnd;
+  ta.setRangeText(text, start, end, 'end');
+  ta.focus();
+  const r = activeIface() && activeIface().routes.find((x) => x.id === S.routeId);
+  if (r) { r.script = ta.value; scheduleSave(); }
+  $('#rStatus').textContent = `${ta.value.split(/\n/).length} 行`;
+}
+
+function showScriptGuide() {
+  modal(`<div class="p-4 text-[12px] leading-6" style="max-height:78vh;overflow:auto">
+    <div class="font-semibold text-[13px] mb-1">脚本怎么写</div>
+    <div class="text-neutral-500 mb-3">一条路由一段脚本，按顺序执行；不需要写分号之外的 JS 语法。</div>
+    <table class="help-grid">
+      <thead><tr><th style="width:220px">写法</th><th>作用</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">LET $x = QUERY SELECT …;</td><td>查询，结果在 $x.rows</td></tr>
+        <tr><td class="mono">LET $x = EXEC INSERT/UPDATE/DELETE …;</td><td>增删改，结果在 $x.affectedRows / $x.insertId</td></tr>
+        <tr><td class="mono">IF 条件 … ELSE … END</td><td>分支；条件可用 LEN、IN、CONTAINS</td></tr>
+        <tr><td class="mono">FOREACH $row IN $x.rows … END</td><td>循环，最多 500 条</td></tr>
+        <tr><td class="mono">RETURN 200 { "ok": true };</td><td>直接返回 JSON</td></tr>
+        <tr><td class="mono">LOG INFO '内容';</td><td>写运行日志，控制台可见</td></tr>
+        <tr><td class="mono">WAIT 500;</td><td>等待 500 毫秒，最长 60 秒</td></tr>
+        <tr><td class="mono">TX BEGIN; … TX COMMIT;</td><td>手动事务；异常时 ROLLBACK</td></tr>
+        <tr><td class="mono">LET $x = CRAWL 'https://…' { … };</td><td>抓取网页，返回 title/text/links/bytes</td></tr>
+      </tbody>
+    </table>
+    <div class="mt-3 font-semibold">最常用占位符</div>
+    <div class="text-neutral-600"><span class="mono">{{t:main}}</span> 表名 · <span class="mono">{{columns:main}}</span> 字段 · <span class="mono">{{where:main}}</span> 条件 · <span class="mono">{{body.x}}</span> 请求体 · <span class="mono">{{query.x}}</span> 查询参数 · <span class="mono">{{id}}</span> 主键参数</div>
+    <div class="flex justify-end mt-4"><button class="btn thin" id="sgClose">知道了</button></div>
+  </div>`, (root) => { root.querySelector('#sgClose').onclick = closeModal; }, { width: 760, maxHeight: '86vh' });
+}
+
 function tabRoutes(it) {
   const r = it.routes.find((x) => x.id === S.routeId) || it.routes[0];
   if (!r) return '<div class="p-4">没有路由。</div>';
@@ -1003,17 +1112,25 @@ function tabRoutes(it) {
       </div>
     </div>
     <div class="flex-1 flex flex-col min-w-0">
-      <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-neutral-200 text-[12px]">
-        <input id="rName" class="border border-neutral-300 px-1 py-0.5 w-36" value="${esc(r.name)}">
-        <select id="rMethod" class="border border-neutral-300 px-1 py-0.5 mono">
-          ${['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map((m) => `<option ${m === r.method ? 'selected' : ''}>${m}</option>`).join('')}
-        </select>
-        <input id="rPath" class="border border-neutral-300 px-1 py-0.5 mono flex-1 min-w-24" value="${esc(r.path)}">
-        <label class="flex items-center gap-1"><input type="checkbox" id="rCache" ${r.cache.enabled ? 'checked' : ''}>Redis 缓存</label>
-        <button class="btn thin" data-action="checkOne">校验</button>
-        <button class="btn thin" data-action="tryRoute">试运行</button>
-        <button class="btn thin" data-action="preview">预览 SQL</button>
-        <button class="btn thin" data-action="delRoute">删除</button>
+      <div class="shrink-0 px-3 py-2 border-b border-neutral-200 text-[12px]">
+        <div class="flex items-center gap-2 min-w-0">
+          <input id="rName" class="border border-neutral-300 px-1 py-0.5 w-36 shrink-0" value="${esc(r.name)}">
+          <select id="rMethod" class="border border-neutral-300 px-1 py-0.5 mono shrink-0">
+            ${['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map((m) => `<option ${m === r.method ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+          <input id="rPath" class="border border-neutral-300 px-1 py-0.5 mono flex-1 min-w-24" value="${esc(r.path)}">
+          <label class="flex items-center gap-1 shrink-0"><input type="checkbox" id="rCache" ${r.cache.enabled ? 'checked' : ''}>Redis 缓存</label>
+        </div>
+        <div class="flex items-center gap-2 mt-1 min-w-0">
+          <button class="btn thin shrink-0 whitespace-nowrap" data-action="toggleAssist">脚本提示</button>
+          <span class="text-[10px] text-neutral-500 truncate">Ctrl+空格 开关右侧助手；试运行会请求当前已启动的服务</span>
+          <div class="ml-auto flex items-center gap-1 shrink-0">
+            <button class="btn thin whitespace-nowrap" data-action="checkOne">校验</button>
+            <button class="btn thin whitespace-nowrap" data-action="tryRoute">试运行</button>
+            <button class="btn thin whitespace-nowrap" data-action="preview">预览 SQL</button>
+            <button class="btn thin whitespace-nowrap" data-action="delRoute">删除</button>
+          </div>
+        </div>
       </div>
       ${r.key === 'proxy' ? `<div class="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-neutral-200 bg-neutral-50 text-[11px]" style="flex-wrap:wrap">
         <span>上游 <select id="pxUpstream" class="border border-neutral-300 px-1 py-0.5 mono">${['', ...(S.project.upstreams || []).map((u) => u.id)].map((id) => {
@@ -1024,7 +1141,10 @@ function tabRoutes(it) {
         <span>超时 <input id="pxTimeout" class="border border-neutral-300 px-1 py-0.5 mono w-16" value="${esc((r.proxy && r.proxy.timeout) || 15000)}"> ms</span>
         <label class="flex items-center gap-1"><input type="checkbox" id="pxHeaders" ${!(r.proxy && r.proxy.forwardHeaders === false) ? 'checked' : ''}> 转发请求头</label>
       </div>` : ''}
-      <textarea id="rScript" class="flex-1 min-h-0 border-0 p-3 monoarea outline-none" spellcheck="false">${esc(r.script)}</textarea>
+      <div class="flex-1 flex min-h-0">
+        <textarea id="rScript" class="flex-1 min-w-0 border-0 p-3 monoarea outline-none" spellcheck="false">${esc(r.script)}</textarea>
+        ${scriptAssistHtml(it)}
+      </div>
       <div class="shrink-0 border-t border-neutral-300 px-3 py-1 text-[11px] text-neutral-600 flex gap-3">
         <span>LET / QUERY / EXEC / IF / ELSE / END / FOREACH / RETURN / LOG</span>
         <span class="ml-auto" id="rStatus">${r.script.split(/\n/).length} 行</span>
@@ -1050,8 +1170,32 @@ function bindRoutes(it) {
     const fh = $('#pxHeaders');
     if (fh) fh.onchange = () => { r.proxy = r.proxy || {}; r.proxy.forwardHeaders = fh.checked; scheduleSave(); };
   }
-  const tryBtn = $('[data-action="tryRoute"]');
-  if (tryBtn) tryBtn.onclick = () => {
+  const assist = $('#scriptAssist');
+  if (assist) {
+    assist.querySelectorAll('[data-assist-hide]').forEach((b) => {
+      b.onclick = () => { assist.classList.add('hidden'); };
+    });
+    assist.querySelectorAll('[data-snp]').forEach((b) => {
+      b.onclick = () => {
+        const list = scriptTemplates(it);
+        const item = list[Number(b.dataset.snp)];
+        if (item) insertScriptText(item[2] + '\n');
+      };
+    });
+    assist.querySelectorAll('[data-chip]').forEach((b) => {
+      b.onclick = () => insertScriptText(b.dataset.chip || '');
+    });
+  }
+  const scriptBox = $('#rScript');
+  if (scriptBox) {
+    scriptBox.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && (e.key === ' ' || e.key === 'Space')) {
+        e.preventDefault();
+        if (assist) assist.classList.toggle('hidden');
+      }
+    });
+  }
+  const tryBtn = $('[data-action="tryRoute"]');  if (tryBtn) tryBtn.onclick = () => {
     const sampleBody = (r.docs && r.docs.requestExample) || (['POST', 'PUT', 'PATCH'].includes(r.method) ? '{\n  \n}' : '');
     modal(`<div class="p-4 text-[12px]">
       <div class="font-semibold mb-1">试运行 ${esc(r.method)} ${esc(r.path)}</div>
@@ -1560,6 +1704,15 @@ function renderHelp() {
     </span>
   </div>
   <div class="flex-1 overflow-auto p-4 text-[12px] leading-6">
+    <div class="help-h">0. 在这里能做什么</div>
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="border border-neutral-300 p-3"><b>1. 建表</b><div class="text-neutral-600">在接口里加一张或多张表，字段名、类型、主键、自增、可空、可查直接在表格里改。</div></div>
+      <div class="border border-neutral-300 p-3"><b>2. 生成接口</b><div class="text-neutral-600">列表、详情、新建、更新、删除、附件、上游转发、对象表、抓取都可以一键加路由。</div></div>
+      <div class="border border-neutral-300 p-3"><b>3. 写脚本</b><div class="text-neutral-600">每条路由一段脚本：查库、判断、事务、返回 JSON；右侧脚本助手会给出常用写法和字段。</div></div>
+      <div class="border border-neutral-300 p-3"><b>4. 联调</b><div class="text-neutral-600">在“路由”页点“试运行”发请求；底部控制台看服务输出、数据库和 Redis 日志。</div></div>
+      <div class="border border-neutral-300 p-3"><b>5. 导出</b><div class="text-neutral-600">生成 Node / Python / Go / Java 工程，根目录 config.json 改端口、数据库等参数，不用改源码。</div></div>
+    </div>
+
     <div class="help-h">1. 一条路由 = 一段脚本</div>
 <pre class="monoarea border border-neutral-300 p-3 bg-neutral-50">LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;
 IF LEN($exists.rows) &gt; 0
@@ -1618,54 +1771,126 @@ END</pre>
 }
 
 /* ---------------- 搜索 ---------------- */
+let gridQuery = '';
+let searchActive = -1;
+let searchRows = [];
+const SEARCH_LIMIT = 60;
+const SEARCH_KIND_ORDER = { '接口': 0, '路由': 1, '表': 2, '字段': 3 };
+
+function searchScore(text, q, weight) {
+  const t = String(text || '').toLowerCase();
+  if (t === q) return 100 * weight;
+  if (t.startsWith(q)) return 60 * weight;
+  if (t.includes(q)) return 30 * weight;
+  return 0;
+}
+
+function markSearch(text, q) {
+  const raw = String(text == null ? '' : text);
+  const low = raw.toLowerCase();
+  const idx = low.indexOf(q.toLowerCase());
+  if (idx < 0) return esc(raw);
+  return esc(raw.slice(0, idx)) + '<mark>' + esc(raw.slice(idx, idx + q.length)) + '</mark>' + esc(raw.slice(idx + q.length));
+}
+
 function searchMatches(q) {
-  const list = [];
   const low = q.toLowerCase();
+  const seen = new Map();
+  const total = { score: 0 };
+  const push = (id, kind, text, extra, cat, more) => {
+    const key = `${id}|${kind}|${text}`;
+    if (seen.has(key)) return;
+    seen.set(key, { id, kind, text, extra, cat, score: total.score, ...(more || {}) });
+  };
   for (const it of S.project.interfaces) {
     const cat = S.project.categories.find((c) => c.id === it.categoryId);
-    const push = (kind, text, extra) => list.push({ id: it.id, kind, text, cat: cat ? cat.name : '', extra });
-    if (it.name.toLowerCase().includes(low)) push('接口', it.name, '名称');
-    if ((it.comment || '').toLowerCase().includes(low)) push('接口', it.comment, '备注');
+    const catName = cat ? cat.name : '';
+    total.score = searchScore(it.name, low, 3);
+    if (it.name.toLowerCase().includes(low)) push(it.id, '接口', it.name, '名称', catName);
+    total.score = searchScore(it.comment || '', low, 2);
+    if ((it.comment || '').toLowerCase().includes(low)) push(it.id, '接口', it.comment, '备注', catName);
     for (const t of it.tables) {
-      if (t.name.toLowerCase().includes(low)) push('表', t.name, `表键 ${t.key}`);
+      total.score = searchScore(t.name, low, 2);
+      if (t.name.toLowerCase().includes(low)) push(it.id, '表', t.name, `表键 ${t.key}`, catName, { tableKey: t.key });
+      total.score = searchScore(t.comment || '', low, 2);
+      if ((t.comment || '').toLowerCase().includes(low)) push(it.id, '表', `${t.name} · ${t.comment}`, '表注释', catName, { tableKey: t.key });
       const mode = storeOf(t).mode;
-      if (mode.includes(low) || storeLabel(mode).toLowerCase().includes(low)) push('表', `${t.name} · ${storeLabel(mode)}`, '加速模式');
-      for (const f of t.fields) if (f.name.toLowerCase().includes(low)) push('字段', `${t.name}.${f.name}`, f.type);
+      total.score = searchScore(storeLabel(mode), low, 2);
+      if (mode.includes(low) || storeLabel(mode).toLowerCase().includes(low)) push(it.id, '表', `${t.name} · ${storeLabel(mode)}`, '加速模式', catName, { tableKey: t.key });
+      for (const f of t.fields) {
+        const display = `${t.name}.${f.name}`;
+        total.score = searchScore(display, low, 3);
+        if (display.toLowerCase().includes(low)) push(it.id, '字段', display, f.type, catName, { tableKey: t.key, field: f.name });
+        total.score = searchScore(f.comment || '', low, 1);
+        if ((f.comment || '').toLowerCase().includes(low)) push(it.id, '字段', `${display} · ${f.comment}`, '字段注释', catName, { tableKey: t.key, field: f.name });
+      }
     }
     for (const r of it.routes) {
-      if ((r.name + ' ' + r.path + ' ' + r.script).toLowerCase().includes(low)) push('路由', `${r.method} ${r.path}`, r.name);
+      total.score = searchScore(`${r.method} ${r.path}`, low, 2);
+      if ((r.name + ' ' + r.path + ' ' + r.script).toLowerCase().includes(low)) {
+        push(it.id, '路由', `${r.method} ${r.path}`, r.name || '路由', catName, { routeId: r.id });
+      }
     }
   }
-  return list.slice(0, 40);
+  const rows = [...seen.values()].sort((a, b) => b.score - a.score || (SEARCH_KIND_ORDER[a.kind] ?? 9) - (SEARCH_KIND_ORDER[b.kind] ?? 9));
+  return { rows, total: rows.length };
+}
+
+function focusTableField(name) {
+  if (!name) return;
+  const rows = [...document.querySelectorAll('#workspace tr[data-field-row]')];
+  const row = rows.find((tr) => {
+    const inp = tr.querySelector('[data-fk="name"]');
+    return inp && inp.value === name;
+  });
+  if (!row) return;
+  row.scrollIntoView({ block: 'center' });
+  row.style.background = '#fff3bf';
+  row.style.outline = '2px solid #171717';
+  const inp = row.querySelector('[data-fk="name"]');
+  if (inp) { inp.focus(); inp.select && inp.select(); }
+  setTimeout(() => { row.style.background = ''; row.style.outline = ''; }, 1800);
 }
 
 function renderSearch() {
   const q = $('#search').value.trim();
   const panel = $('#searchPanel');
-  if (!q) { panel.classList.add('hidden'); return; }
-  const rows = searchMatches(q);
+  if (!q) { panel.classList.add('hidden'); searchActive = -1; return; }
+  const found = searchMatches(q);
+  searchRows = found.rows;
+  if (searchActive >= searchRows.length) searchActive = 0;
   panel.classList.remove('hidden');
-  panel.innerHTML = rows.length ? rows.map((r, i) => `
-    <div class="result-item px-3 py-2 border-b border-neutral-200 cursor-pointer" data-res="${i}">
-      <div class="flex gap-2 items-center"><span class="pill">${esc(r.kind)}</span><span>${esc(r.text)}</span></div>
+  const head = `<div class="sticky top-0 bg-neutral-100 border-b border-neutral-300 px-3 py-1.5 text-[11px] flex gap-2">
+    <b>${found.total} 条</b><span class="text-neutral-500">↑↓ 选择 · Enter 跳转</span>
+    ${found.total > SEARCH_LIMIT ? `<span class="ml-auto text-neutral-500">显示前 ${SEARCH_LIMIT} 条，缩小关键词继续找</span>` : ''}
+  </div>`;
+  const body = searchRows.length ? searchRows.slice(0, SEARCH_LIMIT).map((r, i) => `
+    <div class="result-item px-3 py-2 border-b border-neutral-200 cursor-pointer ${i === searchActive ? 'bg-neutral-100' : ''}" data-res="${i}">
+      <div class="flex gap-2 items-center"><span class="pill">${esc(r.kind)}</span><span>${markSearch(r.text, q)}</span></div>
       <div class="text-[11px] text-neutral-500">${esc(r.cat)} · ${esc(r.extra)}</div>
     </div>`).join('') : '<div class="p-3 text-neutral-500 text-[12px]">没有匹配。</div>';
+  panel.innerHTML = head + body;
+  if (searchActive >= 0) {
+    const el = panel.querySelector(`[data-res="${searchActive}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }
   panel.querySelectorAll('[data-res]').forEach((el) => {
     el.onclick = () => {
-      const r = rows[Number(el.dataset.res)];
+      const r = searchRows[Number(el.dataset.res)];
       const it = ifaceOf(r.id);
       S.cat = it.categoryId;
       if (r.kind === '路由') {
-        const path = r.text.split(' ').slice(1).join(' ');
-        const route = it.routes.find((x) => x.path === path) || it.routes[0];
+        const route = it.routes.find((x) => x.id === r.routeId) || it.routes[0];
         S.routeId = route.id; S.mode = 'editor'; S.tab = 'routes';
       } else if (r.kind === '表' || r.kind === '字段') {
-        const key = (it.tables.find((t) => r.text.startsWith(t.name)) || it.tables[0]).key;
+        const key = r.tableKey || (it.tables[0] || {}).key;
         S.tableKey = key; S.mode = 'editor'; S.tab = 'tables';
       } else openIface(it.id);
       panel.classList.add('hidden');
       $('#search').value = '';
+      searchActive = -1;
       render();
+      if (r.kind === '字段' && r.field) requestAnimationFrame(() => focusTableField(r.field));
     };
   });
 }
@@ -1763,6 +1988,12 @@ async function launchWeb() {
 async function act(name, el) {
   const it = activeIface();
   if (name === 'save') return save();
+  if (name === 'scriptGuide') return showScriptGuide();
+  if (name === 'toggleAssist') {
+    const a = $('#scriptAssist');
+    if (a) a.classList.toggle('hidden');
+    return;
+  }
   if (name === 'seed') {
     if (!(await confirmBox('重置工程', '会用示例工程覆盖当前内容，先保存的话请点取消。'))) return;
     S.project = await api.seed();
@@ -2302,24 +2533,209 @@ async function showPlugins() {
   });
 }
 
+/* ---------------- 底部控制台（IDEA 风格，多标签） ---------------- */
+const CONSOLE_SOURCES = {
+  server: { label: '生成服务', empty: '还没有输出。点击“启动”后，服务 stdout / stderr 会实时显示在这里。' },
+  mysql: { label: 'MariaDB', empty: 'MariaDB 还没有输出。' },
+  redis: { label: 'Redis', empty: 'Redis 还没有输出。' },
+  s3: { label: 'RustFS', empty: 'RustFS 还没有输出。' },
+};
+const consoleState = { tabs: [], active: '', follow: true, filter: '', timer: null, busy: false, seed: 0 };
+
+function consoleTabOf(id) { return consoleState.tabs.find((t) => t.id === id); }
+function consoleActiveTab() { return consoleTabOf(consoleState.active); }
+
+function stripAnsi(text) {
+  return String(text || '').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\r/g, '');
+}
+
+function appendConsoleText(tab, raw) {
+  const text = stripAnsi(raw);
+  if (text === tab.prev) return;
+  let add = '';
+  if (!tab.prev) add = text;
+  else if (text.startsWith(tab.prev)) add = text.slice(tab.prev.length);
+  else {
+    let overlap = 0;
+    const max = Math.min(tab.prev.length, text.length);
+    for (let n = max; n > 0; n--) {
+      if (tab.prev.slice(-n) === text.slice(0, n)) { overlap = n; break; }
+    }
+    add = (overlap ? '' : '[日志已滚动，下面是最新一段]\n') + text.slice(overlap);
+  }
+  tab.prev = text;
+  if (add) tab.text = (tab.text + add).slice(-200000);
+}
+
+function consoleLineCount(text) { return text ? text.split('\n').length : 0; }
+
+function renderConsoleHead() {
+  const head = $('#consoleHead');
+  if (!head) return;
+  head.innerHTML = consoleState.tabs.map((t) => {
+    const on = t.id === consoleState.active;
+    return `<div class="console-tab flex items-center gap-1 px-3 border-r border-neutral-300 cursor-pointer ${on ? 'bg-white font-semibold border-b-2 border-b-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}" data-ctab="${t.id}">
+      <span class="inline-block w-1.5 h-1.5 rounded-full ${t.text ? 'bg-neutral-900' : 'bg-neutral-300'}"></span>
+      <span>${esc(t.label)}</span>
+      <span class="text-neutral-400">${consoleLineCount(t.text)}</span>
+      <button class="ml-1 text-neutral-400 hover:text-neutral-900" data-ctab-close="${t.id}" title="关闭这个控制台">×</button>
+    </div>`;
+  }).join('') + `<button id="consolePlus" class="px-2 text-neutral-600 hover:bg-neutral-200" title="新建控制台">＋</button>
+    <span class="ml-auto pr-2 text-[10px] text-neutral-500 self-center">${consoleState.tabs.length} 个控制台 · 每秒刷新</span>`;
+  head.querySelectorAll('[data-ctab]').forEach((el) => {
+    el.onclick = (e) => {
+      if (e.target.closest('[data-ctab-close]')) return;
+      consoleState.active = el.dataset.ctab;
+      renderConsoleHead();
+      renderConsoleBody();
+      pollConsole();
+    };
+  });
+  head.querySelectorAll('[data-ctab-close]').forEach((el) => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      closeConsoleTab(el.dataset.ctabClose);
+    };
+  });
+  const plus = $('#consolePlus');
+  if (plus) plus.onclick = showConsoleSourcePicker;
+}
+
+function renderConsoleBody() {
+  const body = $('#consoleBody');
+  const meta = $('#consoleMeta');
+  if (!body) return;
+  const tab = consoleActiveTab();
+  if (!tab) { body.textContent = ''; meta.textContent = ''; return; }
+  const q = consoleState.filter.trim().toLowerCase();
+  let text = tab.text;
+  if (q) {
+    const lines = text.split('\n');
+    text = lines.filter((l) => l.toLowerCase().includes(q)).join('\n');
+    if (!text) text = `（没有包含“${consoleState.filter.trim()}”的行）`;
+  }
+  if (!text) text = CONSOLE_SOURCES[tab.source].empty;
+  body.textContent = text;
+  meta.textContent = `${consoleLineCount(tab.text)} 行 · ${tab.source === 'server' ? (serverRunning() ? '运行中' : '未启动') : '服务日志'}`;
+  if (consoleState.follow) body.scrollTop = body.scrollHeight;
+}
+
+function serverRunning() {
+  const s = ((S.services && S.services.items) || []).find((x) => x.id === 'server');
+  return !!(s && s.running);
+}
+
+async function pollConsole() {
+  const tab = consoleActiveTab();
+  if (!tab || consoleState.busy || $('#consoleDock').classList.contains('hidden')) return;
+  consoleState.busy = true;
+  try {
+    const raw = await api.logs(tab.source);
+    appendConsoleText(tab, raw || '');
+    renderConsoleBody();
+    renderConsoleHead();
+  } catch (e) {
+    appendConsoleText(tab, `[读取 ${tab.label} 日志失败] ${e.message}\n`);
+  } finally { consoleState.busy = false; }
+}
+
+function addConsoleTab(source) {
+  const meta = CONSOLE_SOURCES[source];
+  if (!meta) return null;
+  const exist = consoleState.tabs.find((t) => t.source === source);
+  if (exist) { consoleState.active = exist.id; return exist; }
+  consoleState.seed += 1;
+  const tab = { id: `${source}-${consoleState.seed}`, source, label: meta.label, text: '', prev: '' };
+  consoleState.tabs.push(tab);
+  consoleState.active = tab.id;
+  return tab;
+}
+
+function openConsoleDock(source) {
+  const dock = $('#consoleDock');
+  if (!dock) return;
+  addConsoleTab(source || 'server');
+  dock.classList.remove('hidden');
+  dock.classList.add('flex');
+  renderConsoleHead();
+  renderConsoleBody();
+  pollConsole();
+  if (!consoleState.timer) consoleState.timer = setInterval(pollConsole, 1000);
+}
+
+function closeConsoleTab(id) {
+  const idx = consoleState.tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return;
+  consoleState.tabs.splice(idx, 1);
+  if (consoleState.active === id) consoleState.active = consoleState.tabs[Math.max(0, idx - 1)] ? consoleState.tabs[Math.max(0, idx - 1)].id : '';
+  if (!consoleState.tabs.length) { closeConsoleDock(); return; }
+  renderConsoleHead(); renderConsoleBody(); pollConsole();
+}
+
+function closeConsoleDock() {
+  const dock = $('#consoleDock');
+  dock.classList.add('hidden');
+  dock.classList.remove('flex');
+  if (consoleState.timer) { clearInterval(consoleState.timer); consoleState.timer = null; }
+}
+
+function showConsoleSourcePicker() {
+  const options = Object.entries(CONSOLE_SOURCES).map(([id, s]) => `<button class="btn thin" data-csource="${id}">${esc(s.label)}</button>`).join('');
+  modal(`<div class="p-4 text-[12px]">
+    <div class="font-semibold mb-1">新建控制台</div>
+    <div class="text-neutral-500 mb-3">每类服务一个独立输出标签；可以同时开生成服务、MariaDB、Redis、RustFS。</div>
+    <div class="flex gap-2 flex-wrap">${options}</div>
+    <div class="flex justify-end mt-4"><button class="btn thin" id="csCancel">取消</button></div>
+  </div>`, (root) => {
+    root.querySelector('#csCancel').onclick = closeModal;
+    root.querySelectorAll('[data-csource]').forEach((b) => {
+      b.onclick = () => { openConsoleDock(b.dataset.csource); closeModal(); };
+    });
+  }, { width: 460 });
+}
+
+function bindConsoleDock() {
+  const close = $('#consoleClose');
+  if (close) close.onclick = closeConsoleDock;
+  const clear = $('#consoleClear');
+  if (clear) clear.onclick = () => {
+    const tab = consoleActiveTab();
+    if (!tab) return;
+    tab.text = '';
+    renderConsoleHead(); renderConsoleBody();
+    pollConsole();
+  };
+  const copy = $('#consoleCopy');
+  if (copy) copy.onclick = async () => {
+    const tab = consoleActiveTab();
+    if (!tab) return;
+    try { await navigator.clipboard.writeText(tab.text); toast('当前控制台内容已复制'); }
+    catch (e) { toast('复制失败：' + e.message); }
+  };
+  const filter = $('#consoleFilter');
+  if (filter) filter.oninput = () => { consoleState.filter = filter.value; renderConsoleBody(); };
+  const follow = $('#consoleFollow');
+  if (follow) follow.onchange = () => { consoleState.follow = follow.checked; renderConsoleBody(); };
+  const resize = $('#consoleResize');
+  if (resize) {
+    resize.onmousedown = (e) => {
+      e.preventDefault();
+      const dock = $('#consoleDock');
+      const startY = e.clientY;
+      const startH = dock.getBoundingClientRect().height;
+      const move = (ev) => {
+        const h = Math.max(120, Math.min(window.innerHeight * 0.7, startH + (startY - ev.clientY)));
+        dock.style.height = h + 'px';
+      };
+      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    };
+  }
+}
+
 function showLogs() {
-  const drawer = $('#drawer');
-  drawer.classList.remove('hidden');
-  drawer.innerHTML = `
-    <div class="h-10 shrink-0 border-b border-neutral-900 flex items-center px-3 gap-2">
-      <b class="text-[13px]">运行日志</b>
-      <select id="logId" class="border border-neutral-300 px-1 py-0.5 text-[12px]">
-        <option value="server">生成的服务</option><option value="mysql">MariaDB</option><option value="redis">Redis</option><option value="s3">RustFS</option>
-      </select>
-      <button class="btn thin ml-auto" id="logRefresh">刷新</button>
-      <button class="btn thin" id="logClose">关闭</button>
-    </div>
-    <pre id="logBody" class="flex-1 overflow-auto monoarea p-3 whitespace-pre-wrap"></pre>`;
-  const load = async () => { $('#logBody').textContent = (await api.logs($('#logId').value)) || '（没有日志）'; };
-  $('#logId').onchange = load;
-  $('#logRefresh').onclick = load;
-  $('#logClose').onclick = () => drawer.classList.add('hidden');
-  load();
+  openConsoleDock('server');
 }
 
 function newRoute(it, kind) {
@@ -2374,16 +2790,34 @@ document.addEventListener('click', (e) => {
   act(el.dataset.action, el).catch((err) => toast(String(err && err.message || err), 5000));
 });
 
-$('#search').addEventListener('input', renderSearch);
+$('#search').addEventListener('input', () => { searchActive = -1; renderSearch(); });
 $('#search').addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { $('#searchPanel').classList.add('hidden'); }
-  if (e.key === 'Enter') { const first = $('#searchPanel [data-res]'); if (first) first.click(); }
+  if (e.key === 'Escape') { $('#searchPanel').classList.add('hidden'); searchActive = -1; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!searchRows.length) return;
+    const max = Math.min(SEARCH_LIMIT, searchRows.length) - 1;
+    searchActive = e.key === 'ArrowDown' ? Math.min(max, searchActive + 1) : Math.max(0, searchActive - 1);
+    renderSearch();
+    return;
+  }
+  if (e.key === 'Enter') {
+    const target = searchActive >= 0 ? $(`#searchPanel [data-res="${searchActive}"]`) : $('#searchPanel [data-res]');
+    if (target) target.click();
+  }
 });
+bindConsoleDock();
 document.addEventListener('keydown', (e) => {
   const typing = e.target.closest('input, textarea, select, [contenteditable="true"]');
   const modalOpen = !$('#modal').classList.contains('hidden');
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#search').focus(); $('#search').select(); return; }
+  if ((e.altKey && e.key === 'F12') || (mod && e.key === '`')) {
+    e.preventDefault();
+    if ($('#consoleDock').classList.contains('hidden')) openConsoleDock('server');
+    else closeConsoleDock();
+    return;
+  }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
   if (mod && !typing && !modalOpen && e.key.toLowerCase() === 'n') {
     e.preventDefault();

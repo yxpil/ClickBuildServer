@@ -392,6 +392,94 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const tryDlg = await val(`(async()=>{S.tab='routes';render();const b=document.querySelector('[data-action="tryRoute"]');if(!b)return '无按钮';b.click();await new Promise(r=>setTimeout(r,100));const m=document.querySelector('#modal');const t=m?m.innerText:'无弹窗';closeModal();return t;})()`, true);
   t('路由试运行弹窗可打开并含请求体/结果区', /试运行/.test(tryDlg) && /请求体/.test(tryDlg) && /发送/.test(tryDlg), tryDlg.slice(0, 100));
 
+  // 脚本助手：小白看得懂、点一下能插入
+  const assist = await val(`(()=>{
+    S.mode='editor';S.tab='routes';render();
+    const r=S.project.interfaces[0].routes[0];
+    S.routeId=r.id;render();
+    const box=document.querySelector('#scriptAssist');
+    const before=r.script;
+    const tpl=box?box.querySelector('[data-snp="0"]'):null;
+    if(tpl)tpl.click();
+    const after=r.script;
+    r.script=before;render();
+    return JSON.stringify({
+      box:!!box,
+      templates:box?box.querySelectorAll('[data-snp]').length:0,
+      chips:box?box.querySelectorAll('[data-chip]').length:0,
+      inserted:after!==before,
+      guide:!!box&&/完整语法速查/.test(box.innerText)
+    });
+  })()`);
+  const as = JSON.parse(assist);
+  t('路由页有脚本助手与常用模板', as.box && as.templates >= 6 && as.chips >= 4 && as.guide, assist.slice(0, 120));
+  t('脚本模板点一下能插入', as.inserted, assist.slice(0, 120));
+  const guide = await val(`(()=>{act('scriptGuide');const t=document.querySelector('#modal').innerText;closeModal();return t;})()`);
+  t('脚本速查覆盖事务/抓取/等待', /TX BEGIN/.test(guide) && /CRAWL/.test(guide) && /WAIT/.test(guide), guide.slice(0, 100));
+
+  // 底部多控制台
+  const dock = await val(`(()=>{
+    act('logs');openConsoleDock('mysql');
+    const d=document.querySelector('#consoleDock');
+    const tabs=document.querySelectorAll('#consoleHead [data-ctab]').length;
+    const text=d.querySelector('#consoleBody').textContent;
+    const visible=!d.classList.contains('hidden');
+    const head=document.querySelector('#consoleHead').innerText;
+    closeConsoleDock();
+    return JSON.stringify({visible,tabs,hasBody:!!text,head});
+  })()`);
+  const dk = JSON.parse(dock);
+  t('底部控制台可打开并显示输出区', dk.visible && dk.hasBody, dock.slice(0, 120));
+  t('控制台支持多个服务标签', dk.tabs >= 2, dock.slice(0, 120));
+
+  // 大工程：130 个接口下的溢出、筛选和搜索
+  const scale = await val(`(()=>{
+    const saved=JSON.parse(JSON.stringify(S.project));
+    const catId=(S.project.categories[0]||{}).id;
+    const base=S.project.interfaces[0];
+    const all=[];
+    for(let i=0;i<130;i++){
+      const c=JSON.parse(JSON.stringify(base));
+      c.id='ui_scale_'+i; c.name='规模接口_'+String(i).padStart(3,'0'); c.categoryId=catId;
+      c.comment='大数据量布局测试';
+      all.push(c);
+    }
+    S.project.interfaces=all; S.cat=catId; S.selId=all[0].id; S.mode='grid'; gridQuery=''; render();
+    const ws=document.querySelector('#workspace');
+    const table=ws.querySelector('.gt');
+    const filter=ws.querySelector('#gridFilter');
+    filter.value='规模接口_129'; filter.dispatchEvent(new Event('input'));
+    const visible=Array.from(ws.querySelectorAll('tr[data-iface]')).filter(tr=>!tr.classList.contains('hidden')).length;
+    const count=ws.querySelector('#gridCount').textContent;
+    filter.value=''; filter.dispatchEvent(new Event('input'));
+    document.querySelector('#search').value='规模'; document.querySelector('#search').dispatchEvent(new Event('input'));
+    const panel=document.querySelector('#searchPanel');
+    const header=panel.querySelector('div').innerText;
+    const rows=panel.querySelectorAll('[data-res]').length;
+    document.querySelector('#search').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+    const active=panel.querySelectorAll('.result-item.bg-neutral-100').length;
+    const panelScroll=panel.scrollHeight>panel.clientHeight;
+    S.project=saved; gridQuery=''; document.querySelector('#search').value=''; render();
+    return JSON.stringify({interfaces:all.length,wsOverflow:ws.scrollWidth>ws.clientWidth+1,tableOverflow:table.scrollWidth>table.clientWidth+1,visible,count,rows,header,active,panelScroll});
+  })()`);
+  const sc = JSON.parse(scale);
+  t('130 个接口不撑破工作区', !sc.wsOverflow && !sc.tableOverflow, scale.slice(0, 160));
+  t('分类内筛选能收敛到 1 条', sc.visible === 1 && sc.count.includes('1 / 130'), scale.slice(0, 160));
+  t('搜索结果有总数、限流与滚动', sc.rows === 60 && /130 条/.test(sc.header) && /显示前 60/.test(sc.header) && sc.panelScroll, scale.slice(0, 200));
+  t('搜索支持方向键选中', sc.active === 1, scale.slice(0, 160));
+
+  const jump = await val(`(async()=>{
+    const it=S.project.interfaces[0];const t=it.tables[0];const f=t.fields[0];
+    const q=t.name+'.'+f.name;
+    const s=document.querySelector('#search');s.value=q;s.dispatchEvent(new Event('input'));
+    const first=document.querySelector('#searchPanel [data-res="0"]');
+    if(!first)return '无结果';
+    first.click();await new Promise(r=>setTimeout(r,120));
+    return JSON.stringify({tab:S.tab,key:S.tableKey,focus:document.activeElement&&document.activeElement.value,expected:f.name});
+  })()`, true);
+  const jp = JSON.parse(jump);
+  t('搜索字段能跳到字段并聚焦', jp.tab === 'tables' && jp.focus === jp.expected, jump);
+
   // 清理隔离工程并恢复用户设置；测试不得把 seed 写回真实历史工程
   await val(`closeModal()`);
   await val(`S.dirty=false;S.project=null;S.genDir='';showProjectHub()`);

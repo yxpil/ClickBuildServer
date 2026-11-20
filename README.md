@@ -33,6 +33,18 @@
 
 每个接口、每条路由都可以单独改 SQL、单独开缓存、单独限流/定时窗/熔断；互不牵连。
 
+## 控制台、脚本助手与搜索（1.1.26）
+
+- 底部控制台改成 IDEA 式的工具窗：可拖拽调高，可同时打开「生成服务 / MariaDB / Redis / RustFS」多个标签，支持过滤、自动滚动、清屏、复制和单标签关闭；`Alt+F12` 或 ``Ctrl+` `` 开关，服务 stdout / stderr 每秒增量刷新，不会整段重刷。
+- 路由页右侧新增脚本助手：列表、新增、校验、事务、抓取、等待六类模板，一键插入当前表名、字段列表、WHERE、主键和 `{{body.x}}` 等占位符；`Ctrl+Space` 收起/展开，另有完整语法速查和 `LET / QUERY / EXEC / IF / FOREACH / TX / CRAWL / WAIT` 说明。
+- 帮助页顶部新增「在这里能做什么」：建表、生成接口、写脚本、联调、导出五张卡片；新手不用先翻完整文档也能知道下一步点哪里。
+- 全局搜索改成打分排序：精确 > 前缀 > 包含，接口 / 路由 / 表 / 字段有优先级，命中词高亮；`↑↓` 选择、`Enter` 跳转，结果超过 60 条时明确显示总数和「显示前 60 条」。点字段结果会直接跳到表结构并聚焦、滚动到该字段。
+- 接口列表增加当前分类筛选和 `shown / total` 计数；表头长接口名、表名、备注统一省略号，固定布局不再被撑破。UI 冒烟用 130 个接口验证：工作区和表格无横向溢出，分类筛选能收敛到 1 条，搜索仍能限流和滚动。
+
+![底部多标签控制台](docs/screenshots/ui-console.png)
+
+![路由脚本助手](docs/screenshots/ui-script-assist.png)
+
 ## 前端模式（ClickBuild 前端工坊 / .yxpp）
 
 页眉的「接口 / 前端」切换进入内置前端工坊（`renderer/studio.html`，基于官网最新编辑器内核，但外壳、入口与数据语义已改为 ClickBuild 桌面端原生工作台：单条工程顶栏、当前工程上下文、本机资产与本机 `.yxpp` 操作）。
@@ -72,12 +84,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.25.exe
+dist\ClickBuildServer-Setup-1.1.26.exe
 ```
 
-安装包 225,812,020 B（约 215 MB），构建时间 2026-11-20 13:08:34，SHA256 `4E12A98933F844C31C0EA70814BDAF48CC4BBF725ADD38678600A13E5C38230D`。
+安装包 225,818,660 B（约 215 MB），构建时间 2026-11-20 13:32:41，SHA256 `21B5276DE31671DD01A12A6DCA8D197C0E33AAC6EB1FA00A4819061F354F9691`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.26 把工作台补成“新手能直接上手、接口多了也不乱”的版本：底部控制台改为 IDEA 式可拖高工具窗，生成服务 / MariaDB / Redis / RustFS 可同时开多个标签，支持过滤、自动滚动、清屏、复制和单标签关闭，`Alt+F12` 或 ``Ctrl+` `` 开关，日志按行差量刷新；路由页右侧新增脚本助手，提供列表、新增、校验、事务、抓取、等待六类模板和当前表 / 字段 / 占位符 chips，点一下插到光标处，`Ctrl+Space` 收起，另带完整语法速查；帮助页新增“在这里能做什么”五张卡片；搜索改为精确 / 前缀 / 包含打分，命中高亮，`↑↓` 选择、`Enter` 跳转，超过 60 条显示总数和“显示前 60 条”，点字段结果直接跳到表结构并聚焦该字段；接口表新增当前分类筛选与 `shown / total` 计数，长名称省略号，130 个接口下工作区和表格均无横向溢出。验收：`test-i18n` 20/20、`test-pack` 19/19、`test-export-runtimes --no-serve` 17/17，源码版 `ui-smoke` 124/124（含脚本助手、双控制台、130 接口、分类筛选、搜索限流、字段跳转）。
 
 1.1.25 把导出工程的可配置性补齐：导出根目录新增 `config.json`，端口、接口前缀、MySQL、Redis、S3、错误页开关、500 详情、日志等级、缓存前缀、请求体上限和 `RESET_DB` 共 21 个参数都能直接改，不必改源码；键名与运行时环境变量一一对应，优先级为系统环境变量 > `config.json` > `.env` > 内置默认值，`.env` 仅生成全注释的覆盖示例。Node、Python Flask、Go、Java 四套运行时都读取同一份 `config.json`，并统一改为重启生效；Node 的请求体上限、错误页和缓存前缀，Python 的 `MAX_CONTENT_LENGTH`、Go 的 `env()`、Java 的 `Config` 都已接入。配置文件允许用户用记事本保存带 BOM 的 UTF-8，四套读取逻辑都会剥掉 BOM。验收：改 `PORT=18997` 后 Node 在 18997 启动并连接 MySQL/Redis/S3，改 `API_PREFIX=/cfgapi` 后 `/cfgapi/users` 200、旧 `/api/users` 404；Python 18992、Go 18990、Java 18989 同样按配置文件端口和前缀启动；`test-export-runtimes --no-serve` 17/17，`test-integration` 6/6、`test-ai` 18/18、`test-pack` 19/19、`test-i18n` 20/20、`test-rowstore` ok、`test-deploy` 11/11，安装版 `ui-smoke` 114/114。
 
