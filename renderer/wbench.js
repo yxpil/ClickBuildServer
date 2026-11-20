@@ -89,7 +89,7 @@ const I = {
   page: '<path d="M3 2h7l3 3v9H3z"/><path d="M6 6h4M6 9h4M6 12h3"/>',
   package: '<path d="M8 2l6 3v6l-6 3-6-3V5z"/><path d="M2 5l6 3 6-3M8 8v6"/>',
 };
-const icon = (k) => `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square">${I[k] || I.page}</svg>`;
+const icon = (k) => `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">${I[k] || I.page}</svg>`;
 
 function rb(action, ic, label, title) {
   return `<div class="rb" data-action="${action}" title="${esc(title || label)}">${icon(ic)}<span class="t">${esc(label)}</span></div>`;
@@ -920,7 +920,7 @@ function render() {
 function applyTaskMode() {
   const kind = taskKindOf(S.project);
   const sub = $('#appSubtitle');
-  if (sub) sub.textContent = '多项目工作台';
+  if (sub) sub.textContent = '接口工作台';
   const vs = $('#viewSwitch');
   if (vs) vs.classList.toggle('hidden', kind !== 'mixed');
   const search = $('#search');
@@ -4095,14 +4095,25 @@ $('#taskTabs').addEventListener('contextmenu', (e) => {
 });
 
 /* ---------------- 主题 ---------------- */
+function themeDefaults() {
+  return { v: 2, head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff', font: '' };
+}
+function isLegacyDefaultTheme(t) {
+  return !(t && t.v)
+    && (!t || !t.accent || t.accent === '#111111')
+    && (!t || !t.headText || t.headText === '#111111')
+    && (!t || !t.footer || t.footer === '#f4f4f4');
+}
 function applyTheme(t) {
-  const th = t || {};
+  const th = { ...themeDefaults(), ...(t || {}) };
+  // 旧版的“黑白纸张”默认主题自动迁移到 WPS 式浅色默认主题；用户自定义主题保留。
+  if (isLegacyDefaultTheme(t)) Object.assign(th, themeDefaults());
   const root = document.documentElement.style;
   root.setProperty('--cb-head', th.head || '#ffffff');
-  root.setProperty('--cb-headtext', th.headText || '#111111');
-  root.setProperty('--cb-accent', th.accent || '#111111');
-  root.setProperty('--cb-footer', th.footer || '#f4f4f4');
-  root.setProperty('--cb-font', th.font || '"Segoe UI", "Microsoft YaHei", system-ui, sans-serif');
+  root.setProperty('--cb-headtext', th.headText || '#20242b');
+  root.setProperty('--cb-accent', th.accent || '#2f6bdc');
+  root.setProperty('--cb-footer', th.footer || '#ffffff');
+  root.setProperty('--cb-font', th.font || '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif');
   if (th.titleSuffix) document.title = `ClickBuildServer · ${th.titleSuffix}`;
 }
 
@@ -4399,7 +4410,9 @@ function showSettings() {
 }
 
 function showTheme() {
-  const t = { head: '#ffffff', headText: '#111111', accent: '#111111', footer: '#f4f4f4', font: '', ...(S.settings.theme || {}) };
+  const saved = S.settings.theme || {};
+  const t = { ...themeDefaults(), ...saved };
+  if (isLegacyDefaultTheme(saved)) Object.assign(t, themeDefaults());
   modal(`<div class="p-4 w-[560px]">
     <div class="text-[13px] font-semibold mb-3">界面主题</div>
     <div class="grid grid-cols-2 gap-3 text-[12px]">
@@ -4411,12 +4424,13 @@ function showTheme() {
     <div class="mt-3 text-[12px]">字体 <input id="thFont" class="w-full border border-neutral-300 px-2 py-1 mt-1 mono" value="${esc(t.font || '')}" placeholder="留空用系统默认，例如 Georgia, serif"></div>
     <div class="mt-3 text-[11px] text-neutral-500">主题存在本机设置里，只影响界面，不影响生成的服务。</div>
     <div class="flex gap-2 mt-4 justify-end">
-      <button class="btn thin" id="thReset">恢复黑白</button>
+      <button class="btn thin" id="thReset">恢复默认</button>
       <button class="btn thin" id="thClose">取消</button>
       <button class="btn solid" id="thSave">应用</button>
     </div>
   </div>`, (root) => {
     const read = () => ({
+      v: 2,
       head: root.querySelector('#thHead').value,
       headText: root.querySelector('#thHeadText').value,
       accent: root.querySelector('#thAccent').value,
@@ -4425,8 +4439,8 @@ function showTheme() {
     });
     root.querySelector('#thClose').onclick = closeModal;
     root.querySelector('#thReset').onclick = async () => {
-      const next = await api.theme({ head: '#ffffff', headText: '#111111', accent: '#111111', footer: '#f4f4f4', font: '' });
-      S.settings.theme = next; applyTheme(next); closeModal(); toast('已恢复黑白');
+      const next = await api.theme(themeDefaults());
+      S.settings.theme = next; applyTheme(next); closeModal(); toast('已恢复默认浅色主题');
     };
     root.querySelector('#thSave').onclick = async () => {
       const next = await api.theme(read());
@@ -5225,7 +5239,7 @@ function renderHubSections() {
     return `<article class="hub-project ${p.missing ? 'missing' : ''}" data-hub-open="${esc(p.name)}">
       <button class="hub-x" data-hub-del="${esc(p.name)}" title="删除工程「${esc(p.name)}」" aria-label="删除工程">×</button>
       <div class="hub-project-top">
-        <span class="hub-badge">${p.missing ? 'LOST' : current ? 'CURRENT' : 'PROJECT'}</span>
+        <span class="hub-badge">${p.missing ? '丢失' : current ? '当前' : '工程'}</span>
         <span class="hub-kind">${esc(kind.label)}</span>
         <span class="hub-time">${hubTime(p.updatedAt)}</span>
       </div>
@@ -5258,23 +5272,23 @@ function renderHubSections() {
 function renderProjectHub() {
   $('#projectHub').innerHTML = `<div class="hub-shell">
     <div class="hub-top">
-      <div class="hub-brand">ClickBuild<span>PROJECT / HISTORY</span></div>
+      <div class="hub-brand"><img src="../assets/logo.png" alt="ClickBuild" width="26" height="26"><span class="hub-brand-word">ClickBuild</span><span>项目工作台</span></div>
       <div class="hub-top-note">先选择工程或模版</div>
       <div class="hub-search">
         <input id="hubSearch" placeholder="搜索工程 / 模版 / 标签…" value="${esc(HUB.filter)}" autocomplete="off">
-        <button class="btn thin" id="hubNew">新建任务</button>
+        <button class="btn thin primary" id="hubNew">新建任务</button>
       </div>
-      <button class="hub-win" data-hub-win="minimize" title="最小化">—</button>
-      <button class="hub-win" data-hub-win="maximize" title="最大化">□</button>
-      <button class="hub-win close" data-hub-win="close" title="关闭">×</button>
+      <button class="hub-win" data-hub-win="minimize" title="最小化"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button class="hub-win" data-hub-win="maximize" title="最大化"><svg width="11" height="11" viewBox="0 0 11 11"><rect x="1.2" y="1.2" width="8.6" height="8.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+      <button class="hub-win close" data-hub-win="close" title="关闭"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M1.2 1.2l8.6 8.6M9.8 1.2l-8.6 8.6" stroke="currentColor" stroke-width="1.2"/></svg></button>
     </div>
     <div class="hub-body">
-      <div class="hub-kicker">PROJECT HUB / 01</div>
+      <div class="hub-kicker">工程与模版</div>
       <div class="hub-heading">工程历史</div>
       <div class="hub-sub">打开应用先在这里选择历史工程，选中之后才进入工作台。历史文件、模版和复制入口都在这一页。</div>
       <div id="hubSections"></div>
     </div>
-    <div class="hub-footer"><span>CLICKBUILD / PROJECT HUB</span><span>${HUB.list.length} 个历史工程</span><span>${HUB.templates.length} 个模版</span></div>
+    <div class="hub-footer"><span>ClickBuild 项目中心</span><span>${HUB.list.length} 个历史工程</span><span>${HUB.templates.length} 个模版</span></div>
   </div>`;
 
   const input = $('#hubSearch');
@@ -5493,7 +5507,16 @@ window.addEventListener('blur', hideHubMenu);
     try { S.pluginInfo = await api.pluginSummary(); } catch (e) { S.pluginInfo = { list: [], commands: [], hooks: [] }; }
     try { S.runtimes = await api.runtimes(); } catch (e) { S.runtimes = []; }
     try { await applyStartupReport(await api.startupReport()); } catch (e) { /* 启动报告不存在时忽略 */ }
-    applyTheme(S.settings.theme || {});
+    let bootTheme = S.settings.theme || {};
+    if (isLegacyDefaultTheme(bootTheme)) {
+      try {
+        bootTheme = await api.theme(themeDefaults());
+        S.settings.theme = bootTheme;
+      } catch (e) {
+        bootTheme = themeDefaults();
+      }
+    }
+    applyTheme(bootTheme);
     S.help = await api.help();
 
     const wanted = new URLSearchParams(location.search).get('project');

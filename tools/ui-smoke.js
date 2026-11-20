@@ -206,8 +206,8 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await wait(800);
   t('主题写入设置', await val(`!!(S.settings.theme && S.settings.theme.accent)`), await val(`JSON.stringify(S.settings.theme)`));
   t('CSS 变量生效', await val(`getComputedStyle(document.documentElement).getPropertyValue('--cb-accent').trim()`) === '#444444', await val(`getComputedStyle(document.documentElement).getPropertyValue('--cb-accent')`));
-  // 恢复黑白
-  await val(`api.theme({accent:'#111111',head:'#ffffff',headText:'#111111',footer:'#f4f4f4'}).then(t=>{S.settings.theme=t;applyTheme(t)})`, true);
+  // 恢复默认浅色主题
+  await val(`api.theme(themeDefaults()).then(t=>{S.settings.theme=t;applyTheme(t)})`, true);
 
   // 文档预览
   await val(`act('docs')`);
