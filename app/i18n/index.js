@@ -32,7 +32,23 @@ function systemLocale(app) {
   return normalize(app.getLocale && app.getLocale()) || 'en-US';
 }
 
+function installLocale() {
+  const file = path.join(store.root(), 'install-language.txt');
+  if (!fs.existsSync(file)) return '';
+  try {
+    const id = normalize(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').trim());
+    if (!id || !LOCALES.some((x) => x.id === id)) return '';
+    store.writeSettings({ language: id });
+    try { fs.unlinkSync(file); } catch (e) { /* 下次启动再清理 */ }
+    return id;
+  } catch (e) {
+    return '';
+  }
+}
+
 function requestedLocale(app) {
+  const fromInstaller = installLocale();
+  if (fromInstaller) return fromInstaller;
   const saved = normalize(store.readSettings().language);
   return saved || systemLocale(app);
 }

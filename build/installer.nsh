@@ -13,6 +13,7 @@ Var OptSubtitle
 Var OptDocsLabel
 Var OptSamplesLabel
 Var OptNote
+Var AppLocale
 
 !macro customPageAfterChangeDir
   Page custom OptionalComponentsPage OptionalComponentsPageLeave
@@ -64,6 +65,17 @@ Function OptionalComponentsPageLeave
 FunctionEnd
 
 !macro customInstall
+  ; 安装器的语言选择就是应用的首次语言；首次启动读取后写入 settings.json。
+  ${If} $LANGUAGE == 2052
+    StrCpy $AppLocale "zh-CN"
+  ${Else}
+    StrCpy $AppLocale "en-US"
+  ${EndIf}
+  CreateDirectory "$APPDATA\click-build-server\clickbuild"
+  FileOpen $0 "$APPDATA\click-build-server\clickbuild\install-language.txt" w
+  FileWrite $0 $AppLocale
+  FileClose $0
+
   ${If} $OptDocsState == 1
     CreateDirectory "$INSTDIR\docs"
     SetOutPath "$INSTDIR\docs"

@@ -60,12 +60,13 @@
 - `.yxpn` 工程包里同样带 `frontend/index.yxpp`，manifest 里有 `frontend` 元信息，换机器也能继续编辑。
 - 26 套内置案例全部预置 `.yxpp` 前端；其中 24 套是 PageStudio 原生 `appview` 业务应用（`project.app` + 业务运行时），打开就是真实的列表、表单、详情、后台工作流和行级动作，不是接口清单或请求调试器。商城、点餐、票务、博客、音乐 / 视频、工单、报销、会议、CRM、社交、聊天、预约等都已用真实数据库和真实上传链路逐项验收；问卷系统、活动报名保留各自的公开填写 / 报名页和管理员后台。
 
-## 多语言（1.1.8）
+## 多语言（1.1.52）
 
-- 桌面端内置 `zh-CN` / `en-US`。首次启动优先按系统首选语言（`getPreferredSystemLanguages()`，回退 `getLocale()`）选择；`settings.json` 的 `language` 可覆盖自动结果，页眉语言选择器切换后立即重载。
-- 语言包离线存放：`app/i18n/locales/<locale>.json`，含精确词条与动态消息模式；主进程 `app/i18n/index.js` 负责检测、读包和写设置，渲染层 `renderer/i18n.js` 翻译文本节点、`title` / `placeholder` / `aria-label` / `alt` 以及 MutationObserver 新增的节点。
-- 已覆盖工作台主界面、Ribbon、四步创建引导、AI / 监控 / 文档 / 插件 / 模版库 / 接口库、接口编辑器六个页签，以及前端工坊（含 iframe 标题、缩放与图标提示）。26 套模版、75 个内置接口的名称、说明和标签都已预翻译。
-- 安装器使用 NSIS 多语言：`installerLanguages: ["zh_CN", "en_US"]`，不显示语言选择页，按 Windows 系统 UI 语言自动选中文或英文。
+- 安装阶段决定首次语言：NSIS 语言选择页选中文或英文后，安装器把选择写入 `%APPDATA%\click-build-server\clickbuild\install-language.txt`；应用首次启动读取该标记、写入 `settings.json` 的 `language` 并删除标记。之后启动直接沿用保存的语言，不再按系统语言重新猜。
+- 桌面端内置 `zh-CN` / `en-US`。工作台与工程历史页的顶栏都有真实可点的语言菜单，选择后写入设置并立即重载；工程历史页语言菜单跟随页头移动，不再被全局标题栏遮挡。
+- 英文语言包不是手写文案：`tools/generate-i18n-en.js` 读取中文词条与句式，调用 B 站 Index-Translate 免费公网 API（`https://index-translate.bilibili.com/v1`，默认 `Index-Translate-35B-A3B`）生成 `app/i18n/locales/en-US.json`；占位符先保护再回填，失败重试并自动拆批。历史页、Ribbon、侧栏等界面缺失的中文串放在 `tools/i18n-extra-zh.json`，用 `node tools\generate-i18n-en.js --incremental` 补译。
+- 语言包离线存放：`app/i18n/locales/<locale>.json`，含精确词条与动态消息模式；主进程 `app/i18n/index.js` 负责安装期语言、读包和写设置，渲染层 `renderer/i18n.js` 翻译文本节点、`title` / `placeholder` / `aria-label` / `alt` 以及 MutationObserver 新增的节点。
+- 已覆盖工作台主界面、工程历史页、Ribbon、四步创建引导、AI / 监控 / 文档 / 插件 / 模版库 / 接口库、接口编辑器六个页签，以及前端工坊（含 iframe 标题、缩放与图标提示）。26 套模版、75 个内置接口的名称、说明和标签都已预翻译；用户自己的工程名、说明等业务数据保持原样。
 
 ## 工程历史预览（1.1.14）
 
@@ -387,7 +388,7 @@ npm run dist       # 发布安装包
 | `tools/test-filters.js`（过滤器运算符 / 参数化 / 通配符转义） | **15/15** |
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
-| `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言） | **20/20** |
+| `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言 / 安装期语言） | **24/24** |
 | `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导） | **133/133**（源码版 / 1.1.48 安装版） |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
@@ -414,7 +415,7 @@ npm run dist       # 发布安装包
 - 本项目采用 **Apache License 2.0** 发布，完整条款见仓库根目录 `LICENSE`，版权与归属声明见 `NOTICE`。
 - 仅限合法用途：禁止把本软件用于违反法律法规的活动，包括未授权访问、攻击、数据窃取、诈骗、传播恶意程序、侵犯隐私等。
 - 使用者对自己创建的服务、处理的数据和发布的内容承担全部责任；在适用法律允许的最大范围内，作者、版权持有人与贡献者不承担因使用本软件产生的任何损失或法律责任。
-- Windows 安装器会按系统语言显示中文或英文的使用条款与免责声明，继续安装即表示同意。
+- Windows 安装器会显示中文 / 英文语言选择页，并把选择写入应用首次启动语言；条款与免责声明会跟随安装器语言显示，继续安装即表示同意。
 
 ## 文档
 

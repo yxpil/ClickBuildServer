@@ -127,17 +127,69 @@
   function initSelect() {
     const sel = document.getElementById('langSel');
     if (!sel) return;
+    const btn = document.getElementById('langBtn');
+    const pop = document.getElementById('langPop');
+    const label = document.getElementById('langLabel');
+    const menu = document.getElementById('langMenu');
     const list = state.locales && state.locales.length ? state.locales : [{ id: 'zh-CN', label: '简体中文' }, { id: 'en-US', label: 'English' }];
+    const sync = () => {
+      sel.value = state.locale;
+      const current = list.find((x) => x.id === state.locale) || list[0];
+      if (label) label.textContent = current ? current.label : state.locale;
+      sel.title = state.locale === 'en-US' ? 'Language / 语言' : '语言 / Language';
+      if (btn) btn.title = sel.title;
+      if (pop) {
+        for (const item of pop.querySelectorAll('[data-locale]')) {
+          const on = item.dataset.locale === state.locale;
+          item.classList.toggle('on', on);
+          item.setAttribute('aria-selected', on ? 'true' : 'false');
+        }
+      }
+    };
     sel.innerHTML = list.map((x) => `<option value="${x.id}">${x.label}</option>`).join('');
-    sel.value = state.locale;
-    sel.title = state.locale === 'en-US' ? 'Language / 语言' : '语言 / Language';
+    sync();
+    if (sel.dataset.bound === '1') return;
+    sel.dataset.bound = '1';
+
+    const setOpen = (open) => {
+      if (!pop || !btn) return;
+      pop.classList.toggle('hidden', !open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    const choose = (locale) => {
+      if (!locale || locale === state.locale) { setOpen(false); return; }
+      sel.value = locale;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      setOpen(false);
+    };
+
+    if (btn) btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(pop.classList.contains('hidden'));
+    });
+    if (pop) {
+      pop.addEventListener('click', (e) => {
+        const item = e.target.closest('[data-locale]');
+        if (!item) return;
+        e.preventDefault();
+        e.stopPropagation();
+        choose(item.dataset.locale);
+      });
+    }
+    document.addEventListener('click', (e) => {
+      if (menu && !menu.contains(e.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { setOpen(false); if (btn) btn.focus(); }
+    });
     sel.addEventListener('change', async () => {
       const next = sel.value;
       if (!window.icb || !window.icb.setLocale) return;
       try {
         await window.icb.setLocale(next);
         location.reload();
-      } catch (e) { sel.value = state.locale; }
+      } catch (e) { sel.value = state.locale; sync(); }
     });
   }
 

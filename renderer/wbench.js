@@ -5845,6 +5845,7 @@ function renderHubSections() {
 }
 
 function renderProjectHub() {
+  const langMenu = $('#langMenu');
   $('#projectHub').innerHTML = `<div class="hub-shell">
     <div class="hub-top">
       <div class="hub-brand"><img src="../assets/logo.png" alt="ClickBuild" width="26" height="26"><span class="hub-brand-word">ClickBuild</span><span>项目工作台</span></div>
@@ -5875,7 +5876,23 @@ function renderProjectHub() {
   $('#projectHub').querySelectorAll('[data-hub-win]').forEach((b) => {
     b.onclick = () => api.win(b.dataset.hubWin);
   });
+  placeLangMenu(true, langMenu);
   renderHubSections();
+}
+
+// 语言菜单在工程历史页也必须真实可见、可点：跟着页面顶部一起走，而不是藏在被覆盖的全局标题栏后面。
+function placeLangMenu(inHub, menu) {
+  const el = menu || $('#langMenu');
+  if (!el) return;
+  if (inHub) {
+    const top = document.querySelector('#projectHub .hub-top');
+    const firstWin = top && top.querySelector('.hub-win');
+    if (top) top.insertBefore(el, firstWin || null);
+    return;
+  }
+  const header = $('#appHeader');
+  const wins = $('#winControls');
+  if (header) header.insertBefore(el, wins || null);
 }
 
 async function showProjectHub() {
@@ -5890,6 +5907,7 @@ async function showProjectHub() {
 
 function hideProjectHub() {
   hideHubMenu();
+  placeLangMenu(false);
   $('#projectHub').classList.add('hidden');
 }
 

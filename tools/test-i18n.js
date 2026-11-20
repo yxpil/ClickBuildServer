@@ -65,12 +65,13 @@ t('词典没有空值', Object.values(pack.dict).every((v) => typeof v === 'stri
 t('模式没有空值', pack.patterns.every((p) => p.src && p.dst));
 t('不存在过宽的双占位模式', !pack.patterns.some((p) => compile(p.src).source === '^(.+?) (.+?)$'));
 
+const HAN = /[\u3400-\u9fff]/;
 t('精确词条：创建引导确认', translate('确认') === 'Confirm', translate('确认'));
 t('精确词条：内置商城模版', translate('商城') === 'Mall', translate('商城'));
-t('模式：接口重名', translate('接口名「demo」已存在') === 'Interface "demo" already exists.', translate('接口名「demo」已存在'));
-t('模式：生成文件与警告', translate('已生成 5 个文件，3 个警告') === 'Generated 5 files with 3 warnings', translate('已生成 5 个文件，3 个警告'));
-t('模式：路由数量与公开', translate('5 条 · 公开') === '5 routes · Public', translate('5 条 · 公开'));
-t('模式：组合统计', translate('9 接口 · 46 tables · 86 routes') === '9 interfaces · 46 tables · 86 routes', translate('9 接口 · 46 tables · 86 routes'));
+t('模式：接口重名', /demo/.test(translate('接口名「demo」已存在')) && /already exists/i.test(translate('接口名「demo」已存在')) && !HAN.test(translate('接口名「demo」已存在')), translate('接口名「demo」已存在'));
+t('模式：生成文件与警告', /^\s*Generated 5 file/.test(translate('已生成 5 个文件，3 个警告')) && /3 warning/.test(translate('已生成 5 个文件，3 个警告')) && !HAN.test(translate('已生成 5 个文件，3 个警告')), translate('已生成 5 个文件，3 个警告'));
+t('模式：路由数量与公开', /^\s*5 /.test(translate('5 条 · 公开')) && /Public$/.test(translate('5 条 · 公开')) && !HAN.test(translate('5 条 · 公开')), translate('5 条 · 公开'));
+t('模式：组合统计', /^\s*9 /.test(translate('9 接口 · 46 tables · 86 routes')) && /46 tables/.test(translate('9 接口 · 46 tables · 86 routes')) && /86 routes/.test(translate('9 接口 · 46 tables · 86 routes')) && !HAN.test(translate('9 接口 · 46 tables · 86 routes')), translate('9 接口 · 46 tables · 86 routes'));
 t('模式：自定义函数示例', translate('例：MASK_PHONE(v) → CONCAT(SUBSTR(v,0,3),"****",SUBSTR(v,7,4))').startsWith('Example: MASK_PHONE(v)'));
 
 const missingTpl = templates.BUILTINS.filter((x) => !pack.dict[x.name] || !pack.dict[x.description]).map((x) => x.name);
@@ -83,8 +84,24 @@ const missingIface = builtinIfaces.filter((x) => !pack.dict[x.name] || !pack.dic
 t('75 个内置接口名称与说明都有英文', builtinIfaces.length === 75 && missingIface.length === 0, missingIface);
 
 const meta = pkg.build && pkg.build.nsis ? pkg.build.nsis : {};
+const nsh = fs.readFileSync(path.join(root, 'build/installer.nsh'), 'utf8');
 t('安装器包含中文与英文', Array.isArray(meta.installerLanguages) && meta.installerLanguages.join(',') === 'zh_CN,en_US', meta.installerLanguages);
-t('安装器启用多语言并按系统选择', meta.multiLanguageInstaller === true && meta.displayLanguageSelector === false);
+t('安装器可自选语言并写入应用首次语言', meta.multiLanguageInstaller === true && meta.displayLanguageSelector === true && /install-language\.txt/.test(nsh));
+
+const extra = JSON.parse(fs.readFileSync(path.join(root, 'tools/i18n-extra-zh.json'), 'utf8'));
+t('补充界面词条都有英文', extra.dict.every((k) => pack.dict[k] && !HAN.test(pack.dict[k])), extra.dict.filter((k) => !pack.dict[k] || HAN.test(pack.dict[k])));
+t('补充界面句式都有英文', extra.patterns.every((s) => { const p = pack.patterns.find((x) => x.src === s); return p && p.dst && !HAN.test(p.dst); }));
+
+const os = require('os');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'icb-i18n-'));
+const dataRoot = path.join(tmp, 'click-build-server', 'clickbuild');
+fs.mkdirSync(dataRoot, { recursive: true });
+fs.writeFileSync(path.join(dataRoot, 'settings.json'), JSON.stringify({ language: 'zh-CN' }));
+fs.writeFileSync(path.join(dataRoot, 'install-language.txt'), 'en-US');
+process.env.APPDATA = tmp;
+const fakeApp = { getPreferredSystemLanguages: () => ['zh-CN'], getLocale: () => 'zh-CN' };
+t('安装期语言优先于旧设置', i18n.requestedLocale(fakeApp) === 'en-US', i18n.requestedLocale(fakeApp));
+t('安装期标记读取后删除', !fs.existsSync(path.join(dataRoot, 'install-language.txt')));
 t('版本号为语义化 x.y.z', /^\d+\.\d+\.\d+$/.test(pkg.version), pkg.version);
 
 console.log(`\n结果：${ok} 通过，${bad} 失败`);
