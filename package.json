@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.1.46",
+  "version": "1.1.47",
   "description": "以接口为最小单位的后端服务生成器：多库多表、脚本 SQL、事务、缓存、RBAC 与一键生成可运行服务；Electron 桌面端，内置前端工坊与 26 套模版",
   "main": "main.js",
   "author": "yxpil",
@@ -13,6 +13,8 @@
     "test:pack": "node tools/test-pack.js",
     "test:deploy": "node tools/test-deploy.js",
     "test:history": "node tools/test-history.js",
+    "test:task-types": "node tools/test-task-types.js",
+    "test:plugins": "node tools/test-plugins-v2.js",
     "test:docs": "node tools/test-docs.js",
     "test:types": "node tools/test-field-types.js",
     "test:export": "node tools/test-export-runtimes.js",

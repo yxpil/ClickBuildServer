@@ -7,6 +7,9 @@ const crypto = require('crypto');
 const script = require('./script');
 const docs = require('./docs');
 
+// 工作任务的三种形态：只写前端、只写后端、前后端一起（默认）。
+const TASK_TYPES = ['frontend', 'backend', 'mixed'];
+
 const TYPES = [
   { key: 'bigint', sql: 'BIGINT', label: 'BIGINT 长整', input: 'int', group: 'number' },
   { key: 'int', sql: 'INT', label: 'INT 整型', input: 'int', group: 'number' },
@@ -506,6 +509,7 @@ function seedProject() {
   return {
     name: '接口工程',
     description: '一个接口就是一组表 + 一组脚本路由',
+    taskType: 'mixed',
     categories: [
       { id: 'biz', name: '业务表格' },
       { id: 'sys', name: '平台表格' },
@@ -722,6 +726,7 @@ function normalizeProject(project) {
   return {
     name: p.name || '接口工程',
     description: p.description || '',
+    taskType: TASK_TYPES.includes(p.taskType) ? p.taskType : 'mixed',
     categories,
     ioTypes: normalizeIoTypes(p.ioTypes),
     functions,
@@ -878,7 +883,7 @@ function ddlOf(iface) {
 }
 
 module.exports = {
-  TYPES, TYPE_KEYS, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES,
+  TYPES, TYPE_KEYS, TASK_TYPES, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES,
   IO_RESPONSES, IO_STORES, FILE_KINDS,
   newField, defaultFields, newTable, newRoute, newIface, cloneIface, seedProject,
   defaultIoTypes, normalizeIoTypes, ioOf,

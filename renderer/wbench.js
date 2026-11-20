@@ -33,6 +33,23 @@ const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
 
+const TASK_KINDS = {
+  mixed: { label: '混合任务', short: '混', hint: '前后端一起写，接口和前端工坊都能用' },
+  backend: { label: '只后端任务', short: '后', hint: '只写接口、表结构和脚本，前端入口收起' },
+  frontend: { label: '只前端任务', short: '前', hint: '只写页面，接口编辑和生成服务收起' },
+};
+const TASK_ORDER = ['mixed', 'backend', 'frontend'];
+function taskKindOf(p) {
+  const t = p && p.taskType;
+  return TASK_KINDS[t] ? t : 'mixed';
+}
+function taskKindMeta(p) {
+  return TASK_KINDS[taskKindOf(p)];
+}
+
+// 一个窗口里挂多个工程，像 WPS 的文档标签；切换前先把当前工程落盘。
+const TABS = { items: [], active: '', key: 'cbs.taskTabs.v1' };
+
 // API 的 spec.TYPES 会在 help 里返回；这里只做未加载时的兜底，避免向导在首屏拿不到类型。
 const BASE_FIELD_TYPE_KEYS = [
   'bigint', 'int', 'smallint', 'tinyint', 'bool', 'decimal', 'float', 'double',
@@ -648,6 +665,7 @@ function setSaveState(state, text) {
   el.textContent = label;
   el.style.color = color;
   el.title = state === 'error' ? '点击重试保存' : '点击立即保存（Ctrl+S）';
+  updateTabDirty();
 }
 
 function scheduleSave() {
@@ -668,6 +686,7 @@ async function save(silent) {
     }
     if (r && r.project) S.project = r.project;
     S.problems = r.problems || [];
+    tabFollowProject(S.project);
     renderSide();
     setSaveState('saved', S.problems.length ? `已保存 · ${S.problems.length} 问题` : '已保存');
     if (!silent) toast(r.problems.length ? `已保存，但有 ${S.problems.length} 处问题` : '已保存');
@@ -679,13 +698,232 @@ async function save(silent) {
   }
 }
 
+async function flushAndSave(reason) {
+  if (S.view === 'studio' && studioDirty) {
+    const ok = await saveStudioToProject(reason || '离开工程');
+    if (!ok) return false;
+  }
+  return save(true);
+}
+
+/* ---------------- 多项目标签（WPS 式） ---------------- */
+function loadTabStrip() {
+  try {
+    const raw = sessionStorage.getItem(TABS.key);
+    const data = raw ? JSON.parse(raw) : null;
+    if (data && Array.isArray(data.items)) {
+      TABS.items = data.items.filter((x) => x && typeof x.name === 'string' && x.name);
+      TABS.active = String(data.active || '');
+    }
+  } catch (e) { TABS.items = []; TABS.active = ''; }
+  if (!TABS.items.some((x) => x.name === TABS.active)) TABS.active = '';
+}
+function saveTabStrip() {
+  try {
+    sessionStorage.setItem(TABS.key, JSON.stringify({ items: TABS.items.slice(0, 20), active: TABS.active }));
+  } catch (e) { /* 会话存储不可用时只影响重启恢复，不影响当前窗口 */ }
+}
+function tabSyncProject(p) {
+  if (!p || !p.name) return;
+  const kind = taskKindOf(p);
+  const hit = TABS.items.find((x) => x.name === p.name);
+  if (hit) { hit.taskType = kind; }
+  else TABS.items.push({ name: p.name, taskType: kind });
+  TABS.active = p.name;
+  saveTabStrip();
+}
+// 工程在标题栏被改名后，当前标签也跟着改，而不是留下一个指向旧文件名的死标签。
+function tabFollowProject(p) {
+  if (!p || !p.name) return;
+  const idx = TABS.items.findIndex((x) => x.name === TABS.active);
+  if (idx >= 0) TABS.items[idx] = { name: p.name, taskType: taskKindOf(p) };
+  tabSyncProject(p);
+  renderTabs();
+}
+function updateTabDirty() {
+  const el = document.querySelector('.task-tab.active .task-dirty');
+  if (el) el.style.visibility = S.saveState === 'saved' ? 'hidden' : 'visible';
+}
+function renderTabs() {
+  const bar = $('#taskTabs');
+  const list = $('#taskTabList');
+  if (!bar || !list) return;
+  const items = TABS.items.filter((x) => x.name);
+  bar.classList.toggle('hidden', !items.length || !S.project);
+  if (!items.length || !S.project) { list.innerHTML = ''; return; }
+  list.innerHTML = items.map((x) => {
+    const active = x.name === TABS.active;
+    const kind = TASK_KINDS[x.taskType] || TASK_KINDS.mixed;
+    return `<div class="task-tab ${active ? 'active' : ''}" data-tab-name="${esc(x.name)}" title="${esc(x.name)} · ${esc(kind.label)}">
+      <span class="task-kind">${esc(kind.short)}</span>
+      <span class="task-name">${esc(x.name)}</span>
+      <span class="task-dirty" style="visibility:${active && S.saveState !== 'saved' ? 'visible' : 'hidden'}"></span>
+      <button class="task-x" data-tab-close="${esc(x.name)}" title="关闭「${esc(x.name)}」" aria-label="关闭">×</button>
+    </div>`;
+  }).join('');
+  const activeEl = list.querySelector('.task-tab.active');
+  if (activeEl && activeEl.scrollIntoView) activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  saveTabStrip();
+}
+
+async function switchTab(name) {
+  if (!name || !S.project || name === TABS.active) return;
+  if (!(await flushAndSave('切换标签'))) return toast('当前工程保存失败，已取消切换', 5000);
+  const p = await api.load(name);
+  if (!p) {
+    TABS.items = TABS.items.filter((x) => x.name !== name);
+    saveTabStrip(); renderTabs();
+    return toast('找不到工程：' + name, 5000);
+  }
+  await enterWorkspace(p, { fromTab: true });
+  toast(`已切到「${p.name}」`, 2200);
+}
+
+async function closeTab(name) {
+  const isActive = name === TABS.active;
+  if (isActive && S.project) {
+    if (!(await flushAndSave('关闭标签'))) return toast('当前工程保存失败，标签没有关闭', 5000);
+  }
+  const idx = TABS.items.findIndex((x) => x.name === name);
+  if (idx < 0) return;
+  TABS.items.splice(idx, 1);
+  if (isActive) {
+    const next = TABS.items[Math.min(idx, TABS.items.length - 1)];
+    S.project = null;
+    if (next) {
+      const p = await api.load(next.name);
+      if (p) {
+        await enterWorkspace(p, { fromTab: true });
+      } else {
+        TABS.items = TABS.items.filter((x) => x.name !== next.name);
+      }
+    }
+    if (!TABS.items.length) {
+      TABS.active = ''; saveTabStrip(); renderTabs();
+      $('#taskTabs').classList.add('hidden');
+      await showProjectHub();
+    }
+  } else {
+    saveTabStrip(); renderTabs();
+  }
+}
+
+async function closeOtherTabs() {
+  const keep = TABS.active;
+  if (!keep || !S.project) return;
+  if (!(await flushAndSave('关闭其他标签'))) return toast('当前工程保存失败，已取消', 5000);
+  TABS.items = TABS.items.filter((x) => x.name === keep);
+  saveTabStrip(); renderTabs();
+  toast('已关闭其他标签，当前工程保留', 2500);
+}
+
+function tabCtxMenu(name, x, y) {
+  const count = TABS.items.length;
+  openCtx(x, y, [
+    { label: '在新窗口打开', hint: '独立窗口', run: () => api.newWindow(name) },
+    { label: '关闭这个标签', run: () => closeTab(name) },
+    { label: '关闭其他标签', hint: `${count - 1} 个`, disabled: count <= 1, run: closeOtherTabs },
+  ]);
+}
+
+// 三类任务的选择入口。默认混合；只有用户明确选了才改。
+function chooseTaskKind(title) {
+  return new Promise((resolve) => {
+    const cards = TASK_ORDER.map((k) => {
+      const m = TASK_KINDS[k];
+      return `<button class="task-kind-card ${k === 'mixed' ? 'on' : ''}" data-task-kind="${k}">
+        <span class="k">${esc(m.short)}</span>
+        <b>${esc(m.label)}${k === 'mixed' ? '（默认）' : ''}</b>
+        <span>${esc(m.hint)}</span>
+      </button>`;
+    }).join('');
+    modal(`<div class="p-5 w-[560px] max-w-[94vw]">
+      <div class="text-[14px] font-semibold">${esc(title || '新建任务')}</div>
+      <div class="text-[11px] text-neutral-500 mt-1 mb-4">先定这次要写什么：只写页面、只写接口，还是两边一起。以后可以在标题栏改。</div>
+      <div class="task-kind-grid">${cards}</div>
+      <div class="flex justify-end mt-4"><button class="btn thin" id="tkCancel">取消</button></div>
+    </div>`, (root) => {
+      root.querySelector('#tkCancel').onclick = () => { closeModal(); resolve(null); };
+      root.querySelectorAll('[data-task-kind]').forEach((b) => {
+        b.onclick = () => { closeModal(); resolve(b.dataset.taskKind); };
+      });
+    });
+  });
+}
+
+async function newTaskFlow(kind) {
+  const chosen = kind || await chooseTaskKind('新建任务');
+  if (!chosen) return false;
+  if (S.project && !(await flushAndSave('新建任务'))) {
+    toast('当前工程没有保存成功，已取消新建；改动还在当前工程里', 6000);
+    return false;
+  }
+  const p = await api.seed();
+  p.taskType = chosen;
+  p.name = uniqueProjectName(chosen === 'frontend' ? '前端任务' : chosen === 'backend' ? '后端任务' : '混合任务');
+  p.description = `${TASK_KINDS[chosen].label} · 空白工程`;
+  p.interfaces = [];
+  p.functions = [];
+  delete p.frontend;
+  const r = await api.save(p);
+  if (r && r.ok === false) return toast('新任务保存失败：' + (r.error || '未知错误'), 6000);
+  const proj = (r && r.project) || p;
+  await enterWorkspace(proj);
+  toast(`已新建「${proj.name}」· ${TASK_KINDS[chosen].label}`, 3500);
+  return true;
+}
+
+async function changeTaskKind(kind) {
+  if (!S.project || !TASK_KINDS[kind] || taskKindOf(S.project) === kind) {
+    if (S.project) $('#taskKind').value = taskKindOf(S.project);
+    return;
+  }
+  if (!(await confirmBox('切换任务类型', `把「${S.project.name}」切成${TASK_KINDS[kind].label}？现有接口和数据不会删除，只是收起对应的入口。`))) {
+    $('#taskKind').value = taskKindOf(S.project);
+    return;
+  }
+  if (S.view === 'studio' && studioDirty) await saveStudioToProject('切换任务类型');
+  const old = taskKindOf(S.project);
+  S.project.taskType = kind;
+  if (!(await save(true))) {
+    S.project.taskType = old;
+    $('#taskKind').value = old;
+    return;
+  }
+  tabSyncProject(S.project);
+  applyTaskMode();
+  if (kind === 'frontend') setView('studio');
+  else if (S.view === 'studio') setView('api');
+  else render();
+  renderTabs();
+  toast(`已切到${TASK_KINDS[kind].label}`, 3000);
+}
+
 /* ---------------- 渲染入口 ---------------- */
 function render() {
   $('#projectName').value = S.project.name;
+  $('#taskKind').value = taskKindOf(S.project);
+  applyTaskMode();
   renderRibbon();
   renderWorkspace();
   renderSheets();
   renderSide();
+  renderTabs();
+}
+
+// 任务类型决定这个工程露出多少东西：只前端不显示接口工作台，只后端不显示前端工坊。
+function applyTaskMode() {
+  const kind = taskKindOf(S.project);
+  const sub = $('#appSubtitle');
+  if (sub) sub.textContent = '多项目工作台';
+  const vs = $('#viewSwitch');
+  if (vs) vs.classList.toggle('hidden', kind !== 'mixed');
+  const search = $('#search');
+  if (search) search.classList.toggle('hidden', kind === 'frontend');
+  const gen = document.querySelector('[data-action="generate"]');
+  if (gen) gen.classList.toggle('hidden', kind === 'frontend');
+  const deploy = document.querySelector('[data-action="deployUpdate"]');
+  if (deploy) deploy.classList.toggle('hidden', kind === 'backend');
 }
 
 function renderRibbon() {
@@ -694,13 +932,15 @@ function renderRibbon() {
   const server = svc.items.find((x) => x.id === 'server');
   const up = infra.filter((x) => x.running).length;
   const running = server && server.running;
+  const kind = taskKindOf(S.project);
+  const backend = kind !== 'frontend';
   $('#ribbon').innerHTML = `
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('seed', 'new', '新建', '先保存当前工程，再新建一个示例工程')}
-    ${rb('open', 'open', '打开', '打开已有工程')}
+    ${rb('seed', 'new', '新建', '先保存当前工程，再新建一个任务')}
+    ${rb('open', 'open', '打开', '打开已有工程，开成新标签')}
   </div><div class="lbl">工程</div></div>
 
-  <div class="ribbon-group"><div class="flex gap-1">
+  ${backend ? `<div class="ribbon-group"><div class="flex gap-1">
     ${rb('newIface', 'iface', '新建接口', '在当前分类新建接口')}
     ${rb('dupIface', 'copy', '复制', '复制当前接口')}
     ${rb('delIface', 'trash', '删除', '删除当前接口')}
@@ -722,7 +962,7 @@ function renderRibbon() {
     ${rb('home', 'console', '打开主页', '在浏览器打开当前工程的网页主页')}
     ${rb('monitor', 'console', '监控', '实时看请求日志与健康状态')}
     <div class="ribbon-status" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length} 运行</div>
-  </div><div class="lbl">运行</div></div>
+  </div><div class="lbl">运行</div></div>` : ''}
 
   ${pluginRibbon()}
   <div class="ribbon-group ribbon-group-end"><div class="flex gap-1">
@@ -2877,10 +3117,10 @@ async function act(name, el) {
     return;
   }
   if (name === 'seed') {
-    return activateFreshProject(await api.seed(), (p) => `已新建「${p.name}」，原工程保持原样`);
+    return newTaskFlow();
   }
   if (name === 'open') {
-    await save(true);
+    if (!(await flushAndSave('打开工程'))) return;
     await showProjectHub();
     return;
   }
@@ -3782,6 +4022,15 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+  if (mod && e.key === 'Tab') {
+    e.preventDefault();
+    if (TABS.items.length < 2) return;
+    const i = TABS.items.findIndex((x) => x.name === TABS.active);
+    const next = TABS.items[(i + (e.shiftKey ? -1 : 1) + TABS.items.length) % TABS.items.length];
+    if (next) switchTab(next.name);
+    return;
+  }
+  if (mod && !typing && !modalOpen && e.key.toLowerCase() === 't') { e.preventDefault(); newTaskFlow(); return; }
   if (mod && !typing && !modalOpen && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     if (e.shiftKey) act('addCat'); else act('newIface');
@@ -3809,6 +4058,31 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#search') && !e.target.closest('#searchPanel')) $('#searchPanel').classList.add('hidden');
 });
 $('#projectName').addEventListener('input', (e) => { S.project.name = e.target.value; scheduleSave(); });
+$('#taskKind').addEventListener('change', (e) => {
+  changeTaskKind(e.target.value).catch((err) => {
+    $('#taskKind').value = taskKindOf(S.project);
+    toast(String(err && err.message || err), 5000);
+  });
+});
+$('#taskTabNew').onclick = () => newTaskFlow().catch((err) => toast(String(err && err.message || err), 5000));
+$('#taskTabs').addEventListener('click', (e) => {
+  const x = e.target.closest('[data-tab-close]');
+  if (x) { e.preventDefault(); e.stopPropagation(); return closeTab(x.dataset.tabClose); }
+  const tab = e.target.closest('.task-tab');
+  if (tab) switchTab(tab.dataset.tabName);
+});
+$('#taskTabs').addEventListener('mousedown', (e) => {
+  if (e.button !== 1) return;
+  const tab = e.target.closest('.task-tab');
+  if (tab) { e.preventDefault(); closeTab(tab.dataset.tabName); }
+});
+$('#taskTabs').addEventListener('contextmenu', (e) => {
+  const tab = e.target.closest('.task-tab');
+  if (!tab) return;
+  e.preventDefault();
+  e.stopPropagation();
+  tabCtxMenu(tab.dataset.tabName, e.clientX, e.clientY);
+});
 
 /* ---------------- 主题 ---------------- */
 function applyTheme(t) {
@@ -4761,6 +5035,7 @@ async function saveStudioToProject(reason, force) {
     if (!built || !built.ok) throw new Error((built && built.error) || '生成 .yxpp 失败');
     S.project.frontend = built.yxpp;
     await api.save(S.project);
+    setSaveState('saved', '前端已同步');
     studioBound = built.yxpp.project;
     studioBlankBinding = false;
     studioLastAt = Date.now();
@@ -4817,6 +5092,15 @@ async function importStudioYxpp() {
 
 function setView(view) {
   const next = view === 'studio' ? 'studio' : 'api';
+  const kind = taskKindOf(S.project);
+  if (next === 'studio' && kind === 'backend') {
+    toast('这是只后端任务，没有前端工坊；要写页面请先把任务类型改成混合', 5000);
+    return;
+  }
+  if (next === 'api' && kind === 'frontend') {
+    toast('这是只前端任务，接口工作台已收起；要写接口请先把任务类型改成混合', 5000);
+    return;
+  }
   if (S.view === 'studio' && next === 'api' && studioDirty) saveStudioToProject('切换视图');
   S.view = next;
   const studio = S.view === 'studio';
@@ -4853,6 +5137,7 @@ window.addEventListener('message', (ev) => {
   }
   if (d.type === 'cbs:yxpp:dirty') {
     studioDirty = true;
+    if (S.view === 'studio') setSaveState('dirty', '前端未同步');
     scheduleStudioSave(d.immediate ? 0 : 1200);
   }
   if (d.type === 'cbs:yxpp:reload') {
@@ -4881,7 +5166,8 @@ function hubTime(ms) {
 }
 
 function hubFilterText(item) {
-  return [item.name, item.description, ...(item.tags || []), ...(item.tables || [])].join(' ').toLowerCase();
+  const kind = TASK_KINDS[item.taskType] || TASK_KINDS.mixed;
+  return [item.name, item.description, kind.label, ...(item.tags || []), ...(item.tables || [])].join(' ').toLowerCase();
 }
 
 function uniqueProjectName(base) {
@@ -4895,25 +5181,22 @@ function uniqueProjectName(base) {
 // 新建/套用模版的唯一入口：先落盘当前工程，再保存一个新名字的工程并切过去。
 // 任何一步失败都不动当前工程，避免“点了新建反而把当前内容冲掉”。
 async function activateFreshProject(next, doneText) {
-  const saved = await save(true);
+  const saved = await flushAndSave('套用模版');
   if (!saved) {
     toast('当前工程没有保存成功，已取消新建；改动还在当前工程里', 6000);
     return false;
   }
   const p = next;
   p.name = uniqueProjectName(p.name);
+  p.taskType = p.taskType || 'mixed';
   const r = await api.save(p);
   if (r && r.ok === false) {
     toast('新工程保存失败：' + (r.error || '未知错误'), 6000);
     return false;
   }
   const proj = (r && r.project) || p;
-  S.project = proj;
-  S.cat = (proj.categories[0] || {}).id || '';
-  S.selId = (proj.interfaces[0] || {}).id || '';
-  S.mode = 'grid'; S.tab = 'tables'; S.tableKey = ''; S.routeId = ''; S.problems = (r && r.problems) || [];
   try { S.list = await api.projects(); } catch (_) {}
-  render();
+  await enterWorkspace(proj);
   toast(doneText(proj), 4500);
   return true;
 }
@@ -4928,10 +5211,12 @@ function renderHubSections() {
   const projectHtml = projects.length ? projects.map((p) => {
     const tables = new Set(p.tables || []).size;
     const current = S.project && S.project.name === p.name;
+    const kind = TASK_KINDS[p.taskType] || TASK_KINDS.mixed;
     return `<article class="hub-project ${p.missing ? 'missing' : ''}" data-hub-open="${esc(p.name)}">
       <button class="hub-x" data-hub-del="${esc(p.name)}" title="删除工程「${esc(p.name)}」" aria-label="删除工程">×</button>
       <div class="hub-project-top">
         <span class="hub-badge">${p.missing ? 'LOST' : current ? 'CURRENT' : 'PROJECT'}</span>
+        <span class="hub-kind">${esc(kind.label)}</span>
         <span class="hub-time">${hubTime(p.updatedAt)}</span>
       </div>
       <h3>${esc(p.name)}</h3>
@@ -4967,7 +5252,7 @@ function renderProjectHub() {
       <div class="hub-top-note">先选择工程或模版</div>
       <div class="hub-search">
         <input id="hubSearch" placeholder="搜索工程 / 模版 / 标签…" value="${esc(HUB.filter)}" autocomplete="off">
-        <button class="btn thin" id="hubNew">新建空白工程</button>
+        <button class="btn thin" id="hubNew">新建任务</button>
       </div>
       <button class="hub-win" data-hub-win="minimize" title="最小化">—</button>
       <button class="hub-win" data-hub-win="maximize" title="最大化">□</button>
@@ -4987,7 +5272,7 @@ function renderProjectHub() {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { HUB.filter = ''; input.value = ''; renderHubSections(); }
   });
-  $('#hubNew').onclick = () => hubNewBlank();
+  $('#hubNew').onclick = () => newTaskFlow();
   $('#projectHub').querySelectorAll('[data-hub-win]').forEach((b) => {
     b.onclick = () => api.win(b.dataset.hubWin);
   });
@@ -5035,6 +5320,14 @@ function showHubMenu(name, x, y) {
 async function refreshHubList() {
   HUB.list = await api.projects();
   S.list = HUB.list;
+  // 历史里已经删掉的工程，顺手从标签栏摘掉，避免留下打不开的死标签。
+  const alive = new Set(HUB.list.map((x) => x.name));
+  TABS.items = TABS.items.filter((x) => alive.has(x.name));
+  if (TABS.active && !alive.has(TABS.active)) {
+    TABS.active = '';
+    if (S.project && !alive.has(S.project.name)) S.project = null;
+  }
+  saveTabStrip(); renderTabs();
   renderHubSections();
   const shell = $('#projectHub .hub-shell');
   if (shell) {
@@ -5061,6 +5354,13 @@ async function deleteHubProject(name) {
     : `确定删除工程「${name}」？工程 JSON 会从磁盘删除，这个操作不能撤销。`;
   if (!(await confirmBox('删除工程', msg))) return;
   const r = await api.remove(name);
+  TABS.items = TABS.items.filter((x) => x.name !== name);
+  if (TABS.active === name) {
+    TABS.active = '';
+    if (S.project && S.project.name === name) S.project = null;
+    saveTabStrip(); renderTabs();
+    $('#taskTabs').classList.add('hidden');
+  }
   if (r && r.missing) toast('找不到文件：' + name + '，已移除这条历史记录', 5000);
   else toast('已删除工程「' + name + '」', 4000);
   await refreshHubList();
@@ -5079,33 +5379,34 @@ async function duplicateHubProject(name) {
 async function hubUseTemplate(id) {
   const got = await api.templateGet(id);
   if (!got || got.ok === false) return toast('读取模版失败：' + ((got && got.error) || '未知错误'), 5000);
-  if (S.project && !(await confirmBox('从模版新建工程', `用「${got.name}」新建工程并进入工作台？当前工程会先保存，不会被覆盖。`))) return;
-  if (S.project && !(await save(true))) return toast('当前工程保存失败，已取消新建', 5000);
+  if (S.project && !(await confirmBox('从模版新建工程', `用「${got.name}」新建工程并开一个新标签？当前工程会先保存，原标签不会被覆盖。`))) return;
+  if (S.project && !(await flushAndSave('套用模版'))) return toast('当前工程保存失败，已取消新建', 5000);
   const p = got.project;
   p.name = uniqueProjectName(got.name || p.name);
+  p.taskType = p.taskType || 'mixed';
   const w = await api.save(p);
   if (w && w.ok === false) return toast('新工程保存失败：' + (w.error || ''), 5000);
   await enterWorkspace((w && w.project) || p);
   toast(`已从模版「${got.name}」新建「${p.name}」`, 4500);
 }
 
-async function hubNewBlank() {
-  if (S.project && !(await save(true))) return toast('当前工程保存失败，已取消新建', 5000);
-  const p = await api.seed();
-  p.name = uniqueProjectName('新工程');
-  p.description = '空白工程';
-  p.interfaces = [];
-  delete p.frontend;
-  const w = await api.save(p);
-  if (w && w.ok === false) return toast('新工程保存失败：' + (w.error || ''), 5000);
-  await enterWorkspace((w && w.project) || p);
-  toast(`已新建「${p.name}」`);
+async function hubNewBlank(kind) {
+  return newTaskFlow(kind);
 }
 
-async function enterWorkspace(p) {
-  if (S.view === 'studio' && studioDirty) saveStudioToProject('打开工程');
+async function enterWorkspace(p, opts) {
+  if (S.view === 'studio' && studioDirty) {
+    const ok = await saveStudioToProject('打开工程');
+    if (!ok) {
+      toast('前端画布没有同步成功，先停留在当前工程', 5000);
+      return false;
+    }
+  }
   hideProjectHub();
   S.project = p;
+  if (!TASK_KINDS[S.project.taskType]) S.project.taskType = 'mixed';
+  $('#projectName').value = S.project.name;
+  $('#taskKind').value = taskKindOf(S.project);
   S.cat = (p.categories[0] || {}).id || '';
   S.selId = (p.interfaces[0] || {}).id || '';
   S.mode = 'grid'; S.tab = 'tables'; S.tableKey = ''; S.routeId = '';
@@ -5113,7 +5414,13 @@ async function enterWorkspace(p) {
   S.view = 'api';
   S.studioProject = null; studioLoaded = false; studioDirty = false;
   if (!S.help) S.help = await api.help();
-  setView('api');
+  tabSyncProject(S.project);
+  renderTabs();
+  applyTaskMode();
+  if (taskKindOf(S.project) === 'frontend') setView('studio');
+  else setView('api');
+  if (TABS.items.length > 1) renderTabs();
+  return true;
 }
 
 $('#projectHub').addEventListener('click', async (e) => {
@@ -5181,6 +5488,7 @@ window.addEventListener('blur', hideHubMenu);
 
     const wanted = new URLSearchParams(location.search).get('project');
     const openFile = new URLSearchParams(location.search).get('openFile') || new URLSearchParams(location.search).get('openYxpn');
+    loadTabStrip();
     let direct = null;
     let openStudio = false;
     if (wanted) direct = await api.load(wanted);
@@ -5225,9 +5533,13 @@ window.addEventListener('blur', hideHubMenu);
     }
 
     if (direct) {
+      TABS.items = []; TABS.active = '';
       await enterWorkspace(direct);
       if (openStudio) setView('studio');
     } else {
+      // 启动先看工程历史，不自动恢复上次的一堆标签，避免误以为工程都还开着。
+      TABS.items = []; TABS.active = ''; saveTabStrip();
+      $('#taskTabs').classList.add('hidden');
       if (wanted) toast('找不到文件：' + wanted, 6000);
       await showProjectHub();
     }

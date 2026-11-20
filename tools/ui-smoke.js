@@ -104,10 +104,14 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const rf = JSON.parse(ribbonFit);
   const ribbonOk = rf.sw <= rf.cw + 1 ? rf.aiRight <= rf.vw : (rf.vw < 1400 && rf.ox === 'auto');
   t('Ribbon 宽屏完整、窄屏可滚动', ribbonOk, ribbonFit);
-  const newFlow = await val(`(async()=>{S.project.description='UNSAVED_BEFORE_NEW';const old=${JSON.stringify(smokeName)};document.querySelector('[data-action="seed"]').click();await new Promise(r=>setTimeout(r,1200));const next=S.project.name;const oldProject=await api.load(old);await enterWorkspace(await api.load(old));return JSON.stringify({next,savedDesc:oldProject&&oldProject.description,oldExists:!!oldProject})})()`);
+  const newFlow = await val(`(async()=>{S.project.description='UNSAVED_BEFORE_NEW';const old=${JSON.stringify(smokeName)};document.querySelector('[data-action="seed"]').click();await new Promise(r=>setTimeout(r,300));const card=document.querySelector('[data-task-kind="mixed"]');if(card)card.click();await new Promise(r=>setTimeout(r,1200));const next=S.project.name;const oldProject=await api.load(old);await enterWorkspace(await api.load(old));await new Promise(r=>setTimeout(r,300));return JSON.stringify({next,savedDesc:oldProject&&oldProject.description,oldExists:!!oldProject,tabs:TABS.items.map(x=>x.name),active:TABS.active,tabBar:!document.querySelector('#taskTabs').classList.contains('hidden')})})()`);
   const nf = JSON.parse(newFlow);
   newProjectName = nf.next;
   t('新建先保存当前工程再开新工程', nf.next !== smokeName && nf.savedDesc === 'UNSAVED_BEFORE_NEW' && nf.oldExists, newFlow);
+  t('新建任务先选三类任务再开新标签', nf.tabs.length >= 2 && nf.active === smokeName && nf.tabBar, newFlow);
+  const tabSwitch = await val(`(async()=>{document.querySelector('.task-tab[data-tab-name='+JSON.stringify(${JSON.stringify(nf.next)})+']').click();await new Promise(r=>setTimeout(r,900));const a=S.project.name;document.querySelector('.task-tab[data-tab-name='+JSON.stringify(${JSON.stringify(smokeName)})+']').click();await new Promise(r=>setTimeout(r,900));return JSON.stringify({a,b:S.project.name,active:TABS.active})})()`);
+  const ts = JSON.parse(tabSwitch);
+  t('WPS 式标签可来回切换工程', ts.a === nf.next && ts.b === smokeName && ts.active === smokeName, tabSwitch);
   await val(`act('moreMenu')`);
   await wait(300);
   t('更多菜单收纳低频入口', await val(`!!document.querySelector('[data-more-action="exportYxpn"]') && !!document.querySelector('[data-more-action="ai"]') && /更多操作/.test(document.querySelector('#modal').innerText)`));
