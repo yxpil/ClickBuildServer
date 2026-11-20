@@ -84,7 +84,7 @@ async function deskHome() {
     const cols = deskColumns(main, recent);
     const body = recent.length
       ? '<div class="table-wrap"><table><thead><tr>' + cols.map((c) => '<th>' + esc(labelOf(main.iface, c)) + '</th>').join('') + '</tr></thead><tbody>' +
-        recent.map((r) => '<tr onclick="App.openDeskRow(' + JSON.stringify(menus.indexOf(main)) + ',' + JSON.stringify(r.id == null ? '' : r.id) + ')">' +
+        recent.map((r) => '<tr onclick="App.openDeskRow(' + HQ(menus.indexOf(main)) + ',' + HQ(r.id == null ? '' : r.id) + ')">' +
           cols.map((c, i) => '<td>' + (i === 0 ? '<span class="strong">' : '') + fieldValue(main.iface, c, r) + (i === 0 ? '</span>' : '') + '</td>').join('') + '</tr>').join('') +
         '</tbody></table></div>'
       : emptyHtml('还没有' + main.label, '点右上角新建，第一条数据会出现在这里。');

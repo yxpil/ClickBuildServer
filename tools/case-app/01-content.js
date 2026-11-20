@@ -40,7 +40,7 @@ function contentCard(row, catList) {
   const views = row[UX.fields.views] || 0;
   const cat = categoryName(catList, row[UX.fields.category]) || (row.paper || '');
   const unit = UX.media ? ' 次播放' : ' 次阅读';
-  return '<article class="card" onclick="App.openContentItem(' + JSON.stringify(row.id) + ')">' +
+  return '<article class="card" onclick="App.openContentItem(' + HQ(row.id) + ')">' +
     '<div class="card-cover">' + coverHtml(row, { label: cat || UX.itemLabel }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(cat || UX.kicker) + '</span><span>' + esc(fmtDate(date)) + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row[UX.fields.body], 120) || '打开查看详情。') + '</p>' +
@@ -65,10 +65,10 @@ async function contentHome() {
       '<div class="hero-art"><div class="hero-art-head"><span>本期焦点</span><span>' + esc(UX.brand) + '</span></div>' +
       (featured ? '<div class="hero-feature"><span class="big">' + esc(String(featured[UX.fields.views] || 0)) + '</span>' +
         '<b>' + esc(featured[UX.fields.title]) + '</b><span>' + esc(categoryName(cats, featured[UX.fields.category]) || UX.itemLabel) + ' · ' + esc(fmtDate(featured[UX.fields.date])) + '</span></div>' : '<div class="hero-feature"><b>还没有内容</b><span>注册后发布第一篇。</span></div>') +
-      '<div class="hero-list">' + top.slice(0, 4).map((r, i) => '<div onclick="App.openContentItem(' + JSON.stringify(r.id) + ')" style="cursor:pointer"><span>' + String(i + 1).padStart(2, '0') + ' · ' + esc(short(r[UX.fields.title], 22)) + '</span><em>' + esc(r[UX.fields.views] || 0) + '</em></div>').join('') + '</div>' +
+      '<div class="hero-list">' + top.slice(0, 4).map((r, i) => '<div onclick="App.openContentItem(' + HQ(r.id) + ')" style="cursor:pointer"><span>' + String(i + 1).padStart(2, '0') + ' · ' + esc(short(r[UX.fields.title], 22)) + '</span><em>' + esc(r[UX.fields.views] || 0) + '</em></div>').join('') + '</div>' +
       '</div></section>';
     const chips = '<div class="chips"><button class="chip ' + (!state.params.category ? 'on' : '') + '" onclick="App.go(\'collection\')">全部</button>' +
-      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + JSON.stringify(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>';
+      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + HQ(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>';
     const section = '<section class="section"><div class="section-head"><div><h2>最新' + esc(UX.itemLabel) + '</h2><p>' + esc(list.length) + ' 条真实内容，按发布时间排序</p></div>' + chips + '</div>' +
       (rest.length ? '<div class="grid">' + rest.map((r) => contentCard(r, cats)).join('') + '</div>' : emptyHtml('还没有公开的' + UX.itemLabel, '到后台' + (UX.media ? '上传' : '写') + '一篇，发布后会出现在这里。')) + '</section>';
     setMain('<div class="page">' + hero + section + pageFoot() + '</div>');
@@ -86,7 +86,7 @@ async function contentCollection() {
     setMain('<div class="page">' + pageTitle('全部' + UX.itemLabel, '共 ' + list.length + ' 条，点击任意一张进入真实详情页。') +
       toolbar('') +
       '<div class="chips" style="margin-bottom:20px"><button class="chip ' + (!state.params.category ? 'on' : '') + '" onclick="App.go(\'collection\')">全部</button>' +
-      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + JSON.stringify(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>' +
+      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + HQ(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>' +
       (list.length ? '<div class="grid">' + list.map((r) => contentCard(r, cats)).join('') + '</div>' : emptyHtml('没有找到匹配的' + UX.itemLabel, '换一个关键词或分类试试。')) +
       pageFoot() + '</div>');
   } catch (e) {
@@ -148,7 +148,7 @@ function mediaBlock(row) {
   const url = mediaUrl(row);
   if (!url) {
     return '<div class="empty" style="padding:22px;margin:18px 0">' +
-      (state.token ? '还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。<button class="btn sm primary" style="margin-left:8px" onclick="App.uploadMedia(' + JSON.stringify(row.id) + ')">上传文件</button>' : '作者还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。') + '</div>';
+      (state.token ? '还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。<button class="btn sm primary" style="margin-left:8px" onclick="App.uploadMedia(' + HQ(row.id) + ')">上传文件</button>' : '作者还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。') + '</div>';
   }
   const playHandler = UX.primary.play ? ' onplay="App.mediaPlay(' + JSON.stringify(row.id) + ')"' : '';
   return '<div class="media-box" style="margin:18px 0;background:#0d0d0d;border-radius:14px;overflow:hidden">' +
@@ -223,11 +223,11 @@ async function contentItem() {
     }
     const actions = [];
     if (UX.favorites) {
-      actions.push('<button class="btn ' + (faved ? 'dark' : '') + '" onclick="App.toggleFavorite(' + JSON.stringify(row.id) + ')">' + (faved ? '已收藏' : '收藏') + '</button>');
+      actions.push('<button class="btn ' + (faved ? 'dark' : '') + '" onclick="App.toggleFavorite(' + HQ(row.id) + ')">' + (faved ? '已收藏' : '收藏') + '</button>');
     }
     if (state.token && UX.auth) {
-      actions.push('<button class="btn" onclick="App.editContent(' + JSON.stringify(row.id) + ')">编辑</button>');
-      if (p.publish) actions.push('<button class="btn" onclick="App.publishContent(' + JSON.stringify(row.id) + ')">发布</button>');
+      actions.push('<button class="btn" onclick="App.editContent(' + HQ(row.id) + ')">编辑</button>');
+      if (p.publish) actions.push('<button class="btn" onclick="App.publishContent(' + HQ(row.id) + ')">发布</button>');
     }
     const commentHtml = UX.comments ? (
       '<section class="comments"><h3>讨论 · ' + comments.length + '</h3>' +
@@ -235,7 +235,7 @@ async function contentItem() {
         '<div class="comment-main"><b>' + esc(c[UX.comments.author] || c.author || '读者') + '</b><time>' + esc(fmtDate(c.created_at, true)) + '</time>' +
         '<p>' + esc(c.content) + '</p></div></div>').join('') : '<div class="empty" style="padding:30px">还没有评论，来说第一句。</div>') +
       (state.token
-        ? '<div class="comment-form"><textarea id="comment-text" placeholder="写下你的想法…"></textarea><button class="btn primary" onclick="App.submitComment(' + JSON.stringify(row.id) + ')">发表评论</button></div>'
+        ? '<div class="comment-form"><textarea id="comment-text" placeholder="写下你的想法…"></textarea><button class="btn primary" onclick="App.submitComment(' + HQ(row.id) + ')">发表评论</button></div>'
         : '<div class="empty" style="padding:24px">登录后参与讨论。<button class="btn sm primary" style="margin-left:8px" onclick="App.login()">登录</button></div>') +
       '</section>'
     ) : '';
@@ -334,28 +334,28 @@ async function contentAdmin() {
       { id: 'comments', label: '评论' },
     ].filter((x) => x.label !== '—');
     const tabsHtml = '<div class="chips" style="margin-bottom:18px">' + tabs.map((t) =>
-      '<button class="chip ' + (tab === t.id ? 'on' : '') + '" onclick="App.adminTab(' + JSON.stringify(t.id) + ')">' + esc(t.label) + '</button>').join('') + '</div>';
+      '<button class="chip ' + (tab === t.id ? 'on' : '') + '" onclick="App.adminTab(' + HQ(t.id) + ')">' + esc(t.label) + '</button>').join('') + '</div>';
     let body = '';
     if (tab === 'primary') {
       body = '<div class="toolbar"><button class="btn primary" onclick="App.newContent()">+ ' + esc(UX.writeLabel) + '</button><span class="spacer"></span>' +
         '<span class="faint">共 ' + primaryRows.length + ' 条</span></div>' +
         tableHTML(UX.primary.iface, primaryRows, ['title', 'status', 'views', 'created_at'], {
           emptyTitle: '还没有' + UX.itemLabel,
-          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editContent(' + JSON.stringify(row.id) + ')">编辑</button>' +
-            (UX.media ? '<button class="btn sm primary" onclick="event.stopPropagation();App.uploadMedia(' + JSON.stringify(row.id) + ')">上传文件</button>' : '') +
-            (UX.primary.publish ? '<button class="btn sm" onclick="event.stopPropagation();App.publishContent(' + JSON.stringify(row.id) + ')">发布</button>' : '') +
-            '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteContent(' + JSON.stringify(row.id) + ')">删除</button>',
+          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editContent(' + HQ(row.id) + ')">编辑</button>' +
+            (UX.media ? '<button class="btn sm primary" onclick="event.stopPropagation();App.uploadMedia(' + HQ(row.id) + ')">上传文件</button>' : '') +
+            (UX.primary.publish ? '<button class="btn sm" onclick="event.stopPropagation();App.publishContent(' + HQ(row.id) + ')">发布</button>' : '') +
+            '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteContent(' + HQ(row.id) + ')">删除</button>',
         });
     } else if (tab === 'categories') {
       body = '<div class="toolbar"><button class="btn primary" onclick="App.newCategory()">+ 新建分类</button><span class="spacer"></span><span class="faint">共 ' + cats.length + ' 个分类</span></div>' +
         tableHTML(UX.category.iface, cats, ['name', 'slug', 'sort'], {
           emptyTitle: '还没有分类',
-          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteCategory(' + JSON.stringify(row.id) + ')">删除</button>',
+          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteCategory(' + HQ(row.id) + ')">删除</button>',
         });
     } else {
       body = tableHTML(UX.comments.iface, commentRows, ['author', 'content', 'status', 'created_at'], {
         emptyTitle: '还没有评论',
-        actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteComment(' + JSON.stringify(row.id) + ')">删除</button>',
+        actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteComment(' + HQ(row.id) + ')">删除</button>',
       });
     }
     setMain('<div class="page">' + pageTitle('内容后台', '在这里写、改、发布，也可以管理分类和评论。') + tabsHtml + body + pageFoot() + '</div>');
@@ -434,7 +434,7 @@ async function contentMy() {
     setMain('<div class="page">' + pageTitle('我的收藏', '共 ' + rows.length + ' 条，收藏关系存在真实数据表里。') +
       (rows.length ? '<div class="grid">' + rows.map((r) => {
         const title = r.title || r.name || '未命名';
-        return '<div class="card" onclick="App.openContentItem(' + JSON.stringify(r[UX.favorites.foreign] || r.id) + ')"><div class="card-cover">' + coverHtml(r) + '</div><div class="card-body"><h3>' + esc(title) + '</h3><div class="card-foot"><span>已收藏</span><span>' + esc(UX.itemLabel) + ' →</span></div></div></div>';
+        return '<div class="card" onclick="App.openContentItem(' + HQ(r[UX.favorites.foreign] || r.id) + ')"><div class="card-cover">' + coverHtml(r) + '</div><div class="card-body"><h3>' + esc(title) + '</h3><div class="card-foot"><span>已收藏</span><span>' + esc(UX.itemLabel) + ' →</span></div></div></div>';
       }).join('') + '</div>' : emptyHtml('还没有收藏', '点开一首歌或一个视频，点“收藏”就会出现在这里。')) + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }

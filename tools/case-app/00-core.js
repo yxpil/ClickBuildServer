@@ -22,6 +22,13 @@ function esc(v) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+/* 行内事件里的字符串参数：JSON 转义后还要做 HTML 属性转义，避免 onclick="App.f(\"x\")" 截断属性 */
+function HQ(v) {
+  return String(JSON.stringify(v == null ? '' : v))
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 App.esc = esc;
 
 function storeGet(key, fallback) {
@@ -437,11 +444,11 @@ function fieldInput(ifaceName, name, value) {
     input = '<textarea data-field="' + esc(name) + '" placeholder="' + esc(hint) + '">' + esc(value == null ? '' : value) + '</textarea>';
   } else if (name === 'password' || name === 'secret') {
     input = '<input data-field="' + esc(name) + '" type="password" value="' + esc(value == null ? '' : value) + '">';
+  } else if (isNumberField(meta, name)) {
+    input = '<input data-field="' + esc(name) + '" type="number" step="any" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
   } else if (isDateField(meta, name)) {
     const v = String(value || '').replace(' ', 'T').slice(0, 16);
     input = '<input data-field="' + esc(name) + '" type="datetime-local" value="' + esc(v) + '">';
-  } else if (isNumberField(meta, name)) {
-    input = '<input data-field="' + esc(name) + '" type="number" step="any" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
   } else {
     input = '<input data-field="' + esc(name) + '" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
   }
@@ -560,7 +567,7 @@ function renderChrome() {
     ? '<button class="user-chip" onclick="App.login()">' + avatar(name || '我') + '<b>' + esc(short(name || '已登录', 10)) + '</b></button>'
     : (UX.auth ? '<button class="btn" onclick="App.login()">登录</button><button class="btn primary" onclick="App.register()">注册</button>' : '');
   const nav = (UX.nav || []).map((n) =>
-    '<button data-nav="' + esc(n.view) + '" class="' + (state.view === n.view ? 'on' : '') + '" onclick="App.go(' + JSON.stringify(n.view) + ')">' + esc(n.label) + '</button>'
+    '<button data-nav="' + esc(n.view) + '" class="' + (state.view === n.view ? 'on' : '') + '" onclick="App.go(' + HQ(n.view) + ')">' + esc(n.label) + '</button>'
   ).join('');
   $('#topbar').innerHTML = '<div class="topbar-in">' +
     '<a class="brand" href="javascript:void(0)" onclick="App.go(\'home\')">' +
@@ -614,7 +621,7 @@ function tableHTML(ifaceName, rows, columns, opts) {
   const head = cols.map((c) => '<th>' + esc(labelOf(ifaceName, c)) + '</th>').join('');
   const body = rows.map((row, idx) => {
     const tds = cols.map((c, i) => '<td>' + (i === 0 ? '<span class="strong">' : '') + fieldValue(ifaceName, c, row) + (i === 0 ? '</span>' : '') + '</td>').join('');
-    return '<tr onclick="App.openRow(' + JSON.stringify(ifaceName) + ',' + idx + ')">' + tds +
+    return '<tr onclick="App.openRow(' + HQ(ifaceName) + ',' + idx + ')">' + tds +
       (opts.actions ? '<td><div class="row-actions">' + opts.actions(row, idx) + '</div></td>' : '') + '</tr>';
   }).join('');
   return '<div class="table-wrap"><table><thead><tr>' + head + (opts.actions ? '<th style="text-align:right">操作</th>' : '') +

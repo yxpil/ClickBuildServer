@@ -41,7 +41,7 @@ function commerceCard(row, kind) {
   let foot = '<span>' + esc(UX.itemLabel) + ' →</span>';
   if (kind === 'mall') foot = '<span class="' + (Number(stock) > 0 ? 'price' : 'pill bad') + '">' + (Number(stock) > 0 ? fmtMoney(price) : '已售罄') + '</span><span>库存 ' + esc(stock == null ? '—' : stock) + '</span>';
   if (kind === 'event') foot = '<span class="price">' + fmtMoney(price) + '</span><span>余票 ' + esc(stock == null ? '—' : stock) + '</span>';
-  return '<article class="card" onclick="App.openCommerceItem(' + JSON.stringify(row.id) + ')">' +
+  return '<article class="card" onclick="App.openCommerceItem(' + HQ(row.id) + ')">' +
     '<div class="card-cover">' + coverHtml(row, { label: cat || UX.itemLabel }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(cat || UX.kicker) + '</span><span>' + esc(kind === 'event' ? fmtDate(row.start_at, true) : '现货') + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row.description || row.venue || '', 100) || '打开查看详情。') + '</p>' +
@@ -65,7 +65,7 @@ async function mallHome() {
       '<div class="hero-list">' + list.slice(0, 4).map((r) => '<div><span>' + esc(short(r.title, 20)) + '</span><em>' + esc(fmtMoney(r.price)) + '</em></div>').join('') + '</div></div></section>';
     setMain('<div class="page">' + hero +
       '<section class="section"><div class="section-head"><div><h2>全部商品</h2><p>共 ' + onSale.length + ' 件在售</p></div>' +
-      '<div class="chips">' + cats.map((c) => '<button class="chip ' + (state.params.category === c ? 'on' : '') + '" onclick="App.filterValue(\'category\',' + JSON.stringify(c) + ')">' + esc(c) + '</button>').join('') + '</div></div>' +
+      '<div class="chips">' + cats.map((c) => '<button class="chip ' + (state.params.category === c ? 'on' : '') + '" onclick="App.filterValue(\'category\',' + HQ(c) + ')">' + esc(c) + '</button>').join('') + '</div></div>' +
       '<div class="grid four">' + list.filter((r) => !state.params.category || r.category === state.params.category).map((r) => commerceCard(r, 'mall')).join('') + '</div></section>' +
       pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
@@ -100,15 +100,15 @@ async function posHome() {
     const cartList = cart();
     const total = cartList.reduce((n, x) => n + Number(x.price) * Number(x.qty), 0);
     const tableHtml = '<div class="panel"><div class="panel-head"><h3>桌台</h3><span class="faint">先开台，再点菜</span></div><div class="chips">' +
-      tables.map((t) => '<button class="chip ' + (String(tableId) === String(t.id) ? 'on' : '') + '" onclick="App.selectTable(' + JSON.stringify(t.id) + ')">' +
+      tables.map((t) => '<button class="chip ' + (String(tableId) === String(t.id) ? 'on' : '') + '" onclick="App.selectTable(' + HQ(t.id) + ')">' +
         esc(t.table_no) + ' · ' + (Number(t.status) === 1 ? '用餐中' : '空闲') + ' · ' + esc(t.seats) + '座</button>').join('') + '</div>' +
       (table ? '<p class="faint" style="margin:14px 0 0">当前：' + esc(table.table_no) + '（' + esc(table.seats) + ' 座）</p>' : '<p class="faint" style="margin:14px 0 0">还没有选桌台</p>') + '</div>';
     const dishesHtml = '<div class="panel"><div class="panel-head"><h3>菜单</h3><span class="faint">' + dishes.length + ' 道菜</span></div><div class="grid four">' +
       dishes.map((d) => '<article class="card"><div class="card-body"><div class="card-kicker"><span>' + esc(d.category || '热菜') + '</span><span>库存 ' + esc(d.stock) + '</span></div><h3>' + esc(d.name) + '</h3>' +
-        '<div class="card-foot"><span class="price">' + fmtMoney(d.price) + '</span><button class="btn sm primary" onclick="App.posAdd(' + JSON.stringify(d.id) + ')">加入</button></div></div></article>').join('') + '</div></div>';
+        '<div class="card-foot"><span class="price">' + fmtMoney(d.price) + '</span><button class="btn sm primary" onclick="App.posAdd(' + HQ(d.id) + ')">加入</button></div></div></article>').join('') + '</div></div>';
     const orderHtml = '<div class="panel"><div class="panel-head"><h3>当前桌台订单</h3><span class="faint">' + cartList.length + ' 项</span></div>' +
       (cartList.length ? cartList.map((x) => '<div class="cart-line"><div class="thumb">' + esc(String(x.name || '菜').slice(0, 1)) + '</div><div class="info"><b>' + esc(x.name) + '</b><span>' + fmtMoney(x.price) + ' × ' + x.qty + '</span></div>' +
-        '<div class="qty"><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',1)">+</button></div></div>').join('') : '<div class="empty" style="padding:30px">还没有加菜</div>') +
+        '<div class="qty"><button onclick="App.setCartQty(' + HQ(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + HQ(x.id) + ',1)">+</button></div></div>').join('') : '<div class="empty" style="padding:30px">还没有加菜</div>') +
       '<div class="cart-total" style="margin-top:16px"><span>合计</span><b>' + fmtMoney(total) + '</b></div>' +
       '<button class="btn primary block" onclick="App.posSubmit()" ' + (!table || !cartList.length ? 'disabled' : '') + '>下单到后厨</button></div>';
     setMain('<div class="page">' + pageTitle('点餐台', '桌台、菜品、加菜、订单明细和后厨队列都是真实数据。') + tableHtml + '<div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(320px,.8fr);align-items:start"><div>' + dishesHtml + '</div><div>' + orderHtml + '</div></div>' + pageFoot() + '</div>');
@@ -236,8 +236,8 @@ async function commerceCart() {
   const total = list.reduce((n, x) => n + Number(x.price) * Number(x.qty), 0);
   setMain('<div class="page narrow">' + pageTitle('购物车', '这里是你刚刚加进来的真实商品或门票。') +
     (list.length ? '<div class="panel">' + list.map((x) => '<div class="cart-line"><div class="thumb">' + esc(String(x.title || '·').slice(0, 1)) + '</div><div class="info"><b>' + esc(x.title) + '</b><span>' + fmtMoney(x.price) + ' × ' + x.qty + '</span></div>' +
-      '<div class="qty"><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',1)">+</button></div>' +
-      '<button class="btn sm danger" onclick="App.removeCart(' + JSON.stringify(x.id) + ')">移除</button></div>').join('') +
+      '<div class="qty"><button onclick="App.setCartQty(' + HQ(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + HQ(x.id) + ',1)">+</button></div>' +
+      '<button class="btn sm danger" onclick="App.removeCart(' + HQ(x.id) + ')">移除</button></div>').join('') +
       '<div class="cart-total" style="margin-top:20px"><span>合计</span><b>' + fmtMoney(total) + '</b></div>' +
       '<button class="btn primary block" style="margin-top:14px" onclick="App.checkout()">去结算</button></div>' : emptyHtml('购物车是空的', '先去挑点东西。') ) +
     pageFoot() + '</div>');
@@ -331,7 +331,7 @@ async function commerceOrder() {
     setMain('<div class="page narrow"><div class="detail-head"><button class="back" onclick="App.goBack(\'home\')">← 返回点餐台</button><span class="pill warn">' + esc(order.status || 'open') + '</span></div>' +
       '<div class="panel"><div class="panel-head"><h3>订单 #' + esc(order.id) + ' · 桌台 ' + esc(order.table_id) + '</h3><b class="price">' + fmtMoney(order.total) + '</b></div>' +
       tableHTML(UX.order.iface, items, ['name', 'price', 'qty'], { emptyTitle: '还没有菜品' }) +
-      '<button class="btn primary" style="margin-top:16px" onclick="App.checkoutPos(' + JSON.stringify(order.id) + ')">结账并释放桌台</button></div>' + pageFoot() + '</div>');
+      '<button class="btn primary" style="margin-top:16px" onclick="App.checkoutPos(' + HQ(order.id) + ')">结账并释放桌台</button></div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }
 
@@ -358,7 +358,7 @@ async function commerceAdmin() {
         '<div class="panel" style="margin-top:18px"><div class="panel-head"><h3>票务核销</h3><span class="faint">' + tickets.filter((x) => !Number(x.checked)).length + ' 张待核销</span></div>' +
         tableHTML(UX.ticket.iface, tickets, ['code', 'title', 'qty', 'start_at', 'checked'], {
           emptyTitle: '还没有售出票',
-          actions: (row) => Number(row.checked) ? '<span class="pill ok">已核销</span>' : '<button class="btn sm primary" onclick="event.stopPropagation();App.checkinTicket(' + JSON.stringify(row.code) + ')">核销</button>',
+          actions: (row) => Number(row.checked) ? '<span class="pill ok">已核销</span>' : '<button class="btn sm primary" onclick="event.stopPropagation();App.checkinTicket(' + HQ(row.code) + ')">核销</button>',
         }) + '</div>' + pageFoot() + '</div>');
     } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
     return;
@@ -385,7 +385,7 @@ async function commerceAdmin() {
       '<div class="toolbar"><button class="btn primary" onclick="App.newProduct()">+ 上架商品</button><span class="spacer"></span></div>' +
       tableHTML(UX.primary.iface, rows, ['title', 'category', 'price', 'stock', 'status'], {
         emptyTitle: '还没有商品',
-        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editProduct(' + JSON.stringify(row.id) + ')">编辑</button><button class="btn sm danger" onclick="event.stopPropagation();App.deleteProduct(' + JSON.stringify(row.id) + ')">删除</button>',
+        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editProduct(' + HQ(row.id) + ')">编辑</button><button class="btn sm danger" onclick="event.stopPropagation();App.deleteProduct(' + HQ(row.id) + ')">删除</button>',
       }) + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }

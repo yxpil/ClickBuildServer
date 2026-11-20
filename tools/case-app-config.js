@@ -163,7 +163,7 @@ module.exports = {
       { label: '添加联系人', iface: '客户', path: '/customers/:id/contacts', method: 'POST', fields: ['name', 'title', 'phone'], scope: 'detail' },
       { label: '推进商机', iface: '客户', path: '/deals', method: 'POST', fields: ['title', 'amount', 'stage'], map: { customer_id: 'id' }, scope: 'detail' },
     ],
-    home: { kicker: '今日工作台', title: '早上好，今天先跟哪一位客户？', sub: '客户、联系人、商机和阶段金额都在同一套数据里。新建客户、添加联系人、推进商机，都会立刻改变统计。', cta: '查看客户' },
+    home: { kicker: '今日工作台', title: '早上好，今天先跟哪一位客户？', sub: '客户、联系人、商机和阶段金额都在同一套数据里。新建客户、添加联系人、推进商机，都会立刻改变统计。', cta: '新建客户' },
   }),
   finance: Object.assign(desk('账房', 'ZHANGFANG', '报销与审批', '#2F5D50', '每一笔钱，都有来路和去处。'), {
     nav: [{ label: '工作台', view: 'home' }, { label: '我的报销', view: 'collection' }, { label: '待审批', view: 'pending' }],
@@ -235,7 +235,7 @@ module.exports = {
     auth: { iface: '账户', login: '/login', register: '/register' },
     menu: [{ label: '运单', iface: '运单', list: '/shipments', detail: '/shipments/:no', detailKey: 'tracking_no', create: '/shipments', columns: ['tracking_no', 'sender', 'receiver', 'status'], title: 'tracking_no' }],
     actions: [{ label: '推进节点', iface: '运单', path: '/shipments/:id/track', method: 'POST', fields: ['node', 'detail'], scope: 'detail', confirm: '追加这条轨迹并更新运单状态？' }],
-    home: { kicker: '在途看板', title: '从揽收到签收，轨迹一条不少。', sub: '运单、节点、状态推进和按单号联查都是真实数据。推进节点会同时写入轨迹并回写运单状态。', cta: '查运单' },
+    home: { kicker: '在途看板', title: '从揽收到签收，轨迹一条不少。', sub: '运单、节点、状态推进和按单号联查都是真实数据。推进节点会同时写入轨迹并回写运单状态。', cta: '新建运单' },
   }),
   iot: Object.assign(desk('感知', 'GANZHI', '设备遥测监控', '#3D5A40', '设备在线，数据才有意义。'), {
     nav: [{ label: '监控台', view: 'home' }, { label: '设备', view: 'collection' }, { label: '温度告警', view: 'alerts' }],
@@ -267,7 +267,7 @@ module.exports = {
       { label: '回复', iface: '工单', path: '/tickets/:id/replies', method: 'POST', fields: ['author', 'content'], scope: 'detail' },
     ],
     enums: { status: { 0: '新建', 1: '处理中', 2: '已解决', 3: '已关闭' }, priority: { 1: '低', 2: '中', 3: '高' } },
-    home: { kicker: '客服工作台', title: '新工单、处理中、已解决，一眼看清。', sub: '客户、工单、回复、指派和状态统计都是真表。回复会进入工单时间线，指派会回写处理人。', cta: '查看工单' },
+    home: { kicker: '客服工作台', title: '新工单、处理中、已解决，一眼看清。', sub: '客户、工单、回复、指派和状态统计都是真表。回复会进入工单时间线，指派会回写处理人。', cta: '新建工单' },
   }),
   meeting: Object.assign(desk('会间', 'HUIJIAN', '会议室协作', '#2C4A63', '会前有房间，会中有记录，会后有纪要。'), {
     nav: [{ label: '工作台', view: 'home' }, { label: '会议', view: 'collection' }],

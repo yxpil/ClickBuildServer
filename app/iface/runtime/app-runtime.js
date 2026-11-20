@@ -23,6 +23,13 @@ function esc(v) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+/* 行内事件里的字符串参数：JSON 转义后还要做 HTML 属性转义，避免 onclick="App.f(\"x\")" 截断属性 */
+function HQ(v) {
+  return String(JSON.stringify(v == null ? '' : v))
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 App.esc = esc;
 
 function storeGet(key, fallback) {
@@ -438,11 +445,11 @@ function fieldInput(ifaceName, name, value) {
     input = '<textarea data-field="' + esc(name) + '" placeholder="' + esc(hint) + '">' + esc(value == null ? '' : value) + '</textarea>';
   } else if (name === 'password' || name === 'secret') {
     input = '<input data-field="' + esc(name) + '" type="password" value="' + esc(value == null ? '' : value) + '">';
+  } else if (isNumberField(meta, name)) {
+    input = '<input data-field="' + esc(name) + '" type="number" step="any" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
   } else if (isDateField(meta, name)) {
     const v = String(value || '').replace(' ', 'T').slice(0, 16);
     input = '<input data-field="' + esc(name) + '" type="datetime-local" value="' + esc(v) + '">';
-  } else if (isNumberField(meta, name)) {
-    input = '<input data-field="' + esc(name) + '" type="number" step="any" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
   } else {
     input = '<input data-field="' + esc(name) + '" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
   }
@@ -561,7 +568,7 @@ function renderChrome() {
     ? '<button class="user-chip" onclick="App.login()">' + avatar(name || '我') + '<b>' + esc(short(name || '已登录', 10)) + '</b></button>'
     : (UX.auth ? '<button class="btn" onclick="App.login()">登录</button><button class="btn primary" onclick="App.register()">注册</button>' : '');
   const nav = (UX.nav || []).map((n) =>
-    '<button data-nav="' + esc(n.view) + '" class="' + (state.view === n.view ? 'on' : '') + '" onclick="App.go(' + JSON.stringify(n.view) + ')">' + esc(n.label) + '</button>'
+    '<button data-nav="' + esc(n.view) + '" class="' + (state.view === n.view ? 'on' : '') + '" onclick="App.go(' + HQ(n.view) + ')">' + esc(n.label) + '</button>'
   ).join('');
   $('#topbar').innerHTML = '<div class="topbar-in">' +
     '<a class="brand" href="javascript:void(0)" onclick="App.go(\'home\')">' +
@@ -615,7 +622,7 @@ function tableHTML(ifaceName, rows, columns, opts) {
   const head = cols.map((c) => '<th>' + esc(labelOf(ifaceName, c)) + '</th>').join('');
   const body = rows.map((row, idx) => {
     const tds = cols.map((c, i) => '<td>' + (i === 0 ? '<span class="strong">' : '') + fieldValue(ifaceName, c, row) + (i === 0 ? '</span>' : '') + '</td>').join('');
-    return '<tr onclick="App.openRow(' + JSON.stringify(ifaceName) + ',' + idx + ')">' + tds +
+    return '<tr onclick="App.openRow(' + HQ(ifaceName) + ',' + idx + ')">' + tds +
       (opts.actions ? '<td><div class="row-actions">' + opts.actions(row, idx) + '</div></td>' : '') + '</tr>';
   }).join('');
   return '<div class="table-wrap"><table><thead><tr>' + head + (opts.actions ? '<th style="text-align:right">操作</th>' : '') +
@@ -719,7 +726,7 @@ function contentCard(row, catList) {
   const views = row[UX.fields.views] || 0;
   const cat = categoryName(catList, row[UX.fields.category]) || (row.paper || '');
   const unit = UX.media ? ' 次播放' : ' 次阅读';
-  return '<article class="card" onclick="App.openContentItem(' + JSON.stringify(row.id) + ')">' +
+  return '<article class="card" onclick="App.openContentItem(' + HQ(row.id) + ')">' +
     '<div class="card-cover">' + coverHtml(row, { label: cat || UX.itemLabel }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(cat || UX.kicker) + '</span><span>' + esc(fmtDate(date)) + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row[UX.fields.body], 120) || '打开查看详情。') + '</p>' +
@@ -744,10 +751,10 @@ async function contentHome() {
       '<div class="hero-art"><div class="hero-art-head"><span>本期焦点</span><span>' + esc(UX.brand) + '</span></div>' +
       (featured ? '<div class="hero-feature"><span class="big">' + esc(String(featured[UX.fields.views] || 0)) + '</span>' +
         '<b>' + esc(featured[UX.fields.title]) + '</b><span>' + esc(categoryName(cats, featured[UX.fields.category]) || UX.itemLabel) + ' · ' + esc(fmtDate(featured[UX.fields.date])) + '</span></div>' : '<div class="hero-feature"><b>还没有内容</b><span>注册后发布第一篇。</span></div>') +
-      '<div class="hero-list">' + top.slice(0, 4).map((r, i) => '<div onclick="App.openContentItem(' + JSON.stringify(r.id) + ')" style="cursor:pointer"><span>' + String(i + 1).padStart(2, '0') + ' · ' + esc(short(r[UX.fields.title], 22)) + '</span><em>' + esc(r[UX.fields.views] || 0) + '</em></div>').join('') + '</div>' +
+      '<div class="hero-list">' + top.slice(0, 4).map((r, i) => '<div onclick="App.openContentItem(' + HQ(r.id) + ')" style="cursor:pointer"><span>' + String(i + 1).padStart(2, '0') + ' · ' + esc(short(r[UX.fields.title], 22)) + '</span><em>' + esc(r[UX.fields.views] || 0) + '</em></div>').join('') + '</div>' +
       '</div></section>';
     const chips = '<div class="chips"><button class="chip ' + (!state.params.category ? 'on' : '') + '" onclick="App.go(\'collection\')">全部</button>' +
-      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + JSON.stringify(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>';
+      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + HQ(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>';
     const section = '<section class="section"><div class="section-head"><div><h2>最新' + esc(UX.itemLabel) + '</h2><p>' + esc(list.length) + ' 条真实内容，按发布时间排序</p></div>' + chips + '</div>' +
       (rest.length ? '<div class="grid">' + rest.map((r) => contentCard(r, cats)).join('') + '</div>' : emptyHtml('还没有公开的' + UX.itemLabel, '到后台' + (UX.media ? '上传' : '写') + '一篇，发布后会出现在这里。')) + '</section>';
     setMain('<div class="page">' + hero + section + pageFoot() + '</div>');
@@ -765,7 +772,7 @@ async function contentCollection() {
     setMain('<div class="page">' + pageTitle('全部' + UX.itemLabel, '共 ' + list.length + ' 条，点击任意一张进入真实详情页。') +
       toolbar('') +
       '<div class="chips" style="margin-bottom:20px"><button class="chip ' + (!state.params.category ? 'on' : '') + '" onclick="App.go(\'collection\')">全部</button>' +
-      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + JSON.stringify(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>' +
+      cats.map((c) => '<button class="chip ' + (String(state.params.category) === String(c.id) ? 'on' : '') + '" onclick="App.filterCategory(' + HQ(c.id) + ')">' + esc(c.name) + '</button>').join('') + '</div>' +
       (list.length ? '<div class="grid">' + list.map((r) => contentCard(r, cats)).join('') + '</div>' : emptyHtml('没有找到匹配的' + UX.itemLabel, '换一个关键词或分类试试。')) +
       pageFoot() + '</div>');
   } catch (e) {
@@ -827,7 +834,7 @@ function mediaBlock(row) {
   const url = mediaUrl(row);
   if (!url) {
     return '<div class="empty" style="padding:22px;margin:18px 0">' +
-      (state.token ? '还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。<button class="btn sm primary" style="margin-left:8px" onclick="App.uploadMedia(' + JSON.stringify(row.id) + ')">上传文件</button>' : '作者还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。') + '</div>';
+      (state.token ? '还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。<button class="btn sm primary" style="margin-left:8px" onclick="App.uploadMedia(' + HQ(row.id) + ')">上传文件</button>' : '作者还没有上传' + (UX.media === 'audio' ? '音频' : '视频') + '。') + '</div>';
   }
   const playHandler = UX.primary.play ? ' onplay="App.mediaPlay(' + JSON.stringify(row.id) + ')"' : '';
   return '<div class="media-box" style="margin:18px 0;background:#0d0d0d;border-radius:14px;overflow:hidden">' +
@@ -902,11 +909,11 @@ async function contentItem() {
     }
     const actions = [];
     if (UX.favorites) {
-      actions.push('<button class="btn ' + (faved ? 'dark' : '') + '" onclick="App.toggleFavorite(' + JSON.stringify(row.id) + ')">' + (faved ? '已收藏' : '收藏') + '</button>');
+      actions.push('<button class="btn ' + (faved ? 'dark' : '') + '" onclick="App.toggleFavorite(' + HQ(row.id) + ')">' + (faved ? '已收藏' : '收藏') + '</button>');
     }
     if (state.token && UX.auth) {
-      actions.push('<button class="btn" onclick="App.editContent(' + JSON.stringify(row.id) + ')">编辑</button>');
-      if (p.publish) actions.push('<button class="btn" onclick="App.publishContent(' + JSON.stringify(row.id) + ')">发布</button>');
+      actions.push('<button class="btn" onclick="App.editContent(' + HQ(row.id) + ')">编辑</button>');
+      if (p.publish) actions.push('<button class="btn" onclick="App.publishContent(' + HQ(row.id) + ')">发布</button>');
     }
     const commentHtml = UX.comments ? (
       '<section class="comments"><h3>讨论 · ' + comments.length + '</h3>' +
@@ -914,7 +921,7 @@ async function contentItem() {
         '<div class="comment-main"><b>' + esc(c[UX.comments.author] || c.author || '读者') + '</b><time>' + esc(fmtDate(c.created_at, true)) + '</time>' +
         '<p>' + esc(c.content) + '</p></div></div>').join('') : '<div class="empty" style="padding:30px">还没有评论，来说第一句。</div>') +
       (state.token
-        ? '<div class="comment-form"><textarea id="comment-text" placeholder="写下你的想法…"></textarea><button class="btn primary" onclick="App.submitComment(' + JSON.stringify(row.id) + ')">发表评论</button></div>'
+        ? '<div class="comment-form"><textarea id="comment-text" placeholder="写下你的想法…"></textarea><button class="btn primary" onclick="App.submitComment(' + HQ(row.id) + ')">发表评论</button></div>'
         : '<div class="empty" style="padding:24px">登录后参与讨论。<button class="btn sm primary" style="margin-left:8px" onclick="App.login()">登录</button></div>') +
       '</section>'
     ) : '';
@@ -1013,28 +1020,28 @@ async function contentAdmin() {
       { id: 'comments', label: '评论' },
     ].filter((x) => x.label !== '—');
     const tabsHtml = '<div class="chips" style="margin-bottom:18px">' + tabs.map((t) =>
-      '<button class="chip ' + (tab === t.id ? 'on' : '') + '" onclick="App.adminTab(' + JSON.stringify(t.id) + ')">' + esc(t.label) + '</button>').join('') + '</div>';
+      '<button class="chip ' + (tab === t.id ? 'on' : '') + '" onclick="App.adminTab(' + HQ(t.id) + ')">' + esc(t.label) + '</button>').join('') + '</div>';
     let body = '';
     if (tab === 'primary') {
       body = '<div class="toolbar"><button class="btn primary" onclick="App.newContent()">+ ' + esc(UX.writeLabel) + '</button><span class="spacer"></span>' +
         '<span class="faint">共 ' + primaryRows.length + ' 条</span></div>' +
         tableHTML(UX.primary.iface, primaryRows, ['title', 'status', 'views', 'created_at'], {
           emptyTitle: '还没有' + UX.itemLabel,
-          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editContent(' + JSON.stringify(row.id) + ')">编辑</button>' +
-            (UX.media ? '<button class="btn sm primary" onclick="event.stopPropagation();App.uploadMedia(' + JSON.stringify(row.id) + ')">上传文件</button>' : '') +
-            (UX.primary.publish ? '<button class="btn sm" onclick="event.stopPropagation();App.publishContent(' + JSON.stringify(row.id) + ')">发布</button>' : '') +
-            '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteContent(' + JSON.stringify(row.id) + ')">删除</button>',
+          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editContent(' + HQ(row.id) + ')">编辑</button>' +
+            (UX.media ? '<button class="btn sm primary" onclick="event.stopPropagation();App.uploadMedia(' + HQ(row.id) + ')">上传文件</button>' : '') +
+            (UX.primary.publish ? '<button class="btn sm" onclick="event.stopPropagation();App.publishContent(' + HQ(row.id) + ')">发布</button>' : '') +
+            '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteContent(' + HQ(row.id) + ')">删除</button>',
         });
     } else if (tab === 'categories') {
       body = '<div class="toolbar"><button class="btn primary" onclick="App.newCategory()">+ 新建分类</button><span class="spacer"></span><span class="faint">共 ' + cats.length + ' 个分类</span></div>' +
         tableHTML(UX.category.iface, cats, ['name', 'slug', 'sort'], {
           emptyTitle: '还没有分类',
-          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteCategory(' + JSON.stringify(row.id) + ')">删除</button>',
+          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteCategory(' + HQ(row.id) + ')">删除</button>',
         });
     } else {
       body = tableHTML(UX.comments.iface, commentRows, ['author', 'content', 'status', 'created_at'], {
         emptyTitle: '还没有评论',
-        actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteComment(' + JSON.stringify(row.id) + ')">删除</button>',
+        actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.deleteComment(' + HQ(row.id) + ')">删除</button>',
       });
     }
     setMain('<div class="page">' + pageTitle('内容后台', '在这里写、改、发布，也可以管理分类和评论。') + tabsHtml + body + pageFoot() + '</div>');
@@ -1113,7 +1120,7 @@ async function contentMy() {
     setMain('<div class="page">' + pageTitle('我的收藏', '共 ' + rows.length + ' 条，收藏关系存在真实数据表里。') +
       (rows.length ? '<div class="grid">' + rows.map((r) => {
         const title = r.title || r.name || '未命名';
-        return '<div class="card" onclick="App.openContentItem(' + JSON.stringify(r[UX.favorites.foreign] || r.id) + ')"><div class="card-cover">' + coverHtml(r) + '</div><div class="card-body"><h3>' + esc(title) + '</h3><div class="card-foot"><span>已收藏</span><span>' + esc(UX.itemLabel) + ' →</span></div></div></div>';
+        return '<div class="card" onclick="App.openContentItem(' + HQ(r[UX.favorites.foreign] || r.id) + ')"><div class="card-cover">' + coverHtml(r) + '</div><div class="card-body"><h3>' + esc(title) + '</h3><div class="card-foot"><span>已收藏</span><span>' + esc(UX.itemLabel) + ' →</span></div></div></div>';
       }).join('') + '</div>' : emptyHtml('还没有收藏', '点开一首歌或一个视频，点“收藏”就会出现在这里。')) + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }
@@ -1170,7 +1177,7 @@ function commerceCard(row, kind) {
   let foot = '<span>' + esc(UX.itemLabel) + ' →</span>';
   if (kind === 'mall') foot = '<span class="' + (Number(stock) > 0 ? 'price' : 'pill bad') + '">' + (Number(stock) > 0 ? fmtMoney(price) : '已售罄') + '</span><span>库存 ' + esc(stock == null ? '—' : stock) + '</span>';
   if (kind === 'event') foot = '<span class="price">' + fmtMoney(price) + '</span><span>余票 ' + esc(stock == null ? '—' : stock) + '</span>';
-  return '<article class="card" onclick="App.openCommerceItem(' + JSON.stringify(row.id) + ')">' +
+  return '<article class="card" onclick="App.openCommerceItem(' + HQ(row.id) + ')">' +
     '<div class="card-cover">' + coverHtml(row, { label: cat || UX.itemLabel }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(cat || UX.kicker) + '</span><span>' + esc(kind === 'event' ? fmtDate(row.start_at, true) : '现货') + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row.description || row.venue || '', 100) || '打开查看详情。') + '</p>' +
@@ -1194,7 +1201,7 @@ async function mallHome() {
       '<div class="hero-list">' + list.slice(0, 4).map((r) => '<div><span>' + esc(short(r.title, 20)) + '</span><em>' + esc(fmtMoney(r.price)) + '</em></div>').join('') + '</div></div></section>';
     setMain('<div class="page">' + hero +
       '<section class="section"><div class="section-head"><div><h2>全部商品</h2><p>共 ' + onSale.length + ' 件在售</p></div>' +
-      '<div class="chips">' + cats.map((c) => '<button class="chip ' + (state.params.category === c ? 'on' : '') + '" onclick="App.filterValue(\'category\',' + JSON.stringify(c) + ')">' + esc(c) + '</button>').join('') + '</div></div>' +
+      '<div class="chips">' + cats.map((c) => '<button class="chip ' + (state.params.category === c ? 'on' : '') + '" onclick="App.filterValue(\'category\',' + HQ(c) + ')">' + esc(c) + '</button>').join('') + '</div></div>' +
       '<div class="grid four">' + list.filter((r) => !state.params.category || r.category === state.params.category).map((r) => commerceCard(r, 'mall')).join('') + '</div></section>' +
       pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
@@ -1229,15 +1236,15 @@ async function posHome() {
     const cartList = cart();
     const total = cartList.reduce((n, x) => n + Number(x.price) * Number(x.qty), 0);
     const tableHtml = '<div class="panel"><div class="panel-head"><h3>桌台</h3><span class="faint">先开台，再点菜</span></div><div class="chips">' +
-      tables.map((t) => '<button class="chip ' + (String(tableId) === String(t.id) ? 'on' : '') + '" onclick="App.selectTable(' + JSON.stringify(t.id) + ')">' +
+      tables.map((t) => '<button class="chip ' + (String(tableId) === String(t.id) ? 'on' : '') + '" onclick="App.selectTable(' + HQ(t.id) + ')">' +
         esc(t.table_no) + ' · ' + (Number(t.status) === 1 ? '用餐中' : '空闲') + ' · ' + esc(t.seats) + '座</button>').join('') + '</div>' +
       (table ? '<p class="faint" style="margin:14px 0 0">当前：' + esc(table.table_no) + '（' + esc(table.seats) + ' 座）</p>' : '<p class="faint" style="margin:14px 0 0">还没有选桌台</p>') + '</div>';
     const dishesHtml = '<div class="panel"><div class="panel-head"><h3>菜单</h3><span class="faint">' + dishes.length + ' 道菜</span></div><div class="grid four">' +
       dishes.map((d) => '<article class="card"><div class="card-body"><div class="card-kicker"><span>' + esc(d.category || '热菜') + '</span><span>库存 ' + esc(d.stock) + '</span></div><h3>' + esc(d.name) + '</h3>' +
-        '<div class="card-foot"><span class="price">' + fmtMoney(d.price) + '</span><button class="btn sm primary" onclick="App.posAdd(' + JSON.stringify(d.id) + ')">加入</button></div></div></article>').join('') + '</div></div>';
+        '<div class="card-foot"><span class="price">' + fmtMoney(d.price) + '</span><button class="btn sm primary" onclick="App.posAdd(' + HQ(d.id) + ')">加入</button></div></div></article>').join('') + '</div></div>';
     const orderHtml = '<div class="panel"><div class="panel-head"><h3>当前桌台订单</h3><span class="faint">' + cartList.length + ' 项</span></div>' +
       (cartList.length ? cartList.map((x) => '<div class="cart-line"><div class="thumb">' + esc(String(x.name || '菜').slice(0, 1)) + '</div><div class="info"><b>' + esc(x.name) + '</b><span>' + fmtMoney(x.price) + ' × ' + x.qty + '</span></div>' +
-        '<div class="qty"><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',1)">+</button></div></div>').join('') : '<div class="empty" style="padding:30px">还没有加菜</div>') +
+        '<div class="qty"><button onclick="App.setCartQty(' + HQ(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + HQ(x.id) + ',1)">+</button></div></div>').join('') : '<div class="empty" style="padding:30px">还没有加菜</div>') +
       '<div class="cart-total" style="margin-top:16px"><span>合计</span><b>' + fmtMoney(total) + '</b></div>' +
       '<button class="btn primary block" onclick="App.posSubmit()" ' + (!table || !cartList.length ? 'disabled' : '') + '>下单到后厨</button></div>';
     setMain('<div class="page">' + pageTitle('点餐台', '桌台、菜品、加菜、订单明细和后厨队列都是真实数据。') + tableHtml + '<div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(320px,.8fr);align-items:start"><div>' + dishesHtml + '</div><div>' + orderHtml + '</div></div>' + pageFoot() + '</div>');
@@ -1365,8 +1372,8 @@ async function commerceCart() {
   const total = list.reduce((n, x) => n + Number(x.price) * Number(x.qty), 0);
   setMain('<div class="page narrow">' + pageTitle('购物车', '这里是你刚刚加进来的真实商品或门票。') +
     (list.length ? '<div class="panel">' + list.map((x) => '<div class="cart-line"><div class="thumb">' + esc(String(x.title || '·').slice(0, 1)) + '</div><div class="info"><b>' + esc(x.title) + '</b><span>' + fmtMoney(x.price) + ' × ' + x.qty + '</span></div>' +
-      '<div class="qty"><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + JSON.stringify(x.id) + ',1)">+</button></div>' +
-      '<button class="btn sm danger" onclick="App.removeCart(' + JSON.stringify(x.id) + ')">移除</button></div>').join('') +
+      '<div class="qty"><button onclick="App.setCartQty(' + HQ(x.id) + ',-1)">−</button><em>' + x.qty + '</em><button onclick="App.setCartQty(' + HQ(x.id) + ',1)">+</button></div>' +
+      '<button class="btn sm danger" onclick="App.removeCart(' + HQ(x.id) + ')">移除</button></div>').join('') +
       '<div class="cart-total" style="margin-top:20px"><span>合计</span><b>' + fmtMoney(total) + '</b></div>' +
       '<button class="btn primary block" style="margin-top:14px" onclick="App.checkout()">去结算</button></div>' : emptyHtml('购物车是空的', '先去挑点东西。') ) +
     pageFoot() + '</div>');
@@ -1460,7 +1467,7 @@ async function commerceOrder() {
     setMain('<div class="page narrow"><div class="detail-head"><button class="back" onclick="App.goBack(\'home\')">← 返回点餐台</button><span class="pill warn">' + esc(order.status || 'open') + '</span></div>' +
       '<div class="panel"><div class="panel-head"><h3>订单 #' + esc(order.id) + ' · 桌台 ' + esc(order.table_id) + '</h3><b class="price">' + fmtMoney(order.total) + '</b></div>' +
       tableHTML(UX.order.iface, items, ['name', 'price', 'qty'], { emptyTitle: '还没有菜品' }) +
-      '<button class="btn primary" style="margin-top:16px" onclick="App.checkoutPos(' + JSON.stringify(order.id) + ')">结账并释放桌台</button></div>' + pageFoot() + '</div>');
+      '<button class="btn primary" style="margin-top:16px" onclick="App.checkoutPos(' + HQ(order.id) + ')">结账并释放桌台</button></div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }
 
@@ -1487,7 +1494,7 @@ async function commerceAdmin() {
         '<div class="panel" style="margin-top:18px"><div class="panel-head"><h3>票务核销</h3><span class="faint">' + tickets.filter((x) => !Number(x.checked)).length + ' 张待核销</span></div>' +
         tableHTML(UX.ticket.iface, tickets, ['code', 'title', 'qty', 'start_at', 'checked'], {
           emptyTitle: '还没有售出票',
-          actions: (row) => Number(row.checked) ? '<span class="pill ok">已核销</span>' : '<button class="btn sm primary" onclick="event.stopPropagation();App.checkinTicket(' + JSON.stringify(row.code) + ')">核销</button>',
+          actions: (row) => Number(row.checked) ? '<span class="pill ok">已核销</span>' : '<button class="btn sm primary" onclick="event.stopPropagation();App.checkinTicket(' + HQ(row.code) + ')">核销</button>',
         }) + '</div>' + pageFoot() + '</div>');
     } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
     return;
@@ -1514,7 +1521,7 @@ async function commerceAdmin() {
       '<div class="toolbar"><button class="btn primary" onclick="App.newProduct()">+ 上架商品</button><span class="spacer"></span></div>' +
       tableHTML(UX.primary.iface, rows, ['title', 'category', 'price', 'stock', 'status'], {
         emptyTitle: '还没有商品',
-        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editProduct(' + JSON.stringify(row.id) + ')">编辑</button><button class="btn sm danger" onclick="event.stopPropagation();App.deleteProduct(' + JSON.stringify(row.id) + ')">删除</button>',
+        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.editProduct(' + HQ(row.id) + ')">编辑</button><button class="btn sm danger" onclick="event.stopPropagation();App.deleteProduct(' + HQ(row.id) + ')">删除</button>',
       }) + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }
@@ -1589,7 +1596,7 @@ function catalogCard(row) {
   const meta = UX.flow === 'course' || UX.flow === 'netcourse'
     ? ('名额 ' + esc(row.enrolled || 0) + ' / ' + esc(row.seats || '不限'))
     : (UX.flow === 'hospital' ? ('楼层 ' + esc(row.floor || '—')) : ('时长 ' + esc(row.duration || '—') + ' 分钟'));
-  return '<article class="card" onclick="App.openCatalogItem(' + JSON.stringify(row.id) + ')">' +
+  return '<article class="card" onclick="App.openCatalogItem(' + HQ(row.id) + ')">' +
     '<div class="card-cover">' + coverHtml(row, { label: UX.itemLabel }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(sub || UX.kicker) + '</span><span>' + esc(meta) + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row.intro || row.requirement || row.name || '', 100) || '打开查看可约时间与详情。') + '</p>' +
@@ -1652,7 +1659,7 @@ async function bookingItem() {
         const dayText = fmtDay(s.day);
         const timeMatch = (v) => { const m = String(v || '').match(/(\d{1,2}:\d{2})/); return m ? m[1] : String(v || ''); };
         return '<div class="cart-line"><div class="thumb">' + esc(dayText.slice(5)) + '</div><div class="info"><b>' + esc(dayText) + ' · ' + esc(timeMatch(s.start_time)) + ' - ' + esc(timeMatch(s.end_time)) + '</b><span>剩余 ' + left + ' / ' + s.capacity + ' 个名额</span></div>' +
-          '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookSlot(' + JSON.stringify(s.id) + ')">' + (left <= 0 ? '已满' : '预约') + '</button></div>';
+          '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookSlot(' + HQ(s.id) + ')">' + (left <= 0 ? '已满' : '预约') + '</button></div>';
       }).join('') : emptyHtml('这个项目还没有开放时段', '到预约管理里先放号。')) + '</div></div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('打不开预约页', e.message) + '</div>'); }
 }
@@ -1665,7 +1672,7 @@ App.bookSlot = (slotId) => {
     width: 520,
     body: '<div class="form"><div class="field"><label>姓名</label><input data-field="customer" placeholder="怎么称呼你"></div>' +
       '<div class="field"><label>电话</label><input data-field="phone" value="' + esc(phone) + '" placeholder="方便店家联系"></div></div>',
-    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitBooking(' + JSON.stringify(slotId) + ')">确认预约</button>',
+    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitBooking(' + HQ(slotId) + ')">确认预约</button>',
   });
 };
 
@@ -1703,7 +1710,7 @@ async function courseItem() {
       '<div><label>浏览</label><b>' + esc(course.views || 0) + '</b></div></div>' +
       '<div class="hero-actions">' + (mine
         ? '<button class="btn dark" onclick="App.go(\'my\')">已报名 · 去学习</button>'
-        : '<button class="btn primary" onclick="App.enrollCourse(' + JSON.stringify(course.id) + ')" ' + (!published ? 'disabled' : '') + '>立即报名</button>') +
+        : '<button class="btn primary" onclick="App.enrollCourse(' + HQ(course.id) + ')" ' + (!published ? 'disabled' : '') + '>立即报名</button>') +
       '<button class="btn" onclick="App.goBack(\'collection\')">看看别的</button></div>' +
       '<div class="section"><div class="section-head"><h2 style="font-size:17px">课程目录</h2><span class="faint">' + lessons.length + ' 个课时</span></div>' +
       (lessons.length ? lessons.map((l, i) => '<div class="cart-line"><div class="thumb">' + String(i + 1).padStart(2, '0') + '</div><div class="info"><b>' + esc(l.title) + '</b><span>' + esc(l.duration || 0) + ' 分钟' + (l.video_url ? ' · 视频' : '') + '</span></div>' +
@@ -1738,7 +1745,7 @@ async function hospitalItem() {
       '<p class="muted">楼层 ' + esc(dept.floor || '—') + ' · 电话 ' + esc(dept.phone || '—') + '</p>' +
       '<div class="section"><div class="section-head"><h2 style="font-size:17px">出诊医生</h2><span class="faint">选择医生后查看号源</span></div>' +
       (doctors.length ? '<div class="grid">' + doctors.map((doc) => '<article class="card"><div class="card-body"><div class="card-kicker"><span>' + esc(doc.title || '医生') + '</span><span>' + fmtMoney(doc.fee) + '</span></div><h3>' + esc(doc.name) + '</h3>' +
-        '<button class="btn sm primary" style="margin-top:auto" onclick="App.showDoctorSlots(' + JSON.stringify(doc.id) + ')">查看号源</button></div></article>').join('') + '</div>' : emptyHtml('科室还没有医生', '到门诊管理里添加。')) + '</div></div>' + pageFoot() + '</div>');
+        '<button class="btn sm primary" style="margin-top:auto" onclick="App.showDoctorSlots(' + HQ(doc.id) + ')">查看号源</button></div></article>').join('') + '</div>' : emptyHtml('科室还没有医生', '到门诊管理里添加。')) + '</div></div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('打不开科室', e.message) + '</div>'); }
 }
 
@@ -1752,7 +1759,7 @@ App.showDoctorSlots = (doctorId) => {
     body: slots.length ? slots.map((s) => {
       const left = Number(s.capacity) - Number(s.booked);
       return '<div class="cart-line"><div class="thumb">' + esc(String(s.day).slice(5, 10)) + '</div><div class="info"><b>' + esc(s.day) + ' · ' + esc(doc ? doc.name : '') + '</b><span>剩余 ' + left + ' / ' + s.capacity + '</span></div>' +
-        '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookAppointment(' + JSON.stringify(s.id) + ')">' + (left <= 0 ? '已满' : '挂号') + '</button></div>';
+        '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookAppointment(' + HQ(s.id) + ')">' + (left <= 0 ? '已满' : '挂号') + '</button></div>';
     }).join('') : emptyHtml('这个医生还没有号源', '到门诊管理里放号。'),
     foot: '<button class="btn" onclick="App.closeModal()">关闭</button>',
   });
@@ -1778,7 +1785,7 @@ async function catalogMy() {
       setMain('<div class="page">' + pageTitle('我的预约', '所有预约单都在这里，可以取消释放名额。') +
         (rows.length ? tableHTML(UX.record.iface, rows, ['customer', 'phone', 'service_id', 'slot_id', 'status'], {
           emptyTitle: '还没有预约',
-          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelBooking(' + JSON.stringify(row.id) + ')">取消</button>',
+          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelBooking(' + HQ(row.id) + ')">取消</button>',
         }) : emptyHtml('还没有预约', '去选一个服务和时间。')) + pageFoot() + '</div>');
     } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
     return;
@@ -1792,7 +1799,7 @@ async function catalogMy() {
       setMain('<div class="page">' + pageTitle('我的挂号', '取消后号源会立即释放。') +
         (rows.length ? tableHTML(UX.record.iface, rows, ['doctor', 'day', 'status'], {
           emptyTitle: '还没有挂号',
-          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelAppointment(' + JSON.stringify(row.id) + ')">取消</button>',
+          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelAppointment(' + HQ(row.id) + ')">取消</button>',
         }) : emptyHtml('还没有挂号', '去科室页选医生和号源。')) + pageFoot() + '</div>');
     } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
     return;
@@ -1807,8 +1814,8 @@ async function catalogMy() {
     setMain('<div class="page">' + pageTitle('我的学习', '进度、考试和成绩都是真实数据。') +
       (courses.length ? '<div class="grid">' + courses.map((c) => '<article class="card"><div class="card-body"><div class="card-kicker"><span>' + esc(c.teacher || '课程') + '</span><span>进度 ' + esc(c.progress || 0) + '%</span></div><h3>' + esc(c.title) + '</h3>' +
         '<div style="height:7px;background:var(--soft);border-radius:99px;overflow:hidden;margin-top:6px"><div style="height:100%;width:' + Math.max(0, Math.min(100, Number(c.progress || 0))) + '%;background:var(--accent)"></div></div>' +
-        '<div class="card-foot"><button class="btn sm" onclick="App.updateProgress(' + JSON.stringify(c.id) + ',' + JSON.stringify(c.progress || 0) + ')">更新进度</button>' +
-        (UX.record.exam ? '<button class="btn sm primary" onclick="App.takeExam(' + JSON.stringify(c.course_id || c.id) + ')">提交考试</button>' : '') + '</div></div></article>').join('') + '</div>' : emptyHtml('还没有报名课程', '去课程库挑一门。')) +
+        '<div class="card-foot"><button class="btn sm" onclick="App.updateProgress(' + HQ(c.id) + ',' + HQ(c.progress || 0) + ')">更新进度</button>' +
+        (UX.record.exam ? '<button class="btn sm primary" onclick="App.takeExam(' + HQ(c.course_id || c.id) + ')">提交考试</button>' : '') + '</div></div></article>').join('') + '</div>' : emptyHtml('还没有报名课程', '去课程库挑一门。')) +
       (exams.length ? '<section class="section"><div class="section-head"><h2>我的成绩</h2></div>' + tableHTML(UX.record.iface, exams, ['title', 'score', 'passed'], { emptyTitle: '还没有成绩' }) + '</section>' : '') +
       pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
@@ -1827,7 +1834,7 @@ App.updateProgress = (id, current) => {
   modal({
     title: '更新学习进度',
     body: '<div class="form"><div class="field full"><label>完成进度（0-100）</label><input data-field="progress" type="number" min="0" max="100" value="' + esc(current) + '"></div></div>',
-    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.saveProgress(' + JSON.stringify(id) + ')">保存</button>',
+    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.saveProgress(' + HQ(id) + ')">保存</button>',
   });
 };
 App.saveProgress = async (id) => {
@@ -1839,7 +1846,7 @@ App.takeExam = (courseId) => {
     title: '提交考试',
     desc: '填写分数，服务端会根据 60 分线自动判分。',
     body: '<div class="form"><div class="field full"><label>分数</label><input data-field="score" type="number" min="0" max="100" value="80"></div></div>',
-    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitExam(' + JSON.stringify(courseId) + ')">提交</button>',
+    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitExam(' + HQ(courseId) + ')">提交</button>',
   });
 };
 App.submitExam = async (courseId) => {
@@ -1870,7 +1877,7 @@ async function catalogAdmin() {
       setMain('<div class="page">' + pageTitle('门诊管理', '科室、医生、号源层层挂接。') +
         '<div class="toolbar"><button class="btn primary" onclick="App.newDepartment()">+ 新增科室</button><button class="btn" onclick="App.newDoctor()">+ 新增医生</button><button class="btn" onclick="App.newHospitalSlot()">+ 放号</button></div>' +
         '<div class="panel"><div class="panel-head"><h3>科室</h3></div>' + tableHTML(UX.primary.iface, depts, ['name', 'floor', 'phone'], {
-          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.listDoctors(' + JSON.stringify(row.id) + ')">医生</button>',
+          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.listDoctors(' + HQ(row.id) + ')">医生</button>',
         }) + '</div>' +
         '<div class="panel"><div class="panel-head"><h3>号源</h3></div>' + tableHTML(UX.slot.iface, slots, ['doctor_id', 'day', 'capacity', 'booked']) + '</div>' + pageFoot() + '</div>');
       return;
@@ -1881,8 +1888,8 @@ async function catalogAdmin() {
       '<div class="toolbar"><button class="btn primary" onclick="App.newCourse()">+ ' + esc(UX.writeLabel) + '</button></div>' +
       '<div class="panel"><div class="panel-head"><h3>课程</h3><span class="faint">' + courses.length + ' 门</span></div>' +
       tableHTML(UX.primary.iface, courses, ['title', 'price', 'status', 'created_at'], {
-        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.addLesson(' + JSON.stringify(row.id) + ')">加课时</button>' +
-          (UX.primary.publish ? '<button class="btn sm primary" onclick="event.stopPropagation();App.publishCourse(' + JSON.stringify(row.id) + ')">发布</button>' : ''),
+        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.addLesson(' + HQ(row.id) + ')">加课时</button>' +
+          (UX.primary.publish ? '<button class="btn sm primary" onclick="event.stopPropagation();App.publishCourse(' + HQ(row.id) + ')">发布</button>' : ''),
       }) + '</div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('后台读取失败', e.message) + '</div>'); }
 }
@@ -1999,7 +2006,7 @@ async function deskHome() {
     const cols = deskColumns(main, recent);
     const body = recent.length
       ? '<div class="table-wrap"><table><thead><tr>' + cols.map((c) => '<th>' + esc(labelOf(main.iface, c)) + '</th>').join('') + '</tr></thead><tbody>' +
-        recent.map((r) => '<tr onclick="App.openDeskRow(' + JSON.stringify(menus.indexOf(main)) + ',' + JSON.stringify(r.id == null ? '' : r.id) + ')">' +
+        recent.map((r) => '<tr onclick="App.openDeskRow(' + HQ(menus.indexOf(main)) + ',' + HQ(r.id == null ? '' : r.id) + ')">' +
           cols.map((c, i) => '<td>' + (i === 0 ? '<span class="strong">' : '') + fieldValue(main.iface, c, r) + (i === 0 ? '</span>' : '') + '</td>').join('') + '</tr>').join('') +
         '</tbody></table></div>'
       : emptyHtml('还没有' + main.label, '点右上角新建，第一条数据会出现在这里。');
@@ -2297,7 +2304,7 @@ async function chatHome() {
     const rows = convs.length ? convs : inbox;
     const list = rows.length ? rows.map((c) => {
       const active = String(state.params.conv || '') === String(c.id || c.conv_id || chatPeer(c));
-      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + JSON.stringify(c.id || c.conv_id || chatPeer(c)) + ',' + JSON.stringify(chatPeer(c)) + ',' + JSON.stringify(chatPeerName(c)) + ')">' +
+      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + HQ(c.id || c.conv_id || chatPeer(c)) + ',' + HQ(chatPeer(c)) + ',' + HQ(chatPeerName(c)) + ')">' +
         avatar(chatPeerName(c)) +
         '<span class="conv-main"><b>' + esc(chatPeerName(c)) + '</b><em>' + esc(plain(chatText(c), 34) || '还没有消息') + '</em></span>' +
         '<span class="conv-side"><i>' + esc(fmtDate(chatTime(c), true)) + '</i></span></button>';
@@ -2337,7 +2344,7 @@ async function chatThread() {
     const list = (d.conversations || []);
     const side = list.length ? list.map((c) => {
       const active = String(convId) === String(c.id || c.conv_id || chatPeer(c));
-      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + JSON.stringify(c.id || c.conv_id || chatPeer(c)) + ',' + JSON.stringify(chatPeer(c)) + ',' + JSON.stringify(chatPeerName(c)) + ')">' +
+      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + HQ(c.id || c.conv_id || chatPeer(c)) + ',' + HQ(chatPeer(c)) + ',' + HQ(chatPeerName(c)) + ')">' +
         avatar(chatPeerName(c)) + '<span class="conv-main"><b>' + esc(chatPeerName(c)) + '</b><em>' + esc(plain(chatText(c), 30) || '还没有消息') + '</em></span></button>';
     }).join('') : '<div class="chat-side-empty">暂无会话</div>';
     const bubbles = msgs.length ? msgs.map((m) => '<div class="bubble-row ' + (chatMine(m) ? 'mine' : '') + '">' +
@@ -2430,11 +2437,11 @@ function momentCard(m) {
   const images = String(m.images || '').split(/[,，]/).filter(Boolean);
   return '<article class="moment"><div class="moment-head">' + avatar(momentAuthor(m)) +
     '<div><b>' + esc(momentAuthor(m)) + '</b><span>' + esc(fmtDate(m.created_at, true)) + '</span></div>' +
-    '<button class="mini" onclick="App.likeMoment(' + JSON.stringify(id) + ')">♡ ' + esc(m.like_count || m.likes || 0) + '</button></div>' +
+    '<button class="mini" onclick="App.likeMoment(' + HQ(id) + ')">♡ ' + esc(m.like_count || m.likes || 0) + '</button></div>' +
     '<p>' + esc(momentText(m)).replace(/\n/g, '<br>') + '</p>' +
     (images.length ? '<div class="moment-images">' + images.slice(0, 3).map((src) => src && /^(https?:|\/)/.test(src) ? '<img src="' + esc(src) + '">' : '').join('') + '</div>' : '') +
-    '<div class="moment-foot"><button class="mini" onclick="App.openMoment(' + JSON.stringify(id) + ')">评论 ' + esc(m.comment_count || 0) + '</button>' +
-    '<button class="mini" onclick="App.shareMoment(' + JSON.stringify(id) + ')">转发</button></div></article>';
+    '<div class="moment-foot"><button class="mini" onclick="App.openMoment(' + HQ(id) + ')">评论 ' + esc(m.comment_count || 0) + '</button>' +
+    '<button class="mini" onclick="App.shareMoment(' + HQ(id) + ')">转发</button></div></article>';
 }
 
 async function socialHome() {
@@ -2532,16 +2539,16 @@ async function socialFriends() {
       '<section class="section"><div class="section-head"><div><h2>我的好友</h2><p>' + friends.length + ' 位</p></div></div>' +
       (friends.length ? '<div class="friend-grid">' + friends.map((f) => '<div class="friend-card">' + avatar(f.nickname || f.name || f.only_id) +
         '<b>' + esc(f.nickname || f.name || f.only_id) + '</b><span>' + esc(f.bio || f.region || f.signature || '') + '</span>' +
-        '<div class="friend-actions"><button class="mini" onclick="App.chatWithFriend(' + JSON.stringify(f.only_id) + ',' + JSON.stringify(f.nickname || f.name || f.only_id) + ')">私聊</button>' +
-        '<button class="mini danger" onclick="App.removeFriend(' + JSON.stringify(f.only_id) + ')">删除</button></div></div>').join('') + '</div>' : emptyHtml('还没有好友', '从推荐或搜索里加一个。')) + '</section>' +
+        '<div class="friend-actions"><button class="mini" onclick="App.chatWithFriend(' + HQ(f.only_id) + ',' + HQ(f.nickname || f.name || f.only_id) + ')">私聊</button>' +
+        '<button class="mini danger" onclick="App.removeFriend(' + HQ(f.only_id) + ')">删除</button></div></div>').join('') + '</div>' : emptyHtml('还没有好友', '从推荐或搜索里加一个。')) + '</section>' +
       '<section class="section"><div class="section-head"><div><h2>好友申请</h2><p>' + requests.length + ' 条待处理</p></div></div>' +
       (requests.length ? requests.map((r) => '<div class="request-row"><span><b>' + esc(r.nickname || r.name || r.from_only_id || r.only_id) + '</b><em>' + esc(r.message || r.reason || '') + '</em></span>' +
-        '<button class="mini" onclick="App.handleFriend(' + JSON.stringify(r.req_id || r.id) + ',\'accept\')">通过</button>' +
-        '<button class="mini danger" onclick="App.handleFriend(' + JSON.stringify(r.req_id || r.id) + ',\'reject\')">拒绝</button></div>').join('') : '<div class="empty">没有待处理申请。</div>') + '</section>' +
+        '<button class="mini" onclick="App.handleFriend(' + HQ(r.req_id || r.id) + ',\'accept\')">通过</button>' +
+        '<button class="mini danger" onclick="App.handleFriend(' + HQ(r.req_id || r.id) + ',\'reject\')">拒绝</button></div>').join('') : '<div class="empty">没有待处理申请。</div>') + '</section>' +
       '<section class="section"><div class="section-head"><div><h2>可能认识</h2><p>来自好友推荐</p></div></div>' +
       (suggest.length ? '<div class="friend-grid">' + suggest.slice(0, 12).map((f) => '<div class="friend-card">' + avatar(f.nickname || f.name || f.only_id) +
         '<b>' + esc(f.nickname || f.name || f.only_id) + '</b><span>' + esc(f.bio || '') + '</span>' +
-        '<button class="mini" onclick="App.addFriend(' + JSON.stringify(f.only_id) + ')">加好友</button></div>').join('') + '</div>' : '<div class="empty">暂时没有推荐。</div>') + '</section>' + pageFoot() + '</div>');
+        '<button class="mini" onclick="App.addFriend(' + HQ(f.only_id) + ')">加好友</button></div>').join('') + '</div>' : '<div class="empty">暂时没有推荐。</div>') + '</section>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('好友读取失败', e.message) + '</div>'); }
 }
 
@@ -2580,7 +2587,7 @@ async function socialMessages() {
       active = conv || { peer_only_id: peer, peer_name: state.params.name, id: '' };
     } else if (convs[0]) active = convs[0];
     if (active) thread = rowsOf(await socialApi('/messages/' + encodeURIComponent(active.id || active.conv_id), { params: {} }).catch(() => ({})));
-    const side = convs.length ? convs.map((c) => '<button class="conv ' + (active && String(c.id) === String(active.id) ? 'on' : '') + '" onclick="App.openSocialChat(' + JSON.stringify(c.id) + ',' + JSON.stringify(c.peer_only_id || c.only_id) + ',' + JSON.stringify(c.peer_name || '') + ')">' +
+    const side = convs.length ? convs.map((c) => '<button class="conv ' + (active && String(c.id) === String(active.id) ? 'on' : '') + '" onclick="App.openSocialChat(' + HQ(c.id) + ',' + HQ(c.peer_only_id || c.only_id) + ',' + HQ(c.peer_name || '') + ')">' +
       avatar(c.peer_name || c.peer_only_id) + '<span class="conv-main"><b>' + esc(c.peer_name || c.peer_only_id) + '</b><em>' + esc(plain(c.last_message, 30) || '') + '</em></span></button>').join('') : '<div class="chat-side-empty">还没有会话</div>';
     const msgs = thread.length ? thread.map((m) => {
       const mine = state.user && String(m.from_only_id || m.sender_only_id) === String(state.user.onlyId);
@@ -2651,7 +2658,7 @@ async function socialNotifications() {
     setMain('<div class="page social-page">' + pageTitle('通知', (unread.count || unread.unread || 0) + ' 条未读') +
       '<div class="toolbar"><span class="spacer"></span><button class="btn ghost" onclick="App.readAll()">全部已读</button></div>' +
       (list.length ? list.map((n) => '<div class="notice ' + (n.is_read ? '' : 'unread') + '"><div class="notice-main"><b>' + esc(n.title || n.type || '通知') + '</b><p>' + esc(n.content || n.body || '') + '</p><span>' + esc(fmtDate(n.created_at, true)) + '</span></div>' +
-        '<button class="mini" onclick="App.readNotice(' + JSON.stringify(n.id) + ')">标记已读</button></div>').join('') : emptyHtml('没有通知', '有人点赞、评论或加好友时会出现在这里。')) +
+        '<button class="mini" onclick="App.readNotice(' + HQ(n.id) + ')">标记已读</button></div>').join('') : emptyHtml('没有通知', '有人点赞、评论或加好友时会出现在这里。')) +
       pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('通知读取失败', e.message) + '</div>'); }
 }

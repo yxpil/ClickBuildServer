@@ -36,7 +36,7 @@ async function chatHome() {
     const rows = convs.length ? convs : inbox;
     const list = rows.length ? rows.map((c) => {
       const active = String(state.params.conv || '') === String(c.id || c.conv_id || chatPeer(c));
-      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + JSON.stringify(c.id || c.conv_id || chatPeer(c)) + ',' + JSON.stringify(chatPeer(c)) + ',' + JSON.stringify(chatPeerName(c)) + ')">' +
+      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + HQ(c.id || c.conv_id || chatPeer(c)) + ',' + HQ(chatPeer(c)) + ',' + HQ(chatPeerName(c)) + ')">' +
         avatar(chatPeerName(c)) +
         '<span class="conv-main"><b>' + esc(chatPeerName(c)) + '</b><em>' + esc(plain(chatText(c), 34) || '还没有消息') + '</em></span>' +
         '<span class="conv-side"><i>' + esc(fmtDate(chatTime(c), true)) + '</i></span></button>';
@@ -76,7 +76,7 @@ async function chatThread() {
     const list = (d.conversations || []);
     const side = list.length ? list.map((c) => {
       const active = String(convId) === String(c.id || c.conv_id || chatPeer(c));
-      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + JSON.stringify(c.id || c.conv_id || chatPeer(c)) + ',' + JSON.stringify(chatPeer(c)) + ',' + JSON.stringify(chatPeerName(c)) + ')">' +
+      return '<button class="conv ' + (active ? 'on' : '') + '" onclick="App.openChat(' + HQ(c.id || c.conv_id || chatPeer(c)) + ',' + HQ(chatPeer(c)) + ',' + HQ(chatPeerName(c)) + ')">' +
         avatar(chatPeerName(c)) + '<span class="conv-main"><b>' + esc(chatPeerName(c)) + '</b><em>' + esc(plain(chatText(c), 30) || '还没有消息') + '</em></span></button>';
     }).join('') : '<div class="chat-side-empty">暂无会话</div>';
     const bubbles = msgs.length ? msgs.map((m) => '<div class="bubble-row ' + (chatMine(m) ? 'mine' : '') + '">' +

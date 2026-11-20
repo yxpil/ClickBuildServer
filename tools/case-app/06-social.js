@@ -21,11 +21,11 @@ function momentCard(m) {
   const images = String(m.images || '').split(/[,，]/).filter(Boolean);
   return '<article class="moment"><div class="moment-head">' + avatar(momentAuthor(m)) +
     '<div><b>' + esc(momentAuthor(m)) + '</b><span>' + esc(fmtDate(m.created_at, true)) + '</span></div>' +
-    '<button class="mini" onclick="App.likeMoment(' + JSON.stringify(id) + ')">♡ ' + esc(m.like_count || m.likes || 0) + '</button></div>' +
+    '<button class="mini" onclick="App.likeMoment(' + HQ(id) + ')">♡ ' + esc(m.like_count || m.likes || 0) + '</button></div>' +
     '<p>' + esc(momentText(m)).replace(/\n/g, '<br>') + '</p>' +
     (images.length ? '<div class="moment-images">' + images.slice(0, 3).map((src) => src && /^(https?:|\/)/.test(src) ? '<img src="' + esc(src) + '">' : '').join('') + '</div>' : '') +
-    '<div class="moment-foot"><button class="mini" onclick="App.openMoment(' + JSON.stringify(id) + ')">评论 ' + esc(m.comment_count || 0) + '</button>' +
-    '<button class="mini" onclick="App.shareMoment(' + JSON.stringify(id) + ')">转发</button></div></article>';
+    '<div class="moment-foot"><button class="mini" onclick="App.openMoment(' + HQ(id) + ')">评论 ' + esc(m.comment_count || 0) + '</button>' +
+    '<button class="mini" onclick="App.shareMoment(' + HQ(id) + ')">转发</button></div></article>';
 }
 
 async function socialHome() {
@@ -123,16 +123,16 @@ async function socialFriends() {
       '<section class="section"><div class="section-head"><div><h2>我的好友</h2><p>' + friends.length + ' 位</p></div></div>' +
       (friends.length ? '<div class="friend-grid">' + friends.map((f) => '<div class="friend-card">' + avatar(f.nickname || f.name || f.only_id) +
         '<b>' + esc(f.nickname || f.name || f.only_id) + '</b><span>' + esc(f.bio || f.region || f.signature || '') + '</span>' +
-        '<div class="friend-actions"><button class="mini" onclick="App.chatWithFriend(' + JSON.stringify(f.only_id) + ',' + JSON.stringify(f.nickname || f.name || f.only_id) + ')">私聊</button>' +
-        '<button class="mini danger" onclick="App.removeFriend(' + JSON.stringify(f.only_id) + ')">删除</button></div></div>').join('') + '</div>' : emptyHtml('还没有好友', '从推荐或搜索里加一个。')) + '</section>' +
+        '<div class="friend-actions"><button class="mini" onclick="App.chatWithFriend(' + HQ(f.only_id) + ',' + HQ(f.nickname || f.name || f.only_id) + ')">私聊</button>' +
+        '<button class="mini danger" onclick="App.removeFriend(' + HQ(f.only_id) + ')">删除</button></div></div>').join('') + '</div>' : emptyHtml('还没有好友', '从推荐或搜索里加一个。')) + '</section>' +
       '<section class="section"><div class="section-head"><div><h2>好友申请</h2><p>' + requests.length + ' 条待处理</p></div></div>' +
       (requests.length ? requests.map((r) => '<div class="request-row"><span><b>' + esc(r.nickname || r.name || r.from_only_id || r.only_id) + '</b><em>' + esc(r.message || r.reason || '') + '</em></span>' +
-        '<button class="mini" onclick="App.handleFriend(' + JSON.stringify(r.req_id || r.id) + ',\'accept\')">通过</button>' +
-        '<button class="mini danger" onclick="App.handleFriend(' + JSON.stringify(r.req_id || r.id) + ',\'reject\')">拒绝</button></div>').join('') : '<div class="empty">没有待处理申请。</div>') + '</section>' +
+        '<button class="mini" onclick="App.handleFriend(' + HQ(r.req_id || r.id) + ',\'accept\')">通过</button>' +
+        '<button class="mini danger" onclick="App.handleFriend(' + HQ(r.req_id || r.id) + ',\'reject\')">拒绝</button></div>').join('') : '<div class="empty">没有待处理申请。</div>') + '</section>' +
       '<section class="section"><div class="section-head"><div><h2>可能认识</h2><p>来自好友推荐</p></div></div>' +
       (suggest.length ? '<div class="friend-grid">' + suggest.slice(0, 12).map((f) => '<div class="friend-card">' + avatar(f.nickname || f.name || f.only_id) +
         '<b>' + esc(f.nickname || f.name || f.only_id) + '</b><span>' + esc(f.bio || '') + '</span>' +
-        '<button class="mini" onclick="App.addFriend(' + JSON.stringify(f.only_id) + ')">加好友</button></div>').join('') + '</div>' : '<div class="empty">暂时没有推荐。</div>') + '</section>' + pageFoot() + '</div>');
+        '<button class="mini" onclick="App.addFriend(' + HQ(f.only_id) + ')">加好友</button></div>').join('') + '</div>' : '<div class="empty">暂时没有推荐。</div>') + '</section>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('好友读取失败', e.message) + '</div>'); }
 }
 
@@ -171,7 +171,7 @@ async function socialMessages() {
       active = conv || { peer_only_id: peer, peer_name: state.params.name, id: '' };
     } else if (convs[0]) active = convs[0];
     if (active) thread = rowsOf(await socialApi('/messages/' + encodeURIComponent(active.id || active.conv_id), { params: {} }).catch(() => ({})));
-    const side = convs.length ? convs.map((c) => '<button class="conv ' + (active && String(c.id) === String(active.id) ? 'on' : '') + '" onclick="App.openSocialChat(' + JSON.stringify(c.id) + ',' + JSON.stringify(c.peer_only_id || c.only_id) + ',' + JSON.stringify(c.peer_name || '') + ')">' +
+    const side = convs.length ? convs.map((c) => '<button class="conv ' + (active && String(c.id) === String(active.id) ? 'on' : '') + '" onclick="App.openSocialChat(' + HQ(c.id) + ',' + HQ(c.peer_only_id || c.only_id) + ',' + HQ(c.peer_name || '') + ')">' +
       avatar(c.peer_name || c.peer_only_id) + '<span class="conv-main"><b>' + esc(c.peer_name || c.peer_only_id) + '</b><em>' + esc(plain(c.last_message, 30) || '') + '</em></span></button>').join('') : '<div class="chat-side-empty">还没有会话</div>';
     const msgs = thread.length ? thread.map((m) => {
       const mine = state.user && String(m.from_only_id || m.sender_only_id) === String(state.user.onlyId);
@@ -242,7 +242,7 @@ async function socialNotifications() {
     setMain('<div class="page social-page">' + pageTitle('通知', (unread.count || unread.unread || 0) + ' 条未读') +
       '<div class="toolbar"><span class="spacer"></span><button class="btn ghost" onclick="App.readAll()">全部已读</button></div>' +
       (list.length ? list.map((n) => '<div class="notice ' + (n.is_read ? '' : 'unread') + '"><div class="notice-main"><b>' + esc(n.title || n.type || '通知') + '</b><p>' + esc(n.content || n.body || '') + '</p><span>' + esc(fmtDate(n.created_at, true)) + '</span></div>' +
-        '<button class="mini" onclick="App.readNotice(' + JSON.stringify(n.id) + ')">标记已读</button></div>').join('') : emptyHtml('没有通知', '有人点赞、评论或加好友时会出现在这里。')) +
+        '<button class="mini" onclick="App.readNotice(' + HQ(n.id) + ')">标记已读</button></div>').join('') : emptyHtml('没有通知', '有人点赞、评论或加好友时会出现在这里。')) +
       pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('通知读取失败', e.message) + '</div>'); }
 }

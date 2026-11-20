@@ -8,7 +8,7 @@ function catalogCard(row) {
   const meta = UX.flow === 'course' || UX.flow === 'netcourse'
     ? ('名额 ' + esc(row.enrolled || 0) + ' / ' + esc(row.seats || '不限'))
     : (UX.flow === 'hospital' ? ('楼层 ' + esc(row.floor || '—')) : ('时长 ' + esc(row.duration || '—') + ' 分钟'));
-  return '<article class="card" onclick="App.openCatalogItem(' + JSON.stringify(row.id) + ')">' +
+  return '<article class="card" onclick="App.openCatalogItem(' + HQ(row.id) + ')">' +
     '<div class="card-cover">' + coverHtml(row, { label: UX.itemLabel }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(sub || UX.kicker) + '</span><span>' + esc(meta) + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row.intro || row.requirement || row.name || '', 100) || '打开查看可约时间与详情。') + '</p>' +
@@ -71,7 +71,7 @@ async function bookingItem() {
         const dayText = fmtDay(s.day);
         const timeMatch = (v) => { const m = String(v || '').match(/(\d{1,2}:\d{2})/); return m ? m[1] : String(v || ''); };
         return '<div class="cart-line"><div class="thumb">' + esc(dayText.slice(5)) + '</div><div class="info"><b>' + esc(dayText) + ' · ' + esc(timeMatch(s.start_time)) + ' - ' + esc(timeMatch(s.end_time)) + '</b><span>剩余 ' + left + ' / ' + s.capacity + ' 个名额</span></div>' +
-          '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookSlot(' + JSON.stringify(s.id) + ')">' + (left <= 0 ? '已满' : '预约') + '</button></div>';
+          '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookSlot(' + HQ(s.id) + ')">' + (left <= 0 ? '已满' : '预约') + '</button></div>';
       }).join('') : emptyHtml('这个项目还没有开放时段', '到预约管理里先放号。')) + '</div></div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('打不开预约页', e.message) + '</div>'); }
 }
@@ -84,7 +84,7 @@ App.bookSlot = (slotId) => {
     width: 520,
     body: '<div class="form"><div class="field"><label>姓名</label><input data-field="customer" placeholder="怎么称呼你"></div>' +
       '<div class="field"><label>电话</label><input data-field="phone" value="' + esc(phone) + '" placeholder="方便店家联系"></div></div>',
-    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitBooking(' + JSON.stringify(slotId) + ')">确认预约</button>',
+    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitBooking(' + HQ(slotId) + ')">确认预约</button>',
   });
 };
 
@@ -122,7 +122,7 @@ async function courseItem() {
       '<div><label>浏览</label><b>' + esc(course.views || 0) + '</b></div></div>' +
       '<div class="hero-actions">' + (mine
         ? '<button class="btn dark" onclick="App.go(\'my\')">已报名 · 去学习</button>'
-        : '<button class="btn primary" onclick="App.enrollCourse(' + JSON.stringify(course.id) + ')" ' + (!published ? 'disabled' : '') + '>立即报名</button>') +
+        : '<button class="btn primary" onclick="App.enrollCourse(' + HQ(course.id) + ')" ' + (!published ? 'disabled' : '') + '>立即报名</button>') +
       '<button class="btn" onclick="App.goBack(\'collection\')">看看别的</button></div>' +
       '<div class="section"><div class="section-head"><h2 style="font-size:17px">课程目录</h2><span class="faint">' + lessons.length + ' 个课时</span></div>' +
       (lessons.length ? lessons.map((l, i) => '<div class="cart-line"><div class="thumb">' + String(i + 1).padStart(2, '0') + '</div><div class="info"><b>' + esc(l.title) + '</b><span>' + esc(l.duration || 0) + ' 分钟' + (l.video_url ? ' · 视频' : '') + '</span></div>' +
@@ -157,7 +157,7 @@ async function hospitalItem() {
       '<p class="muted">楼层 ' + esc(dept.floor || '—') + ' · 电话 ' + esc(dept.phone || '—') + '</p>' +
       '<div class="section"><div class="section-head"><h2 style="font-size:17px">出诊医生</h2><span class="faint">选择医生后查看号源</span></div>' +
       (doctors.length ? '<div class="grid">' + doctors.map((doc) => '<article class="card"><div class="card-body"><div class="card-kicker"><span>' + esc(doc.title || '医生') + '</span><span>' + fmtMoney(doc.fee) + '</span></div><h3>' + esc(doc.name) + '</h3>' +
-        '<button class="btn sm primary" style="margin-top:auto" onclick="App.showDoctorSlots(' + JSON.stringify(doc.id) + ')">查看号源</button></div></article>').join('') + '</div>' : emptyHtml('科室还没有医生', '到门诊管理里添加。')) + '</div></div>' + pageFoot() + '</div>');
+        '<button class="btn sm primary" style="margin-top:auto" onclick="App.showDoctorSlots(' + HQ(doc.id) + ')">查看号源</button></div></article>').join('') + '</div>' : emptyHtml('科室还没有医生', '到门诊管理里添加。')) + '</div></div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('打不开科室', e.message) + '</div>'); }
 }
 
@@ -171,7 +171,7 @@ App.showDoctorSlots = (doctorId) => {
     body: slots.length ? slots.map((s) => {
       const left = Number(s.capacity) - Number(s.booked);
       return '<div class="cart-line"><div class="thumb">' + esc(String(s.day).slice(5, 10)) + '</div><div class="info"><b>' + esc(s.day) + ' · ' + esc(doc ? doc.name : '') + '</b><span>剩余 ' + left + ' / ' + s.capacity + '</span></div>' +
-        '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookAppointment(' + JSON.stringify(s.id) + ')">' + (left <= 0 ? '已满' : '挂号') + '</button></div>';
+        '<button class="btn sm primary" ' + (left <= 0 ? 'disabled' : '') + ' onclick="App.bookAppointment(' + HQ(s.id) + ')">' + (left <= 0 ? '已满' : '挂号') + '</button></div>';
     }).join('') : emptyHtml('这个医生还没有号源', '到门诊管理里放号。'),
     foot: '<button class="btn" onclick="App.closeModal()">关闭</button>',
   });
@@ -197,7 +197,7 @@ async function catalogMy() {
       setMain('<div class="page">' + pageTitle('我的预约', '所有预约单都在这里，可以取消释放名额。') +
         (rows.length ? tableHTML(UX.record.iface, rows, ['customer', 'phone', 'service_id', 'slot_id', 'status'], {
           emptyTitle: '还没有预约',
-          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelBooking(' + JSON.stringify(row.id) + ')">取消</button>',
+          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelBooking(' + HQ(row.id) + ')">取消</button>',
         }) : emptyHtml('还没有预约', '去选一个服务和时间。')) + pageFoot() + '</div>');
     } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
     return;
@@ -211,7 +211,7 @@ async function catalogMy() {
       setMain('<div class="page">' + pageTitle('我的挂号', '取消后号源会立即释放。') +
         (rows.length ? tableHTML(UX.record.iface, rows, ['doctor', 'day', 'status'], {
           emptyTitle: '还没有挂号',
-          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelAppointment(' + JSON.stringify(row.id) + ')">取消</button>',
+          actions: (row) => '<button class="btn sm danger" onclick="event.stopPropagation();App.cancelAppointment(' + HQ(row.id) + ')">取消</button>',
         }) : emptyHtml('还没有挂号', '去科室页选医生和号源。')) + pageFoot() + '</div>');
     } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
     return;
@@ -226,8 +226,8 @@ async function catalogMy() {
     setMain('<div class="page">' + pageTitle('我的学习', '进度、考试和成绩都是真实数据。') +
       (courses.length ? '<div class="grid">' + courses.map((c) => '<article class="card"><div class="card-body"><div class="card-kicker"><span>' + esc(c.teacher || '课程') + '</span><span>进度 ' + esc(c.progress || 0) + '%</span></div><h3>' + esc(c.title) + '</h3>' +
         '<div style="height:7px;background:var(--soft);border-radius:99px;overflow:hidden;margin-top:6px"><div style="height:100%;width:' + Math.max(0, Math.min(100, Number(c.progress || 0))) + '%;background:var(--accent)"></div></div>' +
-        '<div class="card-foot"><button class="btn sm" onclick="App.updateProgress(' + JSON.stringify(c.id) + ',' + JSON.stringify(c.progress || 0) + ')">更新进度</button>' +
-        (UX.record.exam ? '<button class="btn sm primary" onclick="App.takeExam(' + JSON.stringify(c.course_id || c.id) + ')">提交考试</button>' : '') + '</div></div></article>').join('') + '</div>' : emptyHtml('还没有报名课程', '去课程库挑一门。')) +
+        '<div class="card-foot"><button class="btn sm" onclick="App.updateProgress(' + HQ(c.id) + ',' + HQ(c.progress || 0) + ')">更新进度</button>' +
+        (UX.record.exam ? '<button class="btn sm primary" onclick="App.takeExam(' + HQ(c.course_id || c.id) + ')">提交考试</button>' : '') + '</div></div></article>').join('') + '</div>' : emptyHtml('还没有报名课程', '去课程库挑一门。')) +
       (exams.length ? '<section class="section"><div class="section-head"><h2>我的成绩</h2></div>' + tableHTML(UX.record.iface, exams, ['title', 'score', 'passed'], { emptyTitle: '还没有成绩' }) + '</section>' : '') +
       pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
@@ -246,7 +246,7 @@ App.updateProgress = (id, current) => {
   modal({
     title: '更新学习进度',
     body: '<div class="form"><div class="field full"><label>完成进度（0-100）</label><input data-field="progress" type="number" min="0" max="100" value="' + esc(current) + '"></div></div>',
-    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.saveProgress(' + JSON.stringify(id) + ')">保存</button>',
+    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.saveProgress(' + HQ(id) + ')">保存</button>',
   });
 };
 App.saveProgress = async (id) => {
@@ -258,7 +258,7 @@ App.takeExam = (courseId) => {
     title: '提交考试',
     desc: '填写分数，服务端会根据 60 分线自动判分。',
     body: '<div class="form"><div class="field full"><label>分数</label><input data-field="score" type="number" min="0" max="100" value="80"></div></div>',
-    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitExam(' + JSON.stringify(courseId) + ')">提交</button>',
+    foot: '<button class="btn" onclick="App.closeModal()">取消</button><button class="btn primary" onclick="App.submitExam(' + HQ(courseId) + ')">提交</button>',
   });
 };
 App.submitExam = async (courseId) => {
@@ -289,7 +289,7 @@ async function catalogAdmin() {
       setMain('<div class="page">' + pageTitle('门诊管理', '科室、医生、号源层层挂接。') +
         '<div class="toolbar"><button class="btn primary" onclick="App.newDepartment()">+ 新增科室</button><button class="btn" onclick="App.newDoctor()">+ 新增医生</button><button class="btn" onclick="App.newHospitalSlot()">+ 放号</button></div>' +
         '<div class="panel"><div class="panel-head"><h3>科室</h3></div>' + tableHTML(UX.primary.iface, depts, ['name', 'floor', 'phone'], {
-          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.listDoctors(' + JSON.stringify(row.id) + ')">医生</button>',
+          actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.listDoctors(' + HQ(row.id) + ')">医生</button>',
         }) + '</div>' +
         '<div class="panel"><div class="panel-head"><h3>号源</h3></div>' + tableHTML(UX.slot.iface, slots, ['doctor_id', 'day', 'capacity', 'booked']) + '</div>' + pageFoot() + '</div>');
       return;
@@ -300,8 +300,8 @@ async function catalogAdmin() {
       '<div class="toolbar"><button class="btn primary" onclick="App.newCourse()">+ ' + esc(UX.writeLabel) + '</button></div>' +
       '<div class="panel"><div class="panel-head"><h3>课程</h3><span class="faint">' + courses.length + ' 门</span></div>' +
       tableHTML(UX.primary.iface, courses, ['title', 'price', 'status', 'created_at'], {
-        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.addLesson(' + JSON.stringify(row.id) + ')">加课时</button>' +
-          (UX.primary.publish ? '<button class="btn sm primary" onclick="event.stopPropagation();App.publishCourse(' + JSON.stringify(row.id) + ')">发布</button>' : ''),
+        actions: (row) => '<button class="btn sm" onclick="event.stopPropagation();App.addLesson(' + HQ(row.id) + ')">加课时</button>' +
+          (UX.primary.publish ? '<button class="btn sm primary" onclick="event.stopPropagation();App.publishCourse(' + HQ(row.id) + ')">发布</button>' : ''),
       }) + '</div>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('后台读取失败', e.message) + '</div>'); }
 }
