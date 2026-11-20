@@ -59,6 +59,9 @@ function killTree(child) {
   t('导出 Go 模块', fs.existsSync(path.join(dir, 'go.mod')));
   t('导出 Java 启动器', fs.existsSync(path.join(dir, 'launcher', 'Server.java')));
   t('导出 Go 启动器', fs.existsSync(path.join(dir, 'launcher', 'main.go')));
+  t('导出 Python Flask 运行时', fs.existsSync(path.join(dir, 'native', 'python', 'app.py')));
+  t('导出 Python service.json', fs.existsSync(path.join(dir, 'native', 'python', 'service.json')));
+  t('导出 Python 依赖清单', fs.existsSync(path.join(dir, 'native', 'python', 'requirements.txt')));
   t('Java 类名与文件名一致', javaFiles.every((f) => {
     const src = fs.readFileSync(path.join(dir, 'export', 'java', f), 'utf8');
     const m = src.match(/public\s+class\s+([A-Za-z_$][\w$]*)/);

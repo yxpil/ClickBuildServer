@@ -316,6 +316,11 @@ function parseScript(text) {
         i++;
         return { k: 'let', name: m[2].replace(/^\$/, ''), from: 'http', method: hm[1].toUpperCase(), url: hm[2], bodyText: (hm[3] || '').trim() };
       }
+      const cm = /^CRAWL\s+'([^']+)'\s*(.*?)\s*;?\s*$/i.exec(rhs);
+      if (cm) {
+        i++;
+        return { k: 'let', name: m[2].replace(/^\$/, ''), from: 'crawl', url: cm[1], optionsText: (cm[2] || '').trim() };
+      }
       i++;
       return { k: 'let', name: m[2].replace(/^\$/, ''), expr: parseExpr(rhs.replace(/;\s*$/, '')) };
     }
@@ -340,6 +345,14 @@ function parseScript(text) {
       i++;
       if (lm) return { k: 'log', level: lm[1].toUpperCase(), expr: parseExpr(lm[2]) };
       return { k: 'log', level: 'INFO', expr: parseExpr(rest) };
+    }
+
+    // 延时等待：WAIT 500;（毫秒，最长 60 秒）
+    if (upper === 'WAIT') {
+      const rest = line.replace(/^WAIT\s*/i, '').replace(/;\s*$/, '').trim();
+      if (!rest) throw new Error('WAIT 写法：WAIT 500;（毫秒）');
+      i++;
+      return { k: 'wait', expr: parseExpr(rest) };
     }
 
     // 事务：TX BEGIN / COMMIT / ROLLBACK（服务器按路由自动开事务时也能手动提前提交）
@@ -634,6 +647,11 @@ async function runScript(ast, env) {
         const body = st.bodyText ? evalExpr(st.expr ? st.expr : parseExpr(st.bodyText), scope) : null;
         const r = await env.http(st.method, url, body);
         scope.vars[st.name] = r;
+      } else if (st.from === 'crawl') {
+        if (typeof env.crawl !== 'function') throw new Error('当前运行时不支持 CRAWL 抓取');
+        const url = render.renderText(st.url, env.iface, env.ctx);
+        const options = st.optionsText ? evalExpr(parseExpr(st.optionsText), scope) : null;
+        scope.vars[st.name] = await env.crawl(url, options || {});
       } else if (st.from === 'token') {
         if (!env.token) throw new Error('TOKEN 没有可用的会话存储');
         const arg = evalExpr(st.expr, scope);
@@ -654,6 +672,12 @@ async function runScript(ast, env) {
       scope.last = st.mode === 'query'
         ? { rows: await env.db.query(x.sql, x.params) }
         : await env.db.execute(x.sql, x.params);
+      return null;
+    }
+    if (st.k === 'wait') {
+      const ms = Math.max(0, Math.min(Number(evalExpr(st.expr, scope)) || 0, 60000));
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      logs.push({ level: 'DEBUG', message: `WAIT ${ms}ms` });
       return null;
     }
     if (st.k === 'tx') {
@@ -758,10 +782,12 @@ function scriptToJs(ast, indent) {
     if (st.k === 'let' && st.from === 'query') return `${pad}const $${st.name.replace('$', '')} = await Q('${String(st.sql).replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
     if (st.k === 'let' && st.from === 'exec') return `${pad}const $${st.name.replace('$', '')} = await X('${String(st.sql).replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
     if (st.k === 'let' && st.from === 'http') return `${pad}const $${st.name.replace('$', '')} = await H('${st.method}', '${st.url}', ${st.bodyText ? exprToJs(parseExpr(st.bodyText)) : 'null'}, ctx);`;
+    if (st.k === 'let' && st.from === 'crawl') return `${pad}const $${st.name.replace('$', '')} = await CR('${st.url}', ${st.optionsText ? exprToJs(parseExpr(st.optionsText)) : '{}'});`;
     if (st.k === 'let' && st.from === 'token') return `${pad}const $${st.name.replace('$', '')} = await T('${st.action}', ${exprToJs(st.expr)}, ctx);`;
     if (st.k === 'let') return `${pad}const $${st.name.replace('$', '')} = ${exprToJs(st.expr)};`;
     if (st.k === 'sql') return `${pad}${st.mode === 'query' ? 'await Q' : 'await X'}('${st.sql.replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
     if (st.k === 'tx') return `${pad}await TX('${st.action}', ctx);`;
+    if (st.k === 'wait') return `${pad}await new Promise((r) => setTimeout(r, Math.max(0, Math.min(Number(${exprToJs(st.expr)}) || 0, 60000))));`;
     if (st.k === 'publish') return `${pad}await P('${st.channel}', ${exprToJs(st.expr)}, ctx);`;
     if (st.k === 'tokenDel') return `${pad}await TD(${exprToJs(st.expr)}, ctx);`;
     if (st.k === 'if') {

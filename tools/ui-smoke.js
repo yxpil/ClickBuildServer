@@ -374,6 +374,24 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const exportText = await val(`(()=>{act('exportProject');const t=document.querySelector('#modal')?document.querySelector('#modal').innerText:'';closeModal();return t;})()`);
   t('导出对话框含错误页开关', /404 \/ 500/.test(exportText) && /错误详情/.test(exportText), exportText.slice(0, 80));
 
+  // 集成能力页签：上游、权限矩阵、对象表、试运行
+  const integTabs = await val(`(()=>{S.mode='editor';S.tab='upstream';render();const a=document.querySelector('#tabBody').innerText;S.tab='permissions';render();const b=document.querySelector('#tabBody').innerText;S.tab='objects';render();const c=document.querySelector('#tabBody').innerText;return JSON.stringify({a,b,c,tabs:Array.from(document.querySelectorAll('[data-tab]')).map(x=>x.dataset.tab)});})()`);
+  const ig = JSON.parse(integTabs);
+  t('编辑器含上游/权限/对象表页签', ['upstream','permissions','objects'].every((x) => ig.tabs.includes(x)), integTabs.slice(0, 80));
+  t('上游页可新增并展示转发说明', /新增上游/.test(ig.a) && /代理路由/.test(ig.a), ig.a.slice(0, 80));
+  t('权限页展示路由 × 角色矩阵', /权限矩阵/.test(ig.b) && /启用角色校验/.test(ig.b), ig.b.slice(0, 80));
+  t('对象页展示桶/前缀/预览入口', /对象存储表/.test(ig.c) && /预览对象/.test(ig.c) && /生成对象表路由/.test(ig.c), ig.c.slice(0, 80));
+
+  const routeKinds = await val(`(()=>{S.tab='routes';render();return Array.from(document.querySelectorAll('#newRouteKind option')).map(o=>o.value).join(',');})()`);
+  t('路由类型含上游转发/对象表/抓取', ['proxy','objects','crawl'].every((k) => routeKinds.split(',').includes(k)), routeKinds);
+
+  const permWrite = await val(`(()=>{S.tab='permissions';render();const box=document.querySelector('[data-role-route]');if(!box)return '无矩阵';const rid=box.dataset.roleRoute;box.checked=true;box.onchange();const r=S.project.interfaces[0].routes.find(x=>x.id===rid);return JSON.stringify({roles:r.roles,auth:r.auth,enforce:!!document.querySelector('#permEnforce')});})()`);
+  const pw = JSON.parse(permWrite);
+  t('勾选角色写入路由并自动开启 token', Array.isArray(pw.roles) && pw.roles.length > 0 && pw.auth === true, permWrite);
+
+  const tryDlg = await val(`(async()=>{S.tab='routes';render();const b=document.querySelector('[data-action="tryRoute"]');if(!b)return '无按钮';b.click();await new Promise(r=>setTimeout(r,100));const m=document.querySelector('#modal');const t=m?m.innerText:'无弹窗';closeModal();return t;})()`, true);
+  t('路由试运行弹窗可打开并含请求体/结果区', /试运行/.test(tryDlg) && /请求体/.test(tryDlg) && /发送/.test(tryDlg), tryDlg.slice(0, 100));
+
   // 清理隔离工程并恢复用户设置；测试不得把 seed 写回真实历史工程
   await val(`closeModal()`);
   await val(`S.dirty=false;S.project=null;S.genDir='';showProjectHub()`);

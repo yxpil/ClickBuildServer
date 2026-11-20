@@ -5,6 +5,7 @@
 
 const spec = require('./spec');
 const script = require('./script');
+const frontend = require('./frontend');
 
 const DEFAULT_AI = {
   provider: 'ollama', // ollama | openai | mock
@@ -125,6 +126,12 @@ function contextOf(project, selectedId) {
       name: front.name,
       framework: front.framework,
       elements: Array.isArray(front.project && front.project.elements) ? front.project.elements.length : 0,
+      elementSample: Array.isArray(front.project && front.project.elements)
+        ? front.project.elements.slice(0, 12).map((e) => ({
+          type: e.type,
+          text: String((e.props && e.props.text) || '').slice(0, 40),
+        }))
+        : [],
       htmlLength: String(front.html || '').length,
     } : null,
     selected: selected ? { id: selected.id, name: selected.name } : null,
@@ -144,6 +151,10 @@ function systemPrompt() {
     `字段 type 只能是：${spec.TYPE_KEYS.join(', ')}。表名、字段名只用小写字母、数字、下划线，且以字母或下划线开头。`,
     '路由优先使用内置 key：list、detail、create、update、delete；省略 script 时平台会自动套用对应模板。自定义路由（注册、登录、统计等）必须给出 script，脚本使用 LET、QUERY、EXEC、RETURN 语法，表占位符用 {{t:表key}}，请求体用 {{body.字段}}，查询参数用 {{query.字段}}。',
     '当前工程上下文只用于理解已有命名、分类、表结构和选中项。replace 模式生成完整的新接口集合；append 模式只生成需要新增的接口，不得重复已有接口名或表名。',
+    '只有用户明确要求生成或修改前端页面时，才在 project 内增加 frontend；否则不要输出 frontend，平台会保留原前端。',
+    'frontend 格式：{"name":"前端工程名","framework":"tailwind","project":{"page":{"w":1200,"h":900,"bg":"#FFFFFF"},"elements":[{"id":"e1","type":"heading","x":40,"y":40,"w":600,"h":48,"props":{"text":"页面标题","size":28,"weight":700}}]}}。',
+    'element 坐标以 1200×900 画布为准，type 可用 container、heading、text、button、input、list、divider、image、icon；文本放 props.text，按钮放 props.text，输入框放 props.placeholder，容器把子元素放 children。页面要像可直接使用的业务界面，不要只放一句占位文字；不要写外部 CDN、远程图片或外链脚本。',
+    '如果用户只要前端，interfaces 可以保持当前工程不变；如果同时要接口和前端，就一并输出。',
   ].join('\n');
 }
 
@@ -235,6 +246,79 @@ async function chatOpenAi(payload, conf, ctx) {
   return { text: content, usage: data.usage || null };
 }
 
+function colorLum(c) {
+  const s = String(c || '').trim();
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+  if (!m) return null;
+  const hex = m[1].length === 3 ? m[1].split('').map((x) => x + x).join('') : m[1];
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+function fixElementContrast(node, parentBg) {
+  if (!node || typeof node !== 'object') return node;
+  const type = String(node.type || '');
+  const p = node.props && typeof node.props === 'object' ? node.props : (node.props = {});
+  const ownBg = node.style && node.style.background ? node.style.background : '';
+  const darkBg = (colorLum(ownBg) != null && colorLum(ownBg) < 0.45) || (colorLum(parentBg) != null && colorLum(parentBg) < 0.45);
+  if ((type === 'heading' || type === 'text' || type === 'badge' || type === 'link') && colorLum(p.color) != null && colorLum(p.color) > 0.9 && !darkBg) {
+    p.color = '#0B0B0B';
+  }
+  if (type === 'button') {
+    const bg = ownBg || '#0B0B0B';
+    if (colorLum(bg) != null && colorLum(bg) < 0.45 && (colorLum(p.color) == null || colorLum(p.color) < 0.7)) p.color = '#FFFFFF';
+    if (!String(p.text || '').trim()) p.text = '操作';
+  }
+  if (Array.isArray(node.children)) {
+    const bg = ownBg || parentBg;
+    node.children = node.children.map((child) => fixElementContrast(child, bg));
+  }
+  return node;
+}
+
+function normalizeAiFrontend(raw, fallbackName) {
+  if (!raw) return null;
+  let obj = typeof raw === 'string' ? { html: raw } : raw;
+  if (!obj || typeof obj !== 'object') throw new Error('AI 返回的 frontend 不是对象');
+  if (obj.yxpp && typeof obj.yxpp === 'object') obj = { ...obj.yxpp, ...obj };
+  const name = String(obj.name || fallbackName || 'AI 前端工程').trim();
+  const html = String(obj.html || obj.code || '').trim();
+  if (html.length > 200000) throw new Error('AI 生成的前端 HTML 超过 200000 字符');
+  let project = obj.project;
+  if (!project || !project.page || !Array.isArray(project.elements)) {
+    if (!html) throw new Error('AI 返回的 frontend 缺少 project.elements 或 html');
+    const body = (() => {
+      const m = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+      if (m) return m[1];
+      return html
+        .replace(/<!doctype[\s\S]*?<html[^>]*>/i, '')
+        .replace(/<\/html>[\s\S]*$/i, '');
+    })();
+    project = {
+      page: { w: 1200, h: 900, bg: '#FFFFFF' },
+      elements: [{
+        id: 'ai-page',
+        type: 'html',
+        x: 0, y: 0, w: 1200, h: 900,
+        props: { code: body.slice(0, 120000) },
+      }],
+    };
+  }
+  if (!project.elements.length && !html) throw new Error('AI 返回的前端工程没有任何元素');
+  project.elements = project.elements.map((e) => fixElementContrast(e, ''));
+  try {
+    return frontend.parseYxpp({
+      format: 'yxpp', version: 1, name,
+      framework: String(obj.framework || 'tailwind'),
+      project, html,
+    }, name);
+  } catch (e) {
+    throw new Error(`AI 返回的前端工程无效：${e.message || e}`);
+  }
+}
+
 function normalizeAiProject(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('AI 返回缺少 project');
   if (!Array.isArray(raw.interfaces) || !raw.interfaces.length) throw new Error('AI 返回的 project.interfaces 为空');
@@ -252,7 +336,8 @@ function normalizeAiProject(raw) {
     if (!f || !f.name || !f.body) return false;
     try { script.parseExpr(String(f.body)); return true; } catch { return false; }
   });
-  const p = spec.normalizeProject({ ...raw, functions });
+  const generatedFrontend = normalizeAiFrontend(raw.frontend, raw.name);
+  const p = spec.normalizeProject({ ...raw, frontend: generatedFrontend, functions });
   const v = spec.validateProject(p);
   if (v.errors.length) throw new Error(`AI 生成的工程未通过校验：${v.errors.slice(0, 5).join('；')}`);
   return p;
@@ -268,7 +353,7 @@ function uniqueId(used, base) {
 
 function mergeAiProject(current, generated, applyMode) {
   if (!current) {
-    return { project: generated, skipped: [], note: '' };
+    return { project: generated, skipped: [], note: '', frontendUpdated: !!generated.frontend };
   }
   const base = spec.normalizeProject(current);
   const mode = applyMode === 'append' ? 'append' : 'replace';
@@ -314,6 +399,7 @@ function mergeAiProject(current, generated, applyMode) {
       categories: [...base.categories, ...newCats],
       interfaces: [...base.interfaces, ...newIfaces],
       functions,
+      frontend: generated.frontend || base.frontend,
       updatedAt: new Date().toISOString(),
     });
     const v = spec.validateProject(merged);
@@ -322,6 +408,7 @@ function mergeAiProject(current, generated, applyMode) {
       project: merged,
       skipped,
       note: skipped.length ? `（已跳过同名/同表接口：${skipped.join('、')}）` : '',
+      frontendUpdated: !!generated.frontend,
     };
   }
 
@@ -342,18 +429,23 @@ function mergeAiProject(current, generated, applyMode) {
     services: base.services,
     theme: base.theme,
     isolation: base.isolation,
-    frontend: base.frontend || generated.frontend,
+    frontend: generated.frontend || base.frontend,
     updatedAt: new Date().toISOString(),
   });
   const v = spec.validateProject(merged);
   if (v.errors.length) throw new Error(`生成工程未通过校验：${v.errors.slice(0, 5).join('；')}`);
-  return { project: merged, skipped: [], note: '' };
+  return { project: merged, skipped: [], note: '', frontendUpdated: !!generated.frontend };
 }
 
 function parseResult(text, payload, context) {
   const parsed = jsonObject(text);
-  const raw = parsed.project || parsed.Project;
+  let raw = parsed.project || parsed.Project;
   if (!raw) throw new Error('AI 返回缺少 project 字段');
+  if (!raw.frontend && parsed.frontend) raw = { ...raw, frontend: parsed.frontend };
+  if ((!Array.isArray(raw.interfaces) || !raw.interfaces.length) && raw.frontend && payload.project) {
+    const base = spec.normalizeProject(payload.project);
+    raw = { ...raw, categories: raw.categories || base.categories, interfaces: base.interfaces };
+  }
   const generated = normalizeAiProject(raw);
   const mode = payload.applyMode === 'append' ? 'append' : 'replace';
   const merge = mergeAiProject(payload.project, generated, mode);
@@ -370,6 +462,8 @@ function parseResult(text, payload, context) {
       selected: context.selected,
     } : null,
     skipped: merge.skipped,
+    frontendUpdated: !!merge.frontendUpdated,
+    frontendName: merge.project.frontend ? merge.project.frontend.name : '',
   };
 }
 
@@ -602,4 +696,4 @@ function mockReply(prompt) {
   };
 }
 
-module.exports = { complete, mockReply, status, contextOf, DEFAULT_AI };
+module.exports = { complete, mockReply, status, contextOf, DEFAULT_AI, normalizeAiFrontend, parseResult };

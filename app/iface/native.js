@@ -44,6 +44,8 @@ function routeMeta(r) {
     method: String(r.method || 'GET').toUpperCase(),
     path: String(r.path || '/'),
     auth: !!r.auth,
+    roles: Array.isArray(r.roles) ? r.roles.map(String) : [],
+    proxy: r.proxy || null,
     tx: !!(r.guard && r.guard.tx),
     cache: { enabled: !!(r.cache && r.cache.enabled), ttl: Number((r.cache && r.cache.ttl) || 60) },
     script: String(r.script || ''),
@@ -75,9 +77,12 @@ function serviceSnapshot(project) {
       name: String(it.name || ''),
       comment: String(it.comment || ''),
       basePath: String(it.basePath || ''),
+      objects: it.objects || { enabled: false },
       tables: (it.tables || []).map(tableMeta),
       routes: (it.routes || []).map(routeMeta),
     })),
+    upstreams: p.upstreams || [],
+    permissions: p.permissions || {},
     generatedAt: new Date().toISOString(),
   };
 }

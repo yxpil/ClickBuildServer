@@ -388,6 +388,7 @@ function generate(project, options) {
     functions: p.functions, interfaces: p.interfaces,
     connections: p.connections, log: p.log, token: p.token, docs: p.docs, errors: p.errors,
     services: p.services, theme: p.theme, isolation: p.isolation,
+    upstreams: p.upstreams, permissions: p.permissions,
     frontend: p.frontend ? { name: p.frontend.name, framework: p.frontend.framework, updatedAt: p.frontend.updatedAt } : null,
     generatedAt: new Date().toISOString(),
   }, null, 2));
@@ -492,6 +493,26 @@ function generate(project, options) {
     '',
     '依赖 `lib/` 内的 MySQL Connector/J、Gson、BouncyCastle，支持 SM4、AES、TOKEN、事务、上传与脚本内置函数。',
     '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
+    '',
+  ].join('\n'));
+
+  add('native/python/service.json', JSON.stringify(snapshot, null, 2));
+  native.runtimeFiles('python').forEach((f) => add(`native/python/${f.path}`, f.content));
+  add('native/python/README.md', [
+    `# ${p.name} · Python Flask 原生服务`,
+    '',
+    '直接读取 `service.json`，用 Flask + PyMySQL 执行同一套脚本 AST，不启动 Node。',
+    '',
+    '```bash',
+    'cd native/python',
+    'python -m venv .venv',
+    '.venv\\Scripts\\activate   # Linux/macOS: source .venv/bin/activate',
+    'pip install -r requirements.txt',
+    'python app.py',
+    '```',
+    '',
+    '支持：路由匹配、IF / FOREACH / RETURN / LET QUERY / EXEC / TX / WAIT / HTTP / CRAWL / TOKEN、SQL 占位符、上传、对象表、上游转发、角色权限。',
+    '说明：Python 运行时直连 MySQL；Redis / S3 连接不上时会降级为内存 token / 本地 `uploads/`，并在启动日志中标注。',
     '',
   ].join('\n'));
 

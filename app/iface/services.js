@@ -250,12 +250,14 @@ function runtimes() {
   const java = which('java.exe') || which('java');
   const javac = which('javac.exe') || which('javac');
   const go = which('go.exe') || which('go.cmd') || which('go');
+  const python = which('python.exe') || which('python') || which('python3.exe') || which('python3');
   return [
     // 显示真正用来跑服务的 node.exe 版本，而不是 Electron 内置的 process.version
     { id: 'node', name: 'Node', version: probe(node, ['--version']) || process.version, path: node, available: fs.existsSync(node) || node === 'node', native: true, note: '内置 Node.js，直接运行 server.js' },
     { id: 'bun', name: 'Bun', version: probe(bun, ['--version']), path: bun, available: !!bun, native: true, note: '需要系统已安装 Bun，兼容 Node API' },
     { id: 'java', name: 'Java', version: probe(java, ['-version']), path: java, available: !!(java && javac), native: true, note: javac ? 'Java 原生服务：javac 编译 native/java 后直连 MySQL，不调用 Node' : '只找到 java，没有 javac；请安装完整 JDK 17+' },
     { id: 'go', name: 'Go', version: probe(go, ['version']), path: go, available: !!go, native: true, note: 'Go 原生服务：go build 后直接运行 native/go，不调用 Node' },
+    { id: 'python', name: 'Python', version: python ? probe(python, ['--version']) : '', path: python, available: !!python, native: true, note: 'Python Flask 原生服务：python native/python/app.py，依赖见 requirements.txt' },
   ];
 }
 
@@ -265,7 +267,7 @@ async function startServer(dir, opts) {
   const o = opts || {};
   const runtime = o.runtime || 'node';
   const hot = !!o.hot;
-  if (!['node', 'bun', 'java', 'go'].includes(runtime)) return { ok: false, error: `暂不支持 ${runtime} 运行时` };
+  if (!['node', 'bun', 'java', 'go', 'python'].includes(runtime)) return { ok: false, error: `暂不支持 ${runtime} 运行时` };
   let exe = nodeBin();
   let args = [hot && fs.existsSync(path.join(dir, 'dev.js')) ? 'dev.js' : 'server.js'];
   let cwd = dir;
@@ -325,9 +327,22 @@ async function startServer(dir, opts) {
     exe = outExe;
     args = [];
     cwd = nativeDir;
+  } else if (runtime === 'python') {
+    exe = which('python.exe') || which('python') || which('python3.exe') || which('python3');
+    if (!exe) return { ok: false, error: '没有找到 Python，请先安装 Python 3.10+ 或切换到 Node' };
+    const nativeDir = path.join(dir, 'native', 'python');
+    if (!fs.existsSync(path.join(nativeDir, 'app.py')) || !fs.existsSync(path.join(nativeDir, 'service.json'))) {
+      return { ok: false, error: '生成目录缺少 native/python/app.py 或 service.json，请重新生成服务' };
+    }
+    const dep = spawnSync(exe, ['-c', 'import flask, pymysql, requests, redis, minio'], { cwd: nativeDir, encoding: 'utf8', timeout: 30000 });
+    if (dep.status !== 0) {
+      return { ok: false, error: 'Python 依赖缺失，请在 native/python 执行 pip install -r requirements.txt' };
+    }
+    args = ['app.py'];
+    cwd = nativeDir;
   }
-  const nativeRun = runtime === 'go' || (runtime === 'java' && cwd !== dir);
-  const entry = runtime === 'go' ? 'native/go/bin/server' : args[args.length - 1];
+  const nativeRun = runtime === 'go' || runtime === 'python' || (runtime === 'java' && cwd !== dir);
+  const entry = runtime === 'go' ? 'native/go/bin/server' : runtime === 'python' ? 'native/python/app.py' : args[args.length - 1];
   if (!nativeRun && !fs.existsSync(path.join(dir, entry))) return { ok: false, error: `生成目录里找不到 ${entry}` };
   const res = spawnSvc('server', exe, args, {
     cwd,

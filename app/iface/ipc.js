@@ -93,6 +93,87 @@ async function requestServer(payload) {
   return { status: res.status, ms: Date.now() - started, body: text };
 }
 
+async function probeUpstream(baseUrl, timeout) {
+  const base = String(baseUrl || '').replace(/\/+$/, '');
+  if (!/^http(s)?:\/\//i.test(base)) throw new Error('baseUrl 需要 http(s):// 开头');
+  const candidates = [`${base}/openapi.json`, `${base}/swagger.json`, `${base}/api-docs`];
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(Number(timeout) || 8000), headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      const text = await r.text();
+      const data = JSON.parse(text);
+      const paths = data.paths || data.swagger?.paths || {};
+      const routes = [];
+      for (const [p, methods] of Object.entries(paths)) {
+        for (const [m, def] of Object.entries(methods || {})) {
+          if (!['get', 'post', 'put', 'patch', 'delete'].includes(String(m).toLowerCase())) continue;
+          routes.push({ method: String(m).toUpperCase(), path: p, name: (def && (def.summary || def.operationId)) || p });
+        }
+      }
+      return { ok: true, url, title: data.info?.title || '', version: data.info?.version || '', routes };
+    } catch (e) { /* 试下一个 */ }
+  }
+  try {
+    const r = await fetch(base, { signal: AbortSignal.timeout(Number(timeout) || 8000) });
+    return { ok: r.ok, url: base, title: r.headers.get('server') || '', routes: [], note: r.ok ? '未找到 OpenAPI，但上游可访问' : `HTTP ${r.status}` };
+  } catch (e) {
+    return { ok: false, url: base, routes: [], error: e.message };
+  }
+}
+
+function s3ClientOf(project) {
+  const Minio = require('minio');
+  const ports = services.settings().ports;
+  const c = ((project && project.connections && project.connections.s3) || [])[0] || {};
+  return new Minio.Client({
+    endPoint: c.endpoint || '127.0.0.1',
+    port: Number(c.port || ports.s3),
+    useSSL: false,
+    accessKey: c.accessKey || 'clickbuild',
+    secretKey: c.secretKey || 'clickbuild123',
+  });
+}
+
+function listS3Objects(project, bucket, prefix, marker) {
+  const client = s3ClientOf(project);
+  const bucketName = String(bucket || 'clickbuild');
+  const rows = [];
+  return new Promise((resolve, reject) => {
+    const stream = client.listObjectsV2(bucketName, String(prefix || ''), true, String(marker || ''));
+    stream.on('data', (o) => rows.push({ key: o.name, name: String(o.name || '').split('/').pop(), size: o.size, etag: o.etag, lastModified: o.lastModified }));
+    stream.on('end', () => resolve({ ok: true, bucket: bucketName, rows }));
+    stream.on('error', (e) => reject(e));
+  });
+}
+
+async function tryRoute(project, ifaceId, routeId, bodyText, query) {
+  const p = spec.normalizeProject(project);
+  const it = (p.interfaces || []).find((x) => x.id === ifaceId);
+  if (!it) throw new Error('接口不存在');
+  const route = (it.routes || []).find((x) => x.id === routeId) || it.routes[0];
+  if (!route) throw new Error('路由不存在');
+  let path = `${it.basePath || ''}${route.path || ''}`;
+  path = path.replace(/:([A-Za-z0-9_]+)/g, (m, k) => encodeURIComponent((query && query[k]) || (query && query.id) || '1'));
+  const ports = services.settings().ports;
+  const target = new URL(`http://127.0.0.1:${ports.http}/api${path.startsWith('/') ? '' : '/'}${path}`);
+  for (const [k, v] of Object.entries(query || {})) {
+    if (v !== '' && v != null) target.searchParams.set(k, v);
+  }
+  const init = { method: route.method || 'GET', headers: {} };
+  if (bodyText && !['GET', 'HEAD'].includes(String(route.method).toUpperCase())) {
+    init.headers['content-type'] = 'application/json';
+    init.body = bodyText;
+  }
+  const started = Date.now();
+  const res = await fetch(target, init);
+  const text = await res.text();
+  let parsed = text;
+  try { parsed = JSON.parse(text); } catch (e) { /* text */ }
+  return { ok: res.ok, status: res.status, ms: Date.now() - started, url: target.toString(), body: parsed, raw: text.slice(0, 20000) };
+}
+
+
 function registerIpc() {
   ipcMain.handle('iface:boot', async () => {
     const name = projects.boot();
@@ -121,6 +202,18 @@ function registerIpc() {
   ipcMain.handle('iface:validate', (e, project) => spec.validateProject(spec.normalizeProject(project)));
   ipcMain.handle('iface:preview', (e, payload) => preview(payload));
   ipcMain.handle('iface:script:check', (e, text) => script.checkScript(text));
+  ipcMain.handle('iface:upstream:probe', async (e, payload) => {
+    try { return await probeUpstream(payload && payload.baseUrl, payload && payload.timeout); }
+    catch (err) { return { ok: false, routes: [], error: err.message }; }
+  });
+  ipcMain.handle('iface:s3:list', async (e, payload) => {
+    try { return await listS3Objects(payload && payload.project, payload && payload.bucket, payload && payload.prefix, payload && payload.marker); }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:tryRoute', async (e, payload) => {
+    try { return await tryRoute(payload && payload.project, payload && payload.ifaceId, payload && payload.routeId, payload && payload.bodyText, payload && payload.query); }
+    catch (err) { return { ok: false, status: 0, error: err.message, body: '' }; }
+  });
   ipcMain.handle('iface:help', () => ({
     builtins: funcs.NAMES,
     types: spec.TYPES,

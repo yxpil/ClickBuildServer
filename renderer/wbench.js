@@ -769,6 +769,9 @@ function renderEditor() {
     ['routes', '路由脚本'],
     ['docs', '接口文档'],
     ['cache', '缓存与存储'],
+    ['upstream', '上游'],
+    ['permissions', '权限'],
+    ['objects', '对象表'],
     ['test', '测试'],
     ['export', '生成导出'],
   ];
@@ -794,6 +797,9 @@ function renderEditor() {
   else if (S.tab === 'routes') body.innerHTML = tabRoutes(it);
   else if (S.tab === 'docs') body.innerHTML = tabDocs(it);
   else if (S.tab === 'cache') body.innerHTML = tabCache(it);
+  else if (S.tab === 'upstream') body.innerHTML = tabUpstream(it);
+  else if (S.tab === 'permissions') body.innerHTML = tabPermissions(it);
+  else if (S.tab === 'objects') body.innerHTML = tabObjects(it);
   else if (S.tab === 'test') body.innerHTML = tabTest(it);
   else body.innerHTML = tabExport(it);
 
@@ -807,6 +813,9 @@ function renderEditor() {
   if (S.tab === 'routes') bindRoutes(it);
   if (S.tab === 'docs') bindDocs(it);
   if (S.tab === 'cache') bindCache(it);
+  if (S.tab === 'upstream') bindUpstream(it);
+  if (S.tab === 'permissions') bindPermissions(it);
+  if (S.tab === 'objects') bindObjects(it);
   if (S.tab === 'test') bindTest(it);
   if (S.tab === 'export') bindExport(it);
 }
@@ -988,6 +997,7 @@ function tabRoutes(it) {
         <select id="newRouteKind" class="border border-neutral-300 px-1 py-1 text-[12px]">
           <option value="custom">自定义</option><option value="list">列表</option><option value="detail">详情</option>
           <option value="create">新建</option><option value="update">更新</option><option value="delete">删除</option><option value="upload">附件</option>
+          <option value="proxy">上游转发</option><option value="objects">对象表</option><option value="crawl">抓取</option>
         </select>
         <button class="btn thin" data-action="addRoute">＋ 加路由</button>
       </div>
@@ -1001,9 +1011,19 @@ function tabRoutes(it) {
         <input id="rPath" class="border border-neutral-300 px-1 py-0.5 mono flex-1 min-w-24" value="${esc(r.path)}">
         <label class="flex items-center gap-1"><input type="checkbox" id="rCache" ${r.cache.enabled ? 'checked' : ''}>Redis 缓存</label>
         <button class="btn thin" data-action="checkOne">校验</button>
+        <button class="btn thin" data-action="tryRoute">试运行</button>
         <button class="btn thin" data-action="preview">预览 SQL</button>
         <button class="btn thin" data-action="delRoute">删除</button>
       </div>
+      ${r.key === 'proxy' ? `<div class="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-neutral-200 bg-neutral-50 text-[11px]" style="flex-wrap:wrap">
+        <span>上游 <select id="pxUpstream" class="border border-neutral-300 px-1 py-0.5 mono">${['', ...(S.project.upstreams || []).map((u) => u.id)].map((id) => {
+          const u = (S.project.upstreams || []).find((x) => x.id === id);
+          return `<option value="${esc(id)}" ${id === (r.proxy && r.proxy.upstream) ? 'selected' : ''}>${esc(u ? `${u.name} (${u.baseUrl})` : '未选择')}</option>`;
+        }).join('')}</select></span>
+        <span>目标 <input id="pxTarget" class="border border-neutral-300 px-1 py-0.5 mono w-56" value="${esc((r.proxy && r.proxy.target) || '')}" placeholder="/v1/users"></span>
+        <span>超时 <input id="pxTimeout" class="border border-neutral-300 px-1 py-0.5 mono w-16" value="${esc((r.proxy && r.proxy.timeout) || 15000)}"> ms</span>
+        <label class="flex items-center gap-1"><input type="checkbox" id="pxHeaders" ${!(r.proxy && r.proxy.forwardHeaders === false) ? 'checked' : ''}> 转发请求头</label>
+      </div>` : ''}
       <textarea id="rScript" class="flex-1 min-h-0 border-0 p-3 monoarea outline-none" spellcheck="false">${esc(r.script)}</textarea>
       <div class="shrink-0 border-t border-neutral-300 px-3 py-1 text-[11px] text-neutral-600 flex gap-3">
         <span>LET / QUERY / EXEC / IF / ELSE / END / FOREACH / RETURN / LOG</span>
@@ -1020,6 +1040,43 @@ function bindRoutes(it) {
   $('#rMethod').onchange = (e) => { r.method = e.target.value; scheduleSave(); renderWorkspace(); };
   $('#rPath').oninput = (e) => { r.path = e.target.value; scheduleSave(); };
   $('#rCache').onchange = (e) => { r.cache.enabled = e.target.checked; scheduleSave(); };
+  if (r.key === 'proxy') {
+    const up = $('#pxUpstream');
+    if (up) up.onchange = () => { r.proxy = r.proxy || {}; r.proxy.enabled = true; r.proxy.upstream = up.value; scheduleSave(); };
+    const target = $('#pxTarget');
+    if (target) target.oninput = () => { r.proxy = r.proxy || {}; r.proxy.target = target.value; scheduleSave(); };
+    const timeout = $('#pxTimeout');
+    if (timeout) timeout.oninput = () => { r.proxy = r.proxy || {}; r.proxy.timeout = Number(timeout.value) || 15000; scheduleSave(); };
+    const fh = $('#pxHeaders');
+    if (fh) fh.onchange = () => { r.proxy = r.proxy || {}; r.proxy.forwardHeaders = fh.checked; scheduleSave(); };
+  }
+  const tryBtn = $('[data-action="tryRoute"]');
+  if (tryBtn) tryBtn.onclick = () => {
+    const sampleBody = (r.docs && r.docs.requestExample) || (['POST', 'PUT', 'PATCH'].includes(r.method) ? '{\n  \n}' : '');
+    modal(`<div class="p-4 text-[12px]">
+      <div class="font-semibold mb-1">试运行 ${esc(r.method)} ${esc(r.path)}</div>
+      <div class="text-neutral-500 mb-3">请求会发到当前启动服务的 /api 前缀；路径参数 :id 会取下方路径参数里的 id。</div>
+      <div class="flex gap-3">
+        <div class="flex-1">路径/查询参数 JSON<textarea id="tryQuery" rows="7" class="cell-in monoarea w-full">{"id":"1"}</textarea></div>
+        <div class="flex-1">请求体 JSON<textarea id="tryBody" rows="7" class="cell-in monoarea w-full">${esc(sampleBody)}</textarea></div>
+      </div>
+      <div class="mt-3 flex items-center gap-2"><button class="btn thin" id="tryGo">发送</button><span id="tryMeta" class="text-neutral-500"></span></div>
+      <pre id="tryOut" class="mt-2 p-2 bg-neutral-50 border border-neutral-200 mono text-[11px] overflow-auto" style="max-height:38vh">等待发送…</pre>
+      <div class="flex justify-end mt-2"><button class="btn thin" id="tryClose">关闭</button></div>
+    </div>`, (root) => {
+      root.querySelector('#tryClose').onclick = closeModal;
+      root.querySelector('#tryGo').onclick = async () => {
+        const meta = root.querySelector('#tryMeta'); const out = root.querySelector('#tryOut');
+        meta.textContent = '发送中…';
+        let query = {};
+        try { query = JSON.parse(root.querySelector('#tryQuery').value || '{}'); } catch (e) { meta.textContent = '参数 JSON 不合法'; return; }
+        const bodyText = root.querySelector('#tryBody').value.trim();
+        const res = await api.tryRoute({ project: S.project, ifaceId: it.id, routeId: r.id, bodyText, query });
+        meta.textContent = res.status ? `${res.status} · ${res.ms}ms · ${res.url}` : String(res.error || '失败');
+        out.textContent = typeof res.body === 'string' ? res.body : JSON.stringify(res.body, null, 2);
+      };
+    }, { width: 860, maxHeight: '86vh' });
+  };
   $('#rScript').oninput = (e) => {
     r.script = e.target.value;
     $('#rStatus').textContent = `${e.target.value.split(/\n/).length} 行`;
@@ -1030,6 +1087,223 @@ function bindRoutes(it) {
       $('#rStatus').textContent = c.ok ? `${r.script.split(/\n/).length} 行 · 语法通过` : c.problems.join('；');
     }, 900);
   };
+}
+
+/* ----- 上游 ----- */
+function tabUpstream(it) {
+  const ups = S.project.upstreams || (S.project.upstreams = []);
+  const probe = S.upstreamProbe;
+  return `
+  <div class="h-full overflow-auto p-3 text-[12px]">
+    <div class="help-h flex items-center gap-2">上游服务器
+      <span class="text-neutral-500 font-normal">导入后可由代理路由直接转发，也可把 OpenAPI 路径一键生成本接口的转发路由</span>
+      <button class="btn thin ml-auto" data-action="addUpstream">＋ 新增上游</button>
+    </div>
+    <table class="help-grid">
+      <thead><tr><th style="width:150px">名称</th><th>baseUrl</th><th style="width:120px">鉴权头</th><th style="width:160px">鉴权值</th><th style="width:80px">超时ms</th><th style="width:170px">操作</th></tr></thead>
+      <tbody>
+        ${ups.map((u, i) => `<tr data-up="${i}">
+          <td><input class="cell-in" data-uf="name" value="${esc(u.name)}"></td>
+          <td><input class="cell-in mono" data-uf="baseUrl" value="${esc(u.baseUrl)}" placeholder="http://127.0.0.1:8080"></td>
+          <td><input class="cell-in mono" data-uf="authHeader" value="${esc(u.authHeader)}" placeholder="authorization"></td>
+          <td><input class="cell-in mono" data-uf="authValue" value="${esc(u.authValue)}" placeholder="Bearer xxx"></td>
+          <td><input class="cell-in mono" data-uf="timeout" value="${esc(u.timeout)}"></td>
+          <td class="flex gap-1"><button class="btn thin" data-up-probe="${i}">探测</button><button class="btn thin" data-up-import="${i}">导入路由</button><button class="btn thin" data-up-del="${i}">删除</button></td>
+        </tr>`).join('') || `<tr><td colspan="6" class="text-neutral-500">还没有上游，点“新增上游”填 baseUrl。</td></tr>`}
+      </tbody>
+    </table>
+    ${probe ? `<div class="help-h">探测结果 · ${esc(probe.url || '')}</div>
+      <div class="text-neutral-600 mb-2">${probe.ok ? `可访问，发现 ${probe.routes.length} 条 OpenAPI 路径${probe.title ? ' · ' + esc(probe.title) : ''}` : `失败：${esc(probe.error || probe.note || '未知错误')}`}</div>
+      <table class="help-grid"><thead><tr><th style="width:80px">方法</th><th>路径</th><th>说明</th></tr></thead><tbody>
+      ${(probe.routes || []).slice(0, 40).map((r) => `<tr><td class="mono">${esc(r.method)}</td><td class="mono">${esc(r.path)}</td><td>${esc(r.name)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-neutral-500">没有解析到路径。</td></tr>'}
+      </tbody></table>` : ''}
+    <div class="text-neutral-500 mt-2">代理路由在“路由脚本”里新建“上游转发”，填上游名与目标路径；服务器会直接转发请求体与状态码，不进入 SQL/事务。</div>
+  </div>`;
+}
+
+function bindUpstream(it) {
+  const ups = S.project.upstreams || (S.project.upstreams = []);
+  $$('[data-up]').forEach((row) => {
+    const u = ups[Number(row.dataset.up)];
+    row.querySelectorAll('[data-uf]').forEach((el) => {
+      el.oninput = () => {
+        const k = el.dataset.uf;
+        u[k] = k === 'timeout' ? Number(el.value) || 15000 : el.value;
+        if (k === 'baseUrl') u.baseUrl = u.baseUrl.replace(/\/+$/, '');
+        scheduleSave();
+      };
+    });
+  });
+  $$('[data-up-probe]').forEach((btn) => {
+    btn.onclick = async () => {
+      const u = ups[Number(btn.dataset.upProbe)];
+      btn.disabled = true; btn.textContent = '探测中';
+      const r = await api.probeUpstream({ baseUrl: u.baseUrl, timeout: u.timeout });
+      S.upstreamProbe = { ...r, upstream: u.id };
+      renderWorkspace();
+    };
+  });
+  $$('[data-up-import]').forEach((btn) => {
+    btn.onclick = async () => {
+      const u = ups[Number(btn.dataset.upImport)];
+      if (!S.upstreamProbe || S.upstreamProbe.upstream !== u.id) {
+        S.upstreamProbe = { ...(await api.probeUpstream({ baseUrl: u.baseUrl, timeout: u.timeout })), upstream: u.id };
+      }
+      const routes = (S.upstreamProbe.routes || []).slice(0, 20);
+      if (!routes.length) return toast('没有可导入的 OpenAPI 路径');
+      if (!(await confirmBox('导入上游路由', `把 ${routes.length} 条路径生成到「${it.name}」的转发路由？`))) return;
+      const used = new Set(it.routes.map((r) => `${r.method} ${r.path}`));
+      for (const src of routes) {
+        let p = `/proxy${src.path.startsWith('/') ? '' : '/'}${src.path}`;
+        if (used.has(`${src.method} ${p}`)) continue;
+        it.routes.push({
+          id: crypto.randomUUID().slice(0, 8), key: 'proxy', name: src.name || src.path,
+          method: src.method, path: p, auth: false, summary: `转发到 ${u.name}`,
+          guard: { tx: false, rate: { enabled: false }, schedule: { enabled: false }, breaker: { enabled: false } },
+          script: '# 代理路由直接转发，不走脚本', cache: { enabled: false, key: '', ttl: 60 },
+          docs: { summary: '', description: '', requestExample: '', responseExample: '' }, roles: [],
+          proxy: { enabled: true, upstream: u.id, target: src.path, stripPrefix: true, forwardHeaders: true, timeout: u.timeout || 15000 },
+        });
+        used.add(`${src.method} ${p}`);
+      }
+      S.routeId = it.routes[it.routes.length - 1].id;
+      scheduleSave(); renderWorkspace(); toast('已生成转发路由');
+    };
+  });
+  $$('[data-up-del]').forEach((btn) => {
+    btn.onclick = async () => {
+      const i = Number(btn.dataset.upDel);
+      if (!(await confirmBox('删除上游', `删除「${ups[i].name}」？相关代理路由会保留但找不到上游。`))) return;
+      ups.splice(i, 1); scheduleSave(); renderWorkspace();
+    };
+  });
+}
+
+/* ----- 权限 ----- */
+function tabPermissions(it) {
+  const perm = S.project.permissions || (S.project.permissions = { roles: [], enforce: false });
+  perm.roles = perm.roles && perm.roles.length ? perm.roles : [{ key: 'admin', name: '管理员' }, { key: 'user', name: '普通用户' }];
+  return `
+  <div class="h-full overflow-auto p-3 text-[12px]">
+    <div class="help-h flex items-center gap-2">权限矩阵
+      <span class="text-neutral-500 font-normal">勾选表示该角色可访问；一行都不勾表示不限制角色（仍受“需要 token”开关约束）</span>
+      <label class="ml-auto flex items-center gap-1"><input type="checkbox" id="permEnforce" ${perm.enforce ? 'checked' : ''}> 生成服务启用角色校验</label>
+    </div>
+    <div class="flex items-center gap-2 mb-2" style="flex-wrap:wrap">
+      ${perm.roles.map((r, i) => `<span class="pill flex items-center gap-1">${esc(r.name)}<span class="mono text-neutral-500">${esc(r.key)}</span><button class="text-neutral-500" data-role-del="${i}" title="删除角色">×</button></span>`).join('')}
+      <input id="roleName" class="border border-neutral-300 px-1 py-0.5 w-32" placeholder="新角色名，如 审核员">
+      <button class="btn thin" data-action="addRole">＋ 角色</button>
+    </div>
+    <table class="help-grid">
+      <thead><tr><th style="width:70px">方法</th><th>路由</th>${perm.roles.map((r) => `<th style="width:100px" class="text-center">${esc(r.name)}<div class="mono text-[10px] text-neutral-500">${esc(r.key)}</div></th>`).join('')}</tr></thead>
+      <tbody>
+        ${it.routes.map((r) => `<tr>
+          <td class="mono">${esc(r.method)}</td>
+          <td><div>${esc(r.name)}</div><div class="mono text-[11px] text-neutral-500">${esc(r.path)}</div></td>
+          ${perm.roles.map((role) => `<td class="text-center"><input type="checkbox" data-role-route="${r.id}" data-role="${role.key}" ${(r.roles || []).includes(role.key) ? 'checked' : ''}></td>`).join('')}
+        </tr>`).join('') || '<tr><td colspan="3" class="text-neutral-500">没有路由。</td></tr>'}
+      </tbody>
+    </table>
+    <div class="text-neutral-500 mt-2">token 内需要带 <span class="mono">roles: ["admin"]</span>；脚本里 <span class="mono">TOKEN NEW { "roles": ["admin"] }</span> 即可签发。未开启“启用角色校验”时矩阵只记录不拦截。</div>
+  </div>`;
+}
+
+function bindPermissions(it) {
+  const perm = S.project.permissions;
+  $('#permEnforce').onchange = (e) => { perm.enforce = e.target.checked; scheduleSave(); };
+  $$('[data-role-route]').forEach((el) => {
+    el.onchange = () => {
+      const r = it.routes.find((x) => x.id === el.dataset.roleRoute);
+      const role = el.dataset.role;
+      r.roles = r.roles || [];
+      if (el.checked && !r.roles.includes(role)) r.roles.push(role);
+      if (!el.checked) r.roles = r.roles.filter((x) => x !== role);
+      if (r.roles.length) r.auth = true;
+      scheduleSave();
+    };
+  });
+  $$('[data-role-del]').forEach((btn) => {
+    btn.onclick = () => {
+      const i = Number(btn.dataset.roleDel);
+      const key = perm.roles[i].key;
+      perm.roles.splice(i, 1);
+      it.routes.forEach((r) => { r.roles = (r.roles || []).filter((x) => x !== key); });
+      scheduleSave(); renderWorkspace();
+    };
+  });
+  const add = $('[data-action="addRole"]');
+  if (add) add.onclick = () => {
+    const name = $('#roleName').value.trim();
+    if (!name) return toast('先填角色名');
+    const key = name.toLowerCase().replace(/[^a-z0-9_-]/g, '') || `role${perm.roles.length + 1}`;
+    if (perm.roles.some((r) => r.key === key)) return toast('角色已存在');
+    perm.roles.push({ key, name });
+    scheduleSave(); renderWorkspace();
+  };
+}
+
+/* ----- 对象表 ----- */
+function tabObjects(it) {
+  const obj = it.objects || (it.objects = { enabled: false, bucket: it.storage.bucket || 'clickbuild', prefix: '', pageSize: 20 });
+  const rows = S.s3Rows || [];
+  return `
+  <div class="h-full overflow-auto p-3 text-[12px]">
+    <div class="help-h flex items-center gap-2">对象存储表
+      <span class="text-neutral-500 font-normal">把 RustFS / S3 桶里的对象直接列成表格，支持分页、下载、删除与生成对象表路由</span>
+    </div>
+    <div class="flex items-center gap-3" style="flex-wrap:wrap">
+      <label class="flex items-center gap-1"><input type="checkbox" id="objEnabled" ${obj.enabled ? 'checked' : ''}> 启用对象表</label>
+      桶 <input id="objBucket" class="border border-neutral-300 px-1 py-0.5 mono w-44" value="${esc(obj.bucket)}">
+      前缀 <input id="objPrefix" class="border border-neutral-300 px-1 py-0.5 mono w-44" value="${esc(obj.prefix)}" placeholder="uploads/">
+      每页 <input id="objPage" class="border border-neutral-300 px-1 py-0.5 mono w-16" value="${esc(obj.pageSize)}">
+      <button class="btn thin" data-action="objList">预览对象</button>
+      <button class="btn thin" data-action="objRoute">生成对象表路由</button>
+    </div>
+    <table class="help-grid mt-3">
+      <thead><tr><th>对象键</th><th style="width:100px">大小</th><th style="width:170px">最后修改</th><th style="width:80px">下载</th></tr></thead>
+      <tbody>
+        ${rows.map((o) => `<tr><td class="mono break-all">${esc(o.key)}</td><td class="mono">${fmtSize(o.size)}</td><td class="mono">${esc(o.lastModified || '')}</td><td>${o.url ? `<a class="underline" href="${esc(o.url)}" target="_blank">打开</a>` : '—'}</td></tr>`).join('') || `<tr><td colspan="4" class="text-neutral-500">点“预览对象”列当前桶。</td></tr>`}
+      </tbody>
+    </table>
+    <div class="text-neutral-500 mt-2">对象表路由返回 <span class="mono">{ ok, data:[{key,name,size,url}], page:{hasMore,nextMarker} }</span>，可直接给表格组件分页。</div>
+  </div>`;
+}
+
+function bindObjects(it) {
+  const obj = it.objects;
+  $('#objEnabled').onchange = (e) => { obj.enabled = e.target.checked; scheduleSave(); };
+  $('#objBucket').oninput = (e) => { obj.bucket = e.target.value; scheduleSave(); };
+  $('#objPrefix').oninput = (e) => { obj.prefix = e.target.value; scheduleSave(); };
+  $('#objPage').oninput = (e) => { obj.pageSize = Number(e.target.value) || 20; scheduleSave(); };
+  const list = $('[data-action="objList"]');
+  if (list) list.onclick = async () => {
+    list.disabled = true; list.textContent = '读取中';
+    const r = await api.listS3({ project: S.project, bucket: obj.bucket, prefix: obj.prefix });
+    S.s3Rows = r.ok ? r.rows : [];
+    renderWorkspace();
+    if (!r.ok) toast('对象存储读取失败：' + String(r.error || '').slice(0, 160), 6000);
+  };
+  const mk = $('[data-action="objRoute"]');
+  if (mk) mk.onclick = async () => {
+    if (!obj.enabled) { obj.enabled = true; scheduleSave(); }
+    if (it.routes.some((r) => r.key === 'objects')) return toast('已经存在对象表路由');
+    it.routes.push({
+      id: crypto.randomUUID().slice(0, 8), key: 'objects', name: '对象表', method: 'GET', path: '/objects',
+      auth: false, summary: '列出桶内对象', guard: { tx: false, rate: { enabled: false }, schedule: { enabled: false }, breaker: { enabled: false } },
+      script: '# 对象表由服务器直接列桶', cache: { enabled: false, key: '', ttl: 60 },
+      docs: { summary: '', description: '', requestExample: '', responseExample: '' }, roles: [],
+      proxy: { enabled: false, upstream: '', target: '', stripPrefix: true, forwardHeaders: true, timeout: 15000 },
+    });
+    S.tab = 'routes'; S.routeId = it.routes[it.routes.length - 1].id;
+    scheduleSave(); renderWorkspace(); toast('已生成对象表路由');
+  };
+}
+
+function fmtSize(n) {
+  const v = Number(n) || 0;
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /* ----- 接口文档 ----- */
@@ -2057,6 +2331,9 @@ function newRoute(it, kind) {
     update: ['更新', 'PUT', '/' + t.name + '/:id'],
     delete: ['删除', 'DELETE', '/' + t.name + '/:id'],
     upload: ['附件', 'POST', '/' + t.name + '/:id/file'],
+    proxy: ['上游转发', 'POST', '/proxy-' + (it.routes.length + 1)],
+    objects: ['对象表', 'GET', '/objects'],
+    crawl: ['抓取', 'GET', '/crawl'],
     custom: ['自定义', 'POST', '/custom-' + (it.routes.length + 1)],
   }[kind] || ['自定义', 'POST', '/custom'];
   const scripts = {
@@ -2066,11 +2343,16 @@ function newRoute(it, kind) {
     update: 'LET $upd = EXEC UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { "changed": $upd.affectedRows };',
     delete: 'LET $del = EXEC DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { "deleted": $del.affectedRows };',
     upload: 'EXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};\nRETURN 200 { "key": {{objectKey}}, "url": {{objectUrl}} };',
+    proxy: '# 上游转发由服务器直接代理，不走脚本。请在“上游”页配置 baseUrl 与本路由目标。',
+    objects: '# 对象表由服务器直接列桶内对象。',
+    crawl: 'LET $page = CRAWL \'https://example.com\' { "maxBytes": 1048576 };\nRETURN 200 { "title": $page.title, "text": $page.text, "links": $page.links };',
     custom: '# 自定义脚本\nLET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} LIMIT {{limit}};\nRETURN 200 { "rows": $rows.rows };',
   };
   return {
     id: Math.random().toString(16).slice(2, 10),
     key: kind, name: meta[0], method: meta[1], path: meta[2], auth: false,
+    roles: [],
+    proxy: { enabled: kind === 'proxy', upstream: '', target: '', stripPrefix: true, forwardHeaders: true, timeout: 15000 },
     script: scripts[kind] || scripts.custom,
     docs: { summary: meta[0], description: '', requestExample: '', responseExample: '' },
     cache: { enabled: kind === 'list' || kind === 'detail', key: 'icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}', ttl: 60 },
@@ -2484,7 +2766,7 @@ function showAi() {
     frontend: S.project.frontend ? `${S.project.frontend.name || '前端工程'}（${(S.project.frontend.project && S.project.frontend.project.elements || []).length} 个元素）` : '无',
   };
   modal(`<div class="p-4">
-    <div class="flex items-center gap-2 mb-2"><b>AI 生成接口工程</b><span class="pill" id="aiPill">检测中…</span>
+    <div class="flex items-center gap-2 mb-2"><b>AI 生成接口 / 前端</b><span class="pill" id="aiPill">检测中…</span>
       <span class="text-[11px] text-neutral-500 ml-2">模型会读取当前工程，生成前不会改动工程</span></div>
     <div id="aiCfg" class="border border-neutral-300 p-2 mb-2 text-[12px]">
       <div class="ai-row"><label>接口</label>
@@ -2509,11 +2791,11 @@ function showAi() {
       <div id="aiStatus" class="text-[11px] text-neutral-600 mt-1">正在检测本机服务…</div>
     </div>
     <div id="aiCtxLine" class="text-[11px] text-neutral-600 mb-1">当前工程：<b>${esc(ctx.name)}</b> · ${ctx.interfaces} 接口 / ${ctx.tables} 表 / ${ctx.routes} 路由 · 选中 ${esc(ctx.selected)} · 前端 ${esc(ctx.frontend)}</div>
-    <textarea id="aiPrompt" class="w-full h-[84px] border border-neutral-900 p-2 mono text-[12px]" placeholder="例如：当前已有会员表和订单表，只追加一个优惠券接口，包含列表、创建、停用；不要重复会员和订单"></textarea>
+    <textarea id="aiPrompt" class="w-full h-[84px] border border-neutral-900 p-2 mono text-[12px]" placeholder="例如：当前已有会员表和订单表，只追加一个优惠券接口，包含列表、创建、停用；再生成一个黑白办公风格的运营前端页面，不要重复会员和订单"></textarea>
     <div class="flex items-center gap-2 mt-2">
       <select id="aiMode" class="border border-neutral-300 px-1 py-1 text-[12px]">
-        <option value="replace">替换接口（保留工程名 / 前端 / 连接设置）</option>
-        <option value="append">追加到当前工程</option>
+        <option value="replace">替换接口（保留工程名 / 连接设置；前端按需求生成）</option>
+        <option value="append">追加到当前工程（可同时生成前端）</option>
       </select>
       <label class="text-[11px] flex items-center gap-1"><input type="checkbox" id="aiUseCtx" checked> 携带当前工程上下文</label>
       <button class="btn thin ml-auto" id="aiClose">关闭</button>
@@ -2648,6 +2930,7 @@ function showAi() {
       S.problems = (saved && saved.problems) || [];
       render();
       log(`已${r.applyMode === 'append' ? '追加' : '替换'}并保存「${r.project.name}」：${r.project.interfaces.length} 接口 / ${r.project.interfaces.reduce((n, it) => n + it.tables.length, 0)} 表。`);
+      if (r.frontendUpdated) log(`前端已更新：「${r.frontendName || (r.project.frontend && r.project.frontend.name) || '前端工程'}」，${((r.project.frontend && r.project.frontend.project && r.project.frontend.project.elements) || []).length} 个元素。`);
       if (S.problems.length) log(`保存后仍有 ${S.problems.length} 个校验问题：${S.problems.slice(0, 3).join('；')}`);
       else log('工程校验通过。点“生成服务”就能跑。');
     };
@@ -2688,14 +2971,28 @@ function showMonitor() {
     const errOnly = $('#monErr').checked;
     const filter = sel.value;
     const rows = r.logs.filter((l) => (!errOnly || ['WARN', 'ERROR', 'FATAL'].includes(l.level)) && (!filter || l.iface === filter)).slice(-120).reverse();
-    $('#monRows').innerHTML = rows.map((l) => `<div class="px-3 py-1 border-b border-neutral-200 flex gap-2 items-baseline hover:bg-neutral-50">
+    $('#monRows').innerHTML = rows.map((l) => `<div class="px-3 py-1 border-b border-neutral-200 flex gap-2 items-baseline hover:bg-neutral-50 cursor-pointer" data-log-iface="${esc(l.iface || '')}" data-log-route="${esc(l.route || '')}" title="点击定位到对应接口路由">
       <span class="mono text-[10px] text-neutral-400 w-[62px] shrink-0">${esc((l.time || '').slice(11))}</span>
       <span class="mono text-[10px] w-[52px] shrink-0 ${levelClass(l.level)}">${esc(l.level || 'INFO')}</span>
       <span class="mono text-[10px] w-[46px] shrink-0">${esc(String(l.status || ''))}</span>
       <span class="mono text-[10px] w-[52px] shrink-0 text-neutral-500">${esc(String(l.ms || 0) + 'ms')}</span>
       <span class="flex-1 truncate" title="${esc(l.message)}">${esc(l.message)}</span>
-      <span class="mono text-[10px] text-neutral-400 shrink-0">${esc(l.iface || '')}</span>
+      <span class="mono text-[10px] text-neutral-400 shrink-0">${esc(l.iface || '')}${l.route ? ' · ' + esc(l.route) : ''}</span>
     </div>`).join('') || '<div class="p-4 text-neutral-500">还没有日志，去“测试”页发个请求试试。</div>';
+    $$('#monRows [data-log-iface]').forEach((row) => {
+      row.onclick = () => {
+        const iface = S.project.interfaces.find((x) => x.name === row.dataset.logIface);
+        if (!iface) return toast('这条日志没有关联到当前工程的接口');
+        const route = (iface.routes || []).find((r) => r.name === row.dataset.logRoute);
+        S.selId = iface.id;
+        if (route) S.routeId = route.id;
+        S.mode = 'editor'; if (route) S.tab = 'routes';
+        clearInterval(timer);
+        drawer.classList.add('hidden'); drawer.innerHTML = '';
+        render();
+        toast(`已定位：${iface.name}${route ? ' · ' + route.name : ''}`);
+      };
+    });
   }
   $('#monPause').onclick = () => { paused = !paused; $('#monPause').textContent = paused ? '继续' : '暂停'; };
   $('#monClose').onclick = () => { clearInterval(timer); drawer.classList.add('hidden'); drawer.innerHTML = ''; };

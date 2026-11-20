@@ -43,7 +43,7 @@ function defaultGuard() {
   };
 }
 
-const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'custom'];
+const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'proxy', 'objects', 'crawl', 'custom'];
 
 const ROUTE_META = {
   list: { name: '列表', method: 'GET', path: '/:table' },
@@ -52,6 +52,9 @@ const ROUTE_META = {
   update: { name: '更新', method: 'PUT', path: '/:table/:id' },
   delete: { name: '删除', method: 'DELETE', path: '/:table/:id' },
   upload: { name: '附件', method: 'POST', path: '/:table/:id/file' },
+  proxy: { name: '上游转发', method: 'POST', path: '/proxy' },
+  objects: { name: '对象表', method: 'GET', path: '/objects' },
+  crawl: { name: '抓取', method: 'GET', path: '/crawl' },
   custom: { name: '自定义', method: 'POST', path: '/custom' },
 };
 
@@ -96,6 +99,19 @@ const ROUTE_TEMPLATES = {
     'END',
     'EXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};',
     'RETURN 200 { "key": {{objectKey}}, "url": {{objectUrl}}, "name": {{filename}} };',
+  ].join('\n'),
+  proxy: [
+    '# 上游转发由服务器按 route.proxy 直接代理，不走这段脚本。',
+    'RETURN 501 { "ok": false, "error": "PROXY_NOT_CONFIGURED", "message": "请在上游页配置 baseUrl 与转发路径" };',
+  ].join('\n'),
+  objects: [
+    '# 对象表由服务器直接列桶内对象，不走 SQL。',
+    'RETURN 501 { "ok": false, "error": "OBJECT_TABLE_NOT_CONFIGURED" };',
+  ].join('\n'),
+  crawl: [
+    '# 抓取路由：抓取上游页面并返回标题/正文片段/链接，可在脚本里继续加工。',
+    'LET $page = CRAWL \'https://example.com\' { "maxBytes": 1048576 };',
+    'RETURN 200 { "url": {{query.url}}, "title": $page.title, "text": $page.text, "links": $page.links };',
   ].join('\n'),
   custom: [
     '# 自定义脚本：随便查、随便改，SQL 里用 {{body.x}} {{query.x}} {{id}} 取请求参数',
@@ -443,13 +459,14 @@ function normalizeTable(t, idx, used) {
 function normalizeRoute(r, idx) {
   const kind = ROUTE_KINDS.includes(r.key) ? r.key : 'custom';
   const g = r.guard || {};
+  const roles = Array.isArray(r.roles) ? r.roles.map(String).filter(Boolean) : [];
   return {
     id: r.id || crypto.randomUUID().slice(0, 8),
     key: kind,
     name: r.name || ROUTE_META[kind].name,
     method: (r.method || ROUTE_META[kind].method).toUpperCase(),
     path: r.path || `/route-${idx + 1}`,
-    auth: !!r.auth,
+    auth: !!r.auth || roles.length > 0,
     summary: r.summary || '',
     guard: {
       tx: g.tx != null ? !!g.tx : ['create', 'update', 'delete'].includes(kind),
@@ -464,6 +481,15 @@ function normalizeRoute(r, idx) {
       description: (r.docs && r.docs.description) || '',
       requestExample: (r.docs && r.docs.requestExample) || '',
       responseExample: (r.docs && r.docs.responseExample) || '',
+    },
+    roles: Array.isArray(r.roles) ? r.roles.map(String).filter(Boolean) : [],
+    proxy: {
+      enabled: !!(r.proxy && r.proxy.enabled) || kind === 'proxy',
+      upstream: (r.proxy && r.proxy.upstream) || '',
+      target: (r.proxy && r.proxy.target) || '',
+      stripPrefix: !(r.proxy && r.proxy.stripPrefix === false),
+      forwardHeaders: !(r.proxy && r.proxy.forwardHeaders === false),
+      timeout: Number((r.proxy && r.proxy.timeout) || 15000),
     },
   };
 }
@@ -485,6 +511,12 @@ function normalizeIface(iface, project, idx) {
     tables,
     routes,
     storage: { enabled: iface.storage ? iface.storage.enabled !== false : true, bucket: (iface.storage && iface.storage.bucket) || 'clickbuild', bindField: (iface.storage && iface.storage.bindField) || 'file_key' },
+    objects: {
+      enabled: !!(iface.objects && iface.objects.enabled),
+      bucket: (iface.objects && iface.objects.bucket) || ((iface.storage && iface.storage.bucket) || 'clickbuild'),
+      prefix: (iface.objects && iface.objects.prefix) || '',
+      pageSize: Number((iface.objects && iface.objects.pageSize) || 20),
+    },
     page: { size: Number((iface.page && iface.page.size) || 20) },
     docs: {
       summary: (iface.docs && iface.docs.summary) || iface.comment || '',
@@ -581,6 +613,25 @@ function normalizeProject(project) {
     services: (Array.isArray(p.services) ? p.services : []).map((s, i) => ({
       key: s.key || `svc${i + 1}`, label: s.label || s.key || `服务${i + 1}`, baseUrl: s.baseUrl || '', token: s.token || '',
     })),
+    upstreams: (Array.isArray(p.upstreams) ? p.upstreams : []).map((u, i) => ({
+      id: String(u.id || `up${i + 1}`),
+      name: String(u.name || u.id || `上游${i + 1}`),
+      baseUrl: String(u.baseUrl || '').replace(/\/+$/, ''),
+      prefix: String(u.prefix || ''),
+      authHeader: String(u.authHeader || ''),
+      authValue: String(u.authValue || ''),
+      timeout: Number(u.timeout || 15000),
+      headers: (u.headers && typeof u.headers === 'object') ? u.headers : {},
+    })),
+    permissions: {
+      roles: (Array.isArray(p.permissions && p.permissions.roles) && p.permissions.roles.length
+        ? p.permissions.roles
+        : [{ key: 'admin', name: '管理员' }, { key: 'user', name: '普通用户' }]).map((r, i) => ({
+        key: String(r.key || `role${i + 1}`).replace(/[^A-Za-z0-9_-]/g, ''),
+        name: String(r.name || r.key || `角色${i + 1}`),
+      })),
+      enforce: !!(p.permissions && p.permissions.enforce),
+    },
     theme: {
       accent: (p.theme && p.theme.accent) || '#111111',
       headerTitle: (p.theme && p.theme.headerTitle) || (p.name || '接口工程'),
@@ -631,6 +682,11 @@ function validateProject(project) {
       if (!/^[A-Za-z0-9_/:.-]*$/.test(r.path)) errors.push(`路由路径含非法字符：${r.path}`);
       const chk = script.checkScript(r.script);
       chk.problems.forEach((p) => errors.push(`接口「${it.name}」${r.method} ${r.path}：${p}`));
+      if (r.proxy && r.proxy.enabled && !r.proxy.target && !r.proxy.upstream) errors.push(`接口「${it.name}」${r.method} ${r.path}：代理路由缺少上游或目标路径`);
+      if (r.roles && r.roles.length) {
+        const known = new Set(((project.permissions && project.permissions.roles) || []).map((x) => x.key));
+        r.roles.forEach((role) => { if (!known.has(role)) errors.push(`接口「${it.name}」${r.method} ${r.path}：权限矩阵里没有角色 ${role}`); });
+      }
     });
   });
   for (const f of project.functions) {

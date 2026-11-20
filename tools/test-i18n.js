@@ -85,7 +85,7 @@ t('75 个内置接口名称与说明都有英文', builtinIfaces.length === 75 &
 const meta = pkg.build && pkg.build.nsis ? pkg.build.nsis : {};
 t('安装器包含中文与英文', Array.isArray(meta.installerLanguages) && meta.installerLanguages.join(',') === 'zh_CN,en_US', meta.installerLanguages);
 t('安装器启用多语言并按系统选择', meta.multiLanguageInstaller === true && meta.displayLanguageSelector === false);
-t('版本为 1.1.23', pkg.version === '1.1.23', pkg.version);
+t('版本为 1.1.24', pkg.version === '1.1.24', pkg.version);
 
 console.log(`\n结果：${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);

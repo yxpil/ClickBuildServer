@@ -314,6 +314,39 @@ test('无上下文时追加模式被拒绝', async () => {
   );
 });
 
+test('替换模式采用模型返回的前端工程', async () => {
+  const base = currentProject();
+  const gen = generatedProject();
+  gen.frontend = {
+    name: '会员管理前端', framework: 'tailwind',
+    project: {
+      page: { w: 1200, h: 900, bg: '#F5F5F2' },
+      elements: [{ id: 'e1', type: 'heading', x: 40, y: 40, w: 600, h: 48, props: { text: '会员管理', size: 28 } }],
+    },
+  };
+  const r = ai.parseResult(JSON.stringify({ project: gen, reply: '已生成前端。' }), payloadFor('生成会员前端', 'replace', base), ai.contextOf(base, base.interfaces[0].id));
+  assert.strictEqual(r.frontendUpdated, true);
+  assert.strictEqual(r.project.frontend.name, '会员管理前端');
+  assert.strictEqual(r.project.frontend.project.elements.length, 1);
+  assert.match(r.project.frontend.html, /会员管理/);
+  assert.match(r.project.name, /上下文工程-测试/);
+});
+
+test('模型只返回前端时保留当前接口', async () => {
+  const base = currentProject();
+  const r = ai.parseResult(JSON.stringify({
+    project: {
+      name: '只生成前端', interfaces: [],
+      frontend: { html: '<!doctype html><html><body><h1>会员台</h1></body></html>' },
+    },
+    reply: '只更新前端。',
+  }), payloadFor('只改前端', 'replace', base), ai.contextOf(base, base.interfaces[0].id));
+  assert.strictEqual(r.frontendUpdated, true);
+  assert.strictEqual(r.project.frontend.name, '只生成前端');
+  assert.ok(r.project.frontend.project.elements.length >= 1);
+  assert.ok(r.project.interfaces.some((it) => it.name === '会员'));
+});
+
 test('OpenAI 兼容状态探测', async (mock) => {
   const st = await ai.status({ provider: 'openai', endpoint: `${mock.base}/v1`, timeout: 5000 });
   assert.strictEqual(st.ok, true, st.error);

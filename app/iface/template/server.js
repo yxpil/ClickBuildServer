@@ -52,6 +52,8 @@ const CFG = {
 };
 
 const project = JSON.parse(fs.readFileSync(path.join(ROOT, 'interfaces.json'), 'utf8'));
+const UPSTREAMS = Array.isArray(project.upstreams) ? project.upstreams : [];
+const PERMISSIONS = project.permissions || {};
 const ERR_CFG = project.errors || {};
 const ERR_PAGES = process.env.ERROR_PAGES == null ? ERR_CFG.pages !== false : String(process.env.ERROR_PAGES) !== 'false';
 const ERR_DETAIL = process.env.ERROR_DETAIL == null ? ERR_CFG.detail !== false : String(process.env.ERROR_DETAIL) !== 'false';
@@ -381,8 +383,136 @@ function send(res, status, body, extra) {
   res.end(payload);
 }
 
-function wantsHtml(req) {
-  const accept = String(req.headers.accept || '').toLowerCase();
+function upstreamOf(key) {
+  return UPSTREAMS.find((u) => u.id === key || u.name === key);
+}
+
+function joinUrl(base, target) {
+  const b = String(base || '').replace(/\/+$/, '');
+  const t = String(target || '');
+  if (!t) return b;
+  return `${b}/${t.replace(/^\/+/, '')}`;
+}
+
+function proxyUrl(route, params, query, iface) {
+  const p = route.proxy || {};
+  const up = upstreamOf(p.upstream);
+  let target = p.target || '';
+  if (target) {
+    // target 里显式的 :id 先替换；target 固定但路由带参数时，把未消费的参数按顺序拼到路径后
+    const used = new Set();
+    target = target.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (m, k) => {
+      if (params && params[k] != null) { used.add(k); return encodeURIComponent(params[k]); }
+      return m;
+    });
+    const missing = [];
+    (route.path || '').replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (m, k) => {
+      if (!used.has(k) && params && params[k] != null) missing.push(params[k]);
+      return m;
+    });
+    if (missing.length && !/:\w/.test(target)) target = `${target.replace(/\/+$/, '')}/${missing.map(encodeURIComponent).join('/')}`;
+  }
+  if (!target && p.stripPrefix !== false) {
+    let rest = route.path || '/';
+    for (const [k, v] of Object.entries(params || {})) rest = rest.replace(`:${k}`, encodeURIComponent(v));
+    target = rest.replace(/^\/+/, '');
+  }
+  const base = p.target && /^http(s)?:\/\//i.test(p.target) ? '' : (up ? up.baseUrl : '');
+  if (!base && !/^http(s)?:\/\//i.test(p.target || '')) throw new Error('代理路由没有配置可用的上游 baseUrl');
+  let u = /^http(s)?:\/\//i.test(target) ? target : joinUrl(base, target);
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(query || {})) {
+    if (['page', 'size', 'limit', 'offset', 'marker', 'prefix'].includes(k)) continue;
+    if (Array.isArray(v)) v.forEach((x) => qs.append(k, x)); else qs.append(k, v == null ? '' : String(v));
+  }
+  if (qs.toString()) u += (u.includes('?') ? '&' : '?') + qs.toString();
+  return { url: u, upstream: up || null };
+}
+
+async function handleProxy(req, res, item, raw, query, started) {
+  const route = item.route; const iface = item.iface;
+  let u;
+  try { u = proxyUrl(route, item.params, query, iface); } catch (e) {
+    return send(res, 502, { ok: false, error: 'UPSTREAM_MISSING', message: e.message });
+  }
+  const up = u.upstream || {};
+  const headers = {};
+  const ct = req.headers['content-type'];
+  if (ct) headers['content-type'] = ct;
+  if (raw.length) headers['content-length'] = String(raw.length);
+  if (route.proxy && route.proxy.forwardHeaders !== false) {
+    for (const h of ['accept', 'accept-language', 'user-agent', 'x-request-id', 'authorization', 'cookie']) {
+      if (req.headers[h]) headers[h] = req.headers[h];
+    }
+  }
+  if (up.authHeader && up.authValue) headers[up.authHeader] = up.authValue;
+  Object.assign(headers, up.headers || {});
+  let r;
+  try {
+    r = await fetch(u.url, {
+      method: req.method === 'HEAD' ? 'GET' : req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : raw,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(Number(route.proxy.timeout || up.timeout || 15000)),
+    });
+  } catch (e) {
+    logPush({ level: 'ERROR', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname: req.url, status: 502, ms: Date.now() - started, ip: String(req.socket.remoteAddress || ''), traceId: '', message: `上游转发失败 ${u.url}`, data: { error: e.message } });
+    return send(res, 502, { ok: false, error: 'UPSTREAM_FAILED', message: e.message, upstream: u.url });
+  }
+  const buf = Buffer.from(await r.arrayBuffer());
+  const outHeaders = {};
+  for (const h of ['content-type', 'content-disposition', 'cache-control', 'etag', 'last-modified', 'location', 'set-cookie', 'x-request-id']) {
+    const v = r.headers.get(h);
+    if (v) outHeaders[h] = v;
+  }
+  outHeaders['access-control-allow-origin'] = '*';
+  logPush({ level: r.status >= 500 ? 'ERROR' : 'INFO', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname: req.url, status: r.status, ms: Date.now() - started, ip: String(req.socket.remoteAddress || ''), traceId: r.headers.get('x-request-id') || '', message: `转发 ${req.method} ${u.url}` });
+  res.writeHead(r.status, outHeaders);
+  res.end(req.method === 'HEAD' ? undefined : buf);
+}
+
+async function handleObjects(req, res, item, query) {
+  const iface = item.iface; const cfg = iface.objects || {};
+  if (!cfg.enabled) return send(res, 404, { ok: false, error: 'OBJECT_TABLE_OFF', message: '该接口未启用对象表' });
+  if (!s3) return send(res, 503, { ok: false, error: 'S3_NOT_READY', message: '对象存储未连接' });
+  const bucket = String(query.bucket || cfg.bucket || (iface.storage && iface.storage.bucket) || 'clickbuild');
+  const prefix = String(query.prefix == null ? (cfg.prefix || '') : query.prefix);
+  const pageSize = Math.max(1, Math.min(Number(query.size || query.limit || cfg.pageSize || 20), 200));
+  const marker = String(query.marker || '');
+  if (req.method === 'DELETE') {
+    let key = String(query.key || '');
+    if (!key) return send(res, 400, { ok: false, error: 'KEY_REQUIRED', message: '删除对象需要 ?key=' });
+    await s3.removeObject(bucket, key);
+    return send(res, 200, { ok: true, data: { bucket, key, deleted: true } });
+  }
+  const list = await new Promise((resolve, reject) => {
+    const stream = s3.listObjectsV2(bucket, prefix, true, marker);
+    const rows = [];
+    stream.on('data', (o) => rows.push({ key: String(o.name || o.key || ''), size: o.size, etag: o.etag, lastModified: o.lastModified }));
+    stream.on('end', () => resolve(rows));
+    stream.on('error', reject);
+  });
+  const hasMore = list.length > pageSize;
+  const rows = list.slice(0, pageSize);
+  const nextMarker = hasMore ? rows[rows.length - 1].key : '';
+  const out = await Promise.all(rows.map(async (o) => ({
+    ...o,
+    bucket, prefix,
+    name: o.key.split('/').pop(),
+    url: await s3.presignedGetObject(bucket, o.key, 3600).catch(() => ''),
+  })));
+  if (query.download) {
+    const key = String(query.key || '');
+    if (!key) return send(res, 400, { ok: false, error: 'KEY_REQUIRED', message: '下载对象需要 ?key=' });
+    const url = await s3.presignedGetObject(bucket, key, 3600);
+    res.writeHead(302, { location: url, 'cache-control': 'no-store' });
+    return res.end();
+  }
+  return send(res, 200, { ok: true, data: out, page: { size: pageSize, count: out.length, hasMore, nextMarker, bucket, prefix } });
+}
+
+function wantsHtml(req) {  const accept = String(req.headers.accept || '').toLowerCase();
   return accept.includes('text/html') && !accept.includes('application/json');
 }
 
@@ -571,6 +701,75 @@ function breakerRecord(key, cfg, failed) {
   }
 }
 
+// ---------------- 爬虫获取 ----------------
+function decodeEntities(text) {
+  return String(text || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCharCode(parseInt(n, 16)));
+}
+
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0') return true;
+  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(h)) return true;
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true;
+  return false;
+}
+
+async function crawlPage(target, options) {
+  const opt = options || {};
+  const u = new URL(String(target || ''));
+  if (!/^http(s)?:/.test(u.protocol)) throw new Error(`CRAWL 只支持 http(s)：${target}`);
+  if (!opt.allowPrivate && isPrivateHost(u.hostname)) throw new Error(`CRAWL 默认禁止内网地址：${u.hostname}`);
+  const maxBytes = Math.max(1024, Math.min(Number(opt.maxBytes) || 2 * 1024 * 1024, 8 * 1024 * 1024));
+  const timeout = Math.max(1000, Math.min(Number(opt.timeoutMs) || 20000, 60000));
+  const res = await fetch(u, {
+    method: opt.method || 'GET',
+    headers: { 'user-agent': 'ClickBuildCrawler/1.0', accept: 'text/html,application/json,text/plain', ...(opt.headers || {}) },
+    body: opt.body == null ? undefined : (typeof opt.body === 'string' ? opt.body : JSON.stringify(opt.body)),
+    redirect: 'follow',
+    signal: AbortSignal.timeout(timeout),
+  });
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > maxBytes) throw new Error(`CRAWL 响应超过 ${maxBytes} 字节`);
+  const text = Buffer.from(buf).toString('utf8');
+  const contentType = String(res.headers.get('content-type') || '');
+  const titleMatch = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(text);
+  const title = titleMatch ? decodeEntities(titleMatch[1]).trim() : '';
+  const links = [];
+  if (opt.links !== false) {
+    const re = /<a\s+[^>]*href\s*=\s*(?:"([^"]+)"|'([^']+)'|([^>\s]+))[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = re.exec(text)) && links.length < (Number(opt.maxLinks) || 200)) {
+      const href = m[1] || m[2] || m[3] || '';
+      if (!href || href.startsWith('#') || /^javascript:/i.test(href)) continue;
+      let abs = href;
+      try { abs = new URL(href, u).toString(); } catch (e) { /* 保留原值 */ }
+      links.push({ href: abs, text: decodeEntities(m[4].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 200) });
+    }
+  }
+  const body = text
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const matched = opt.pattern ? (new RegExp(String(opt.pattern), 'i').exec(text) || [])[1] || '' : '';
+  return {
+    status: res.status, ok: res.ok, url: u.toString(), contentType, title,
+    text: body.slice(0, Number(opt.maxText) || 200000), matched,
+    links: opt.links === false ? [] : links,
+    bytes: buf.byteLength,
+  };
+}
+
 // ---------------- 请求处理 ----------------
 async function handle(req, res, item) {
   const started = Date.now();
@@ -650,6 +849,32 @@ async function handle(req, res, item) {
     if (!user) {
       logPush({ level: 'WARN', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 401, ms: 0, ip, traceId, message: 'token 无效' });
       return send(res, 401, { ok: false, error: 'UNAUTHORIZED', message: '需要有效的 token（Authorization: Bearer ... 或 cookie）', traceId });
+    }
+  }
+
+  // 权限矩阵：路由声明 roles 时，用户 token 里必须带 roles 交集。
+  if (Array.isArray(route.roles) && route.roles.length && !user) {
+    logPush({ level: 'WARN', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 401, ms: 0, ip, traceId, message: '角色路由缺少 token' });
+    return send(res, 401, { ok: false, error: 'UNAUTHORIZED', message: '需要有效的 token（该路由配置了角色）', traceId });
+  }
+  if (PERMISSIONS.enforce && Array.isArray(route.roles) && route.roles.length) {
+    const roles = Array.isArray(user && user.roles) ? user.roles : (user && user.role ? [user.role] : []);
+    if (!roles.some((r) => route.roles.includes(r))) {
+      logPush({ level: 'WARN', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 403, ms: 0, ip, traceId, message: `角色不足：${roles.join(',') || '无'} 不在 ${route.roles.join(',')}` });
+      return send(res, 403, { ok: false, error: 'FORBIDDEN', message: `需要角色：${route.roles.join(',')}`, traceId });
+    }
+  }
+
+  // 上游转发：直接代理，不进入脚本/事务。
+  if (route.key === 'proxy' || (route.proxy && route.proxy.enabled)) {
+    return handleProxy(req, res, item, raw, query, started);
+  }
+
+  // 对象表：把 bucket 里的对象直接列成表格（支持 marker 分页与 DELETE）。
+  if (route.key === 'objects') {
+    try { return await handleObjects(req, res, item, query); } catch (e) {
+      logPush({ level: 'ERROR', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 500, ms: Date.now() - started, ip, traceId, message: '对象表失败', data: { error: e.message } });
+      return send(res, 500, { ok: false, error: 'OBJECT_TABLE_FAILED', message: e.message, traceId });
     }
   }
 
@@ -856,6 +1081,7 @@ async function handle(req, res, item) {
         try { data = JSON.parse(text); } catch (e) { /* 保留文本 */ }
         return { status: res2.status, ok: res2.ok, body: data };
       },
+      crawl: (target, options) => crawlPage(target, options),
       publish: async (channel, payload) => {
         if (!redis) throw new Error('Redis 不可用');
         await redis.publish(String(channel), typeof payload === 'string' ? payload : JSON.stringify(payload));
