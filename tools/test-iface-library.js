@@ -69,7 +69,7 @@ function main() {
   try { templates.saveAs(tplName, p); } catch (e) { tplDup = e.message; }
   ok(tplDup && /已存在/.test(tplDup), '自定义模版同名被拒绝', tplDup || '');
   let builtinTpl = null;
-  try { templates.saveAs('社交接口库', p); } catch (e) { builtinTpl = e.message; }
+  try { templates.saveAs('同频社区', p); } catch (e) { builtinTpl = e.message; }
   ok(builtinTpl && /已存在/.test(builtinTpl), '与内置模版同名也被拒绝', builtinTpl || '');
   templates.remove(t.id);
 

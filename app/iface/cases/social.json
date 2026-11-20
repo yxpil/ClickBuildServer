@@ -9228,9 +9228,9 @@
     "cookie": "icb_token"
   },
   "docs": {
-    "title": "社交接口库 API",
+    "title": "同频社区 API",
     "version": "2.0.0",
-    "description": "预置社交接口库：onlyId 统一定义用户身份，HttpOnly cookie 维持登录态，全部表默认无主键。"
+    "description": "同频社区：onlyId 统一定义用户身份，HttpOnly cookie 维持登录态，账户、好友、动态、私聊和群聊真实落表。"
   },
   "errors": {
     "pages": true,
@@ -9246,7 +9246,7 @@
   ],
   "theme": {
     "accent": "#111111",
-    "headerTitle": "社交接口库",
+    "headerTitle": "同频社区",
     "footerText": "ClickBuild · 预置接口库",
     "pattern": "none",
     "logo": ""

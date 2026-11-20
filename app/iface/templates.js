@@ -64,9 +64,9 @@ const BUILTINS = [
     tags: ['跨库', '事务', '订单'],
   },
   {
-    id: 'builtin:social', name: '社交接口库', file: 'social.json',
-    description: '80+ 预置接口：账户 cookie 登录、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报、统计；onlyId 定身份，表默认无主键',
-    tags: ['社交', 'IM', '接口库', '预置'],
+    id: 'builtin:social', name: '同频社区', file: 'social.json',
+    description: '账户、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报与统计；onlyId 定身份，打开就是可用的社区业务页面',
+    tags: ['社交', '社区', '动态', 'IM'],
   },
   {
     id: 'builtin:chat', name: '聊天 / 即时通讯', file: 'chat.json',

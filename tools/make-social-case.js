@@ -721,8 +721,8 @@ RETURN 200 { "search": $s.rows };`, { auth: true, tx: false, summary: '最近 14
 const base = spec.seedProject();
 const project = {
   ...base,
-  name: '社交接口库',
-  description: '预置 80+ 社交接口：账户 cookie 登录、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报、统计；onlyId 定身份，表默认无主键。',
+  name: '同频社区',
+  description: '账户、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报、统计；onlyId 定身份，数据真实落表。',
   categories: [
     { id: 'account', name: '账户身份' }, { id: 'friend', name: '好友关系' },
     { id: 'im', name: '私聊消息' }, { id: 'group', name: '群聊' },
@@ -738,11 +738,11 @@ const project = {
   // token 同时支持 Authorization 和 cookie；登录响应会自动 Set-Cookie。
   token: { ttl: 7200, header: 'authorization', cookie: 'icb_token' },
   docs: {
-    title: '社交接口库 API', version: '2.0.0',
-    description: '预置社交接口库：onlyId 统一定义用户身份，HttpOnly cookie 维持登录态，全部表默认无主键。',
+    title: '同频社区 API', version: '2.0.0',
+    description: '同频社区：onlyId 统一定义用户身份，HttpOnly cookie 维持登录态，账户、好友、动态、私聊和群聊真实落表。',
   },
   theme: {
-    ...base.theme, headerTitle: '社交接口库', footerText: 'ClickBuild · 预置接口库', pattern: 'none',
+    ...base.theme, headerTitle: '同频社区', footerText: 'ClickBuild · 内置业务应用', pattern: 'none',
   },
   // 固定时间，保证重复生成得到同一份模版文件（避免每次跑测试都改 updatedAt）。
   updatedAt: '2026-11-20T00:00:00.000Z',
