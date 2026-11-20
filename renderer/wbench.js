@@ -1773,7 +1773,9 @@ async function showTemplates() {
         const got = await api.templateGet(b.dataset.tplApply);
         if (!got.ok) return toast('读取失败：' + got.error);
         if (!(await confirmBox('套用模版', `用「${got.name}」替换当前工程？当前未保存的修改会丢。`))) return;
+        const keepName = S.project.name;
         S.project = got.project;
+        S.project.name = keepName;
         S.cat = (S.project.categories[0] || {}).id || '';
         S.selId = (S.project.interfaces[0] || {}).id || '';
         S.mode = 'grid'; S.tab = 'tables'; S.problems = [];

@@ -30,7 +30,24 @@
   .rb:hover { background: #f0f0f0; border-color: #d8d8d8; }
   .rb:active { background: #e4e4e4; }
   .rb .t { font-size: 11px; line-height: 1; white-space: nowrap; }
+  @media (max-width: 1600px) {
+    .ribbon-group { padding: 4px 5px; min-width: 60px; }
+    .rb { padding: 3px; }
+    .rb .t { font-size: 10px; }
+  }
   header.appbar { -webkit-app-region: drag; user-select: none; }
+  header.appbar > .btn { white-space: nowrap; flex-shrink: 0; }
+  #viewSwitch { flex-shrink: 0; }
+  @media (max-width: 1250px) {
+    header.appbar { gap: 8px; padding-left: 8px; }
+    .app-subtitle { display: none; }
+    #projectName { width: 150px; margin-left: 0; }
+    #viewSwitch button { padding-left: 8px; padding-right: 8px; }
+    .searchbox { width: 200px; }
+    header.appbar > .btn { padding-left: 6px; padding-right: 6px; font-size: 11px; }
+    header.appbar .searchbox { width: 200px; }
+    #langSel { width: 80px; flex-shrink: 0; }
+  }
   #viewSwitch button.active { background:#111; color:#fff; }
   #viewSwitch button:not(.active) { background:#fff; color:#111; }
   header.appbar button, header.appbar input, header.appbar .no-drag, header.appbar a { -webkit-app-region: no-drag; }
@@ -71,8 +88,8 @@
 <div id="app" class="h-full flex flex-col min-h-0">
   <header id="appHeader" class="appbar h-12 shrink-0 border-b border-neutral-900 flex items-center gap-3 pl-3">
     <img src="../assets/logo.png" alt="ClickBuild" width="34" height="34" draggable="false" class="shrink-0 object-cover bg-[#fbfaf5] border border-neutral-200" style="image-rendering:auto">
-    <span class="text-[15px] font-semibold tracking-wide">ClickBuild</span>
-    <span class="text-[11px] text-neutral-500 border-l border-neutral-300 pl-3">接口工作台</span>
+    <span class="brand-word text-[15px] font-semibold tracking-wide">ClickBuild</span>
+    <span class="app-subtitle text-[11px] text-neutral-500 border-l border-neutral-300 pl-3">接口工作台</span>
     <input id="projectName" class="ml-3 w-48 border border-neutral-300 px-2 py-1 text-[12px]" title="工程名">
     <div id="viewSwitch" class="no-drag flex border border-neutral-300 h-7" role="tablist" aria-label="工作模式">
       <button data-view="api" class="viewtab px-3 text-[11px] font-semibold bg-neutral-900 text-white">接口</button>
@@ -86,7 +103,7 @@
     <button class="btn thin" data-action="generate">生成服务</button>
     <button class="btn solid" data-action="deployUpdate">更新部署</button>
     <select id="langSel" class="border border-neutral-300 px-1 py-1 text-[11px]" title="语言 / Language" aria-label="语言 / Language"></select>
-    <div id="winControls" class="no-drag flex items-center h-12 -mr-3 border-l border-neutral-200">
+    <div id="winControls" class="no-drag flex items-center h-12 border-l border-neutral-200">
       <button id="winMin" class="winbtn" title="最小化" aria-label="最小化"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg></button>
       <button id="winMax" class="winbtn" title="最大化" aria-label="最大化"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
       <button id="winClose" class="winbtn close" title="关闭" aria-label="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2"/></svg></button>

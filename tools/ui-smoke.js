@@ -54,6 +54,10 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   t('页面已加载接口工作台', await val(`document.title.includes('ClickBuildServer')`), await val('document.title'));
 
+  // 统一从启动首屏开始，避免上一轮停留在工作台或弹窗
+  await val(`location.reload()`);
+  await wait(1500);
+
   // 启动首屏是工程历史预览，不是直接进工作台
   t('启动先显示工程历史预览', await val(`!!document.querySelector('#projectHub') && !document.querySelector('#projectHub').classList.contains('hidden')`));
   t('预览页有工程历史区域', await val(`!!document.querySelector('#hubSections') && document.body.innerText.includes('工程历史')`));
@@ -68,6 +72,15 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('音乐网站模版在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:music"]')`));
   t('小说网站模版在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:novel"]')`));
   t('确认框与 toast 层级高于预览页', await val(`Number(getComputedStyle(document.querySelector('#modal')).zIndex) > Number(getComputedStyle(document.querySelector('#projectHub')).zIndex) && Number(getComputedStyle(document.querySelector('#toast')).zIndex) > Number(getComputedStyle(document.querySelector('#projectHub')).zIndex)`));
+  const winFit = await val(`(()=>{const b=document.querySelector('#winClose').getBoundingClientRect();return JSON.stringify({right:b.right,w:innerWidth,sw:document.documentElement.scrollWidth})})()`);
+  const wf = JSON.parse(winFit);
+  t('窗口控制按钮不越界', wf.right <= wf.w + 1 && wf.sw <= wf.w, winFit);
+  const headFit = await val(`(()=>{const h=document.querySelector('#appHeader');const bad=[...h.querySelectorAll('button,input')].filter(x=>{const r=x.getBoundingClientRect();return r.right>innerWidth+1||r.height>50||/\\n/.test(x.innerText||'')});return JSON.stringify({vw:innerWidth,sw:h.scrollWidth,bad:bad.map(x=>x.innerText||x.id)})})()`);
+  const hf = JSON.parse(headFit);
+  t('标题栏按钮不换行不越界', hf.sw <= hf.vw + 1 && hf.bad.length === 0, headFit);
+
+  const originalSettings = await val(`api.settings()`);
+  const smokeName = `UI 冒烟 ${Date.now().toString(36)}`;
 
   // 选择历史工程后才进入工作台；没有历史时用商城模版建一个
   if (hubCards >= 1) {
@@ -78,9 +91,17 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await wait(900);
   t('选择工程后进入工作台', await val(`!!S.project && document.querySelector('#projectHub').classList.contains('hidden')`), await val(`document.querySelector('#projectHub').classList.contains('hidden')`));
 
+  const smoke = await val(`(async()=>{const p=await api.seed();p.name=${JSON.stringify(smokeName)};p.description='UI 冒烟专用工程，结束自动删除';const r=await api.save(p);await enterWorkspace(p);return JSON.stringify({name:p.name,file:r.file,n:p.interfaces.length,frontend:!!p.frontend})})()`);
+  const sm = JSON.parse(smoke);
+  t('创建隔离 UI 测试工程', !!(sm.file && sm.name === smokeName && sm.n >= 1), smoke);
+
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
   t('Ribbon 有工程/扩展组', await val(`!!document.querySelector('[data-action="exportYxpn"]') && !!document.querySelector('[data-action="ai"]')`));
+  const ribbonFit = await val(`(()=>{const r=document.querySelector('#ribbon');const b=document.querySelector('[data-action="ai"]');return JSON.stringify({sw:r.scrollWidth,cw:r.clientWidth,aiLeft:b?b.getBoundingClientRect().left:-1,aiRight:b?b.getBoundingClientRect().right:-1,vw:innerWidth,ox:getComputedStyle(r).overflowX})})()`);
+  const rf = JSON.parse(ribbonFit);
+  const ribbonOk = rf.sw <= rf.cw + 1 ? rf.aiRight <= rf.vw : (rf.vw < 1400 && rf.ox === 'auto');
+  t('Ribbon 宽屏完整、窄屏可滚动', ribbonOk, ribbonFit);
   t('表格有接口行', await val(`document.querySelectorAll('#workspace tr[data-iface]').length >= 1`), await val(`document.querySelectorAll('#workspace tr[data-iface]').length`));
   t('分类 sheet 存在', await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length >= 2`), await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length`));
 
@@ -192,7 +213,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await wait(300);
   await val(`document.querySelector('#cYes').click()`);
   await wait(1200);
-  t('套用博客模版替换工程', await val(`S.project.name.includes('博客')`), await val(`S.project.name`));
+  t('套用博客模版保留当前工程名', await val(`S.project.name===${JSON.stringify(smokeName)}`), await val(`S.project.name`));
   t('博客模版带 5 个接口', await val(`S.project.interfaces.length === 5`), await val(`S.project.interfaces.length`));
   t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && S.project.frontend.project.elements && S.project.frontend.project.elements.length > 10 && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
   await val(`setView('studio')`);
@@ -270,11 +291,11 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const dl = await val(`api.defenderList()`);
   t('Defender 设置可读', dl && (dl.ok || dl.error), dl && (dl.error || ''));
 
-  // 多表：12 张表时标签栏可滚动，当前标签和右侧控件不能越界
+  // 多表：40 张表时标签栏必须可滚动，当前标签和右侧控件不能越界（宽屏下 12 张可能全部放得下）
   const layout = await val(`(()=>{
     const it=S.project.interfaces[0];
     const base=JSON.parse(JSON.stringify(it.tables[0]));
-    while(it.tables.length<12){
+    while(it.tables.length<40){
       const i=it.tables.length+1;
       const c=JSON.parse(JSON.stringify(base));
       c.key='ui_table_'+i; c.name='ui_table_'+i; it.tables.push(c);
@@ -292,9 +313,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
       row2Left:row2.getBoundingClientRect().left>=0,
     };
   })()`);
-  t('12 张表标签栏可横向滚动', layout.scrollable, layout);
+  t('40 张表标签栏可横向滚动', layout.scrollable, layout);
   t('当前表标签完整可见', layout.activeVisible, layout);
-  t('快速切表选中最后一张', layout.select === 'ui_table_12', layout);
+  t('快速切表选中最后一张', layout.select === 'ui_table_40', layout);
   t('表名/库/注释行未被挤掉', layout.row2 && layout.row2Left, layout);
 
   // 空白区域右键：不能没反应
@@ -304,7 +325,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('编辑器空白右键有字段/生成入口', /添加字段/.test(editorCtx) && /生成服务/.test(editorCtx), editorCtx);
 
   // 自动保存静默，且状态栏可见
-  const dirty = await val(`(()=>{S.project.name=S.project.name+'x';scheduleSave();render();return document.querySelector('#saveState').textContent;})()`);
+  const dirty = await val(`(()=>{S.project.description=(S.project.description||'')+'x';scheduleSave();render();return document.querySelector('#saveState').textContent;})()`);
   await wait(1100);
   const saved = await val(`document.querySelector('#saveState').textContent`);
   t('自动保存静默且状态可见', /未保存|保存中/.test(dirty) && saved.includes('已保存'), `${dirty} → ${saved}`);
@@ -329,7 +350,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('前端工坊有更新部署按钮', du.studio, deployUI);
 
   // 没有 .yxpp 时进入前端工坊：显示空白画布，首次编辑自动绑定并保存
-  await val(`(async()=>{S.project=await api.seed();S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;S.mode='grid';render();setView('studio');return true})()`, true);
+  await val(`(async()=>{S.project=await api.seed();S.project.name=${JSON.stringify(smokeName)};S.project.description='UI 冒烟专用工程，结束自动删除';S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;S.mode='grid';render();setView('studio');return true})()`, true);
   await wait(1800);
   t('无前端工程时显示空白画布而非示例站点', await val(`S.project.frontend===undefined && document.querySelector('#studioState').textContent.includes('空白画布')`), await val(`document.querySelector('#studioState').textContent`));
   await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FAFAF8';w.scheduleSave();return true})()`);
@@ -347,9 +368,20 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const exportText = await val(`(()=>{act('exportProject');const t=document.querySelector('#modal')?document.querySelector('#modal').innerText:'';closeModal();return t;})()`);
   t('导出对话框含错误页开关', /404 \/ 500/.test(exportText) && /错误详情/.test(exportText), exportText.slice(0, 80));
 
-  // 回到表格，恢复 seed
+  // 清理隔离工程并恢复用户设置；测试不得把 seed 写回真实历史工程
   await val(`closeModal()`);
-  await val(`api.seed().then(p=>{S.project=p;S.cat=p.categories[0].id;S.selId=p.interfaces[0].id;S.mode='grid';return api.save(p)}).then(()=>render())`, true);
+  await val(`S.dirty=false;S.project=null;S.genDir='';showProjectHub()`);
+  await wait(900);
+  const cleanup = await val(`(async()=>{const r=await api.remove(${JSON.stringify(smokeName)});await refreshHubList();return r})()`, true);
+  t('隔离测试工程已清理', !!(cleanup && cleanup.ok), cleanup);
+  await wait(700);
+  const gone = await val(`api.exists(${JSON.stringify(sm.file || '')})`);
+  t('隔离测试工程未被自动保存重建', gone === false, gone);
+  const ghost = await val(`HUB.list.some(x=>x.name===${JSON.stringify(smokeName)})`);
+  t('历史列表已移除测试工程', ghost === false, ghost);
+  const restored = await val(`api.saveSettings(${JSON.stringify(originalSettings)}).then(t=>{S.settings=t;return true})`, true);
+  const afterRestore = await val(`api.settings()`);
+  t('用户设置已恢复', restored === true && JSON.stringify(afterRestore) === JSON.stringify(originalSettings), afterRestore);
 
   const err = await val(`(window.__cbErrors||[]).join('\\n')`);
   t('渲染进程无未捕获错误', !err, err);

@@ -50,6 +50,7 @@ async function connect(wsUrl) {
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.text || '页面执行失败');
     return r.result ? r.result.value : undefined;
   };
+  const originalSettings = await val(`api.settings()`);
   const setup = await val(`(async()=>{
     let p = await api.load(${JSON.stringify(PROJECT)});
     if (!p) { p = await api.seed(); p.name=${JSON.stringify(PROJECT)}; await api.save(p); }
@@ -88,8 +89,15 @@ async function connect(wsUrl) {
   if (!names.some((n) => /优惠券/.test(n))) throw new Error(`没有生成优惠券接口：${names.join(',')}`);
   if (r.name !== PROJECT) throw new Error(`工程名被改成 ${r.name}`);
   await val(`closeModal()`);
-  const cleanup = await val(`api.remove(${JSON.stringify(PROJECT)}).then(r=>JSON.stringify(r))`);
+  await val(`S.dirty=false;S.project=null;S.genDir='';showProjectHub()`);
+  await wait(900);
+  const cleanup = await val(`(async()=>{const r=await api.remove(${JSON.stringify(PROJECT)});await refreshHubList();return JSON.stringify(r)})()`);
   console.log('cleanup:', cleanup);
+  await wait(700);
+  const leaked = await val(`api.projects().then(l=>JSON.stringify(l.filter(x=>x.name===${JSON.stringify(PROJECT)})))`);
+  if (leaked !== '[]') throw new Error(`测试工程被自动保存重建：${leaked}`);
+  const restore = await val(`api.saveSettings(${JSON.stringify(originalSettings)}).then(t=>{S.settings=t;return JSON.stringify({ok:true,ai:t.ai})})`);
+  console.log('restore:', restore);
   c.close();
   console.log(`\n通过：真实 Ollama UI 追加生成，${((Date.now() - started) / 1000).toFixed(1)}s`);
 })().catch((e) => { console.error(`FAILED: ${e.message}`); process.exitCode = 1; });
