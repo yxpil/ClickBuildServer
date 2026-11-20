@@ -342,7 +342,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
     }
     S.selId=it.id; S.mode='editor'; S.tab='tables'; S.tableKey=it.tables[it.tables.length-1].key; render();
     const bar=document.querySelector('#tableTabs');
-    const active=bar.querySelector('.bg-neutral-900');
+    const active=bar.querySelector('.table-tab.on');
     const row2=document.querySelector('#tName').closest('.flex');
     return {
       tables:it.tables.length,
@@ -424,6 +424,20 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   const routeKinds = await val(`(()=>{S.tab='routes';render();return Array.from(document.querySelectorAll('#newRouteKind option')).map(o=>o.value).join(',');})()`);
   t('路由类型含上游转发/对象表/抓取', ['proxy','objects','crawl'].every((k) => routeKinds.split(',').includes(k)), routeKinds);
+
+  const methodTone = await val(`(()=>{
+    S.mode='editor';S.tab='routes';render();
+    const rows=[...document.querySelectorAll('.route-item')];
+    const badges=[...document.querySelectorAll('.route-item .m-badge')];
+    const colors=[...new Set(badges.map(b=>getComputedStyle(b).color))];
+    const tabs=[...document.querySelectorAll('.editor-tabbar .tabbtn')];
+    const dots=[...document.querySelectorAll('.editor-tabbar .tb-dot')];
+    const chip=[...document.querySelectorAll('.editor-tabbar .count-chip')];
+    return JSON.stringify({rows:rows.length,badges:badges.length,colors:colors.length,tabs:tabs.length,dots:dots.length,chips:chip.length,active:!!document.querySelector('.route-item.on')});
+  })()`);
+  const mt = JSON.parse(methodTone);
+  t('路由方法按 GET/POST/PUT/DELETE 分色', mt.rows >= 4 && mt.badges === mt.rows && mt.colors >= 4 && mt.active, methodTone);
+  t('编辑器页签带分类色点与统计胶囊', mt.tabs === 10 && mt.dots === 10 && mt.chips === 2, methodTone);
 
   const permWrite = await val(`(()=>{S.tab='permissions';render();const box=document.querySelector('[data-role-route]');if(!box)return '无矩阵';const rid=box.dataset.roleRoute;box.checked=true;box.onchange();const r=S.project.interfaces[0].routes.find(x=>x.id===rid);return JSON.stringify({roles:r.roles,auth:r.auth,enforce:!!document.querySelector('#permEnforce')});})()`);
   const pw = JSON.parse(permWrite);

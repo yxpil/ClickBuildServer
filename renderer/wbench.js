@@ -35,6 +35,25 @@ const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
 
+// HTTP 方法用固定色，不跟主题走：扫一眼就能分清增删改查。
+const METHOD_TONES = { GET: 'get', HEAD: 'get', POST: 'post', PUT: 'put', PATCH: 'patch', DELETE: 'delete', OPTIONS: 'other' };
+function methodTone(m) { return METHOD_TONES[String(m || '').toUpperCase()] || 'other'; }
+function methodBadge(m, cls) {
+  return `<span class="m-badge m-${methodTone(m)}${cls ? ' ' + cls : ''}">${esc(String(m || '').toUpperCase())}</span>`;
+}
+function fieldTone(type) {
+  const key = String(type || '').toLowerCase();
+  const meta = fieldTypeMeta(key);
+  if (meta && meta.group) return meta.group;
+  if (['bigint', 'int', 'smallint', 'tinyint', 'decimal', 'float', 'double', 'number'].includes(key)) return 'number';
+  if (['bool', 'boolean'].includes(key)) return 'bool';
+  if (['datetime', 'date', 'time', 'timestamp'].includes(key)) return 'time';
+  if (['json', 'array', 'object'].includes(key)) return 'json';
+  if (['file', 'image', 'video', 'audio', 'pdf', 'doc', 'excel', 'archive'].includes(key)) return 'file';
+  if (['token', 'url', 'email', 'phone', 'ip', 'uuid'].includes(key)) return 'semantic';
+  return 'text';
+}
+
 const TASK_KINDS = {
   mixed: { label: '混合任务', short: '混', hint: '前后端一起写，接口和前端工坊都能用' },
   backend: { label: '只后端任务', short: '后', hint: '只写接口、表结构和脚本，前端入口收起' },
@@ -1362,19 +1381,19 @@ function renderEditor() {
   const it = activeIface();
   if (!it) { S.mode = 'grid'; return renderGrid(); }
   const tabs = [
-    ['tables', '表结构'],
-    ['routes', '路由脚本'],
-    ['io', '接口类型'],
-    ['docs', '接口文档'],
-    ['cache', '缓存与存储', 1],
-    ['upstream', '上游'],
-    ['permissions', '权限'],
-    ['objects', '对象表'],
-    ['test', '测试', 1],
-    ['export', '生成导出'],
+    ['tables', '表结构', 0, 'data'],
+    ['routes', '路由脚本', 0, 'route'],
+    ['io', '接口类型', 0, 'io'],
+    ['docs', '接口文档', 0, 'doc'],
+    ['cache', '缓存与存储', 1, 'cache'],
+    ['upstream', '上游', 0, 'upstream'],
+    ['permissions', '权限', 0, 'perm'],
+    ['objects', '对象表', 0, 'object'],
+    ['test', '测试', 1, 'test'],
+    ['export', '生成导出', 0, 'export'],
   ];
   $('#workspace').innerHTML = `
-  <div class="h-11 shrink-0 flex items-center gap-2 px-3 border-b border-neutral-300">
+  <div class="editor-topbar h-11 shrink-0 flex items-center gap-2 px-3 border-b border-neutral-300">
     <button class="btn thin" data-action="grid">← 表格</button>
     <input id="ifName" class="border border-neutral-300 px-2 py-1 text-[13px] font-semibold w-48" value="${esc(it.name)}">
     <select id="ifCat" class="border border-neutral-300 px-1 py-1 text-[12px]">
@@ -1384,9 +1403,9 @@ function renderEditor() {
     <input id="ifComment" class="border border-neutral-300 px-2 py-1 text-[12px] flex-1 min-w-32" placeholder="备注" value="${esc(it.comment)}">
     <button class="btn thin" data-action="delIface">删除接口</button>
   </div>
-  <div class="h-9 shrink-0 flex items-center border-b border-neutral-300 px-2 text-[12px]">
-    ${tabs.map(([k, label, group]) => `<div class="tabbtn ${group ? 'tab-start' : ''} ${S.tab === k ? 'on' : ''}" data-tab="${k}">${label}</div>`).join('')}
-    <div class="ml-auto text-neutral-500 mono">${it.tables.length} 表 · ${it.routes.length} 路由</div>
+  <div class="editor-tabbar h-9 shrink-0 flex items-center border-b border-neutral-300 px-2 text-[12px]">
+    ${tabs.map(([k, label, group, tone]) => `<div class="tabbtn ${group ? 'tab-start' : ''} ${S.tab === k ? 'on' : ''}" data-tab="${k}"><i class="tb-dot tb-${tone}"></i>${label}</div>`).join('')}
+    <div class="ml-auto flex items-center gap-1.5"><span class="count-chip chip-blue">${it.tables.length} 表</span><span class="count-chip chip-green">${it.routes.length} 路由</span></div>
   </div>
   <div class="flex-1 min-h-0 overflow-hidden" id="tabBody"></div>`;
 
@@ -1465,7 +1484,7 @@ function tabTables(it) {
     <div class="shrink-0 border-b border-neutral-200">
       <div class="flex items-center gap-2 px-2 py-1.5 min-w-0">
         <div id="tableTabs" class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 py-0.5" title="表多时可横向滚动，滚轮也可">
-          ${it.tables.map((x) => `<div class="pill shrink-0 cursor-pointer truncate ${x.key === t.key ? 'bg-neutral-900 text-white' : 'bg-white'}" style="max-width:210px" title="${esc(x.key)} · ${esc(x.name)}" data-table="${x.key}">${esc(x.key)} · ${esc(x.name)}</div>`).join('')}
+          ${it.tables.map((x) => `<div class="pill table-tab shrink-0 cursor-pointer truncate ${x.key === t.key ? 'on' : ''}" style="max-width:210px" title="${esc(x.key)} · ${esc(x.name)}" data-table="${x.key}">${esc(x.key)} · ${esc(x.name)}</div>`).join('')}
         </div>
         <div class="shrink-0 flex items-center gap-2">
           <span class="text-[11px] text-neutral-500 mono">${it.tables.length} 表</span>
@@ -1491,7 +1510,7 @@ function tabTables(it) {
         <thead><tr><th class="rownum"></th><th>A 字段</th><th>B 类型</th><th>C 主键</th><th>D 自增</th><th>E 可空</th><th>F 搜索</th><th>G 隐藏</th><th>H 默认</th><th>I 注释</th><th style="width:56px">J</th></tr></thead>
         <tbody>
           ${t.fields.map((f, i) => `
-          <tr data-field-row="${i}">
+          <tr data-field-row="${i}" data-ftone="${fieldTone(f.type)}">
             <td class="rownum">${i + 1}</td>
             <td><input class="cell-in mono" data-fi="${i}" data-fk="name" value="${esc(f.name)}"></td>
             <td><select class="cell-in mono" data-fi="${i}" data-fk="type" title="${esc((fieldTypeMeta(f.type) || {}).hint || '字段类型')}">${typeOptions(f.type)}</select></td>
@@ -1533,7 +1552,7 @@ function bindTables(it) {
     bar.addEventListener('wheel', (e) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { bar.scrollLeft += e.deltaY; e.preventDefault(); }
     }, { passive: false });
-    const on = bar.querySelector('.bg-neutral-900');
+    const on = bar.querySelector('.table-tab.on');
     if (on) {
       const br = bar.getBoundingClientRect();
       const ar = on.getBoundingClientRect();
@@ -2103,11 +2122,11 @@ function tabRoutes(it) {
   const io = ioOfRoute(r);
   return `
   <div class="h-full flex min-h-0">
-    <div class="w-60 shrink-0 border-r border-neutral-300 overflow-auto">
+    <div class="route-list w-60 shrink-0 border-r border-neutral-300 overflow-auto">
       ${it.routes.map((x) => `
-        <div class="px-2 py-2 border-b border-neutral-200 cursor-pointer ${x.id === r.id ? 'bg-neutral-100' : ''}" data-route="${x.id}">
-          <div class="flex items-center gap-2"><span class="pill">${esc(x.method)}</span><span class="font-medium truncate">${esc(x.name)}</span></div>
-          <div class="mono text-[11px] text-neutral-500 truncate">${esc(x.path)}</div>
+        <div class="route-item m-${methodTone(x.method)} ${x.id === r.id ? 'on' : ''}" data-route="${x.id}" data-method="${esc(x.method)}">
+          <div class="flex items-center gap-2">${methodBadge(x.method)}<span class="font-medium truncate">${esc(x.name)}</span></div>
+          <div class="route-path mono text-[11px] truncate">${esc(x.path)}</div>
         </div>`).join('')}
       <div class="p-2 flex flex-col gap-1">
         <select id="newRouteKind" class="border border-neutral-300 px-1 py-1 text-[12px]">
@@ -2119,13 +2138,13 @@ function tabRoutes(it) {
       </div>
     </div>
     <div class="flex-1 flex flex-col min-w-0">
-      <div class="shrink-0 px-3 py-2 border-b border-neutral-200 text-[12px]">
+      <div class="route-workhead shrink-0 px-3 py-2 border-b border-neutral-200 text-[12px] m-${methodTone(r.method)}">
         <div class="flex items-center gap-2 min-w-0">
           <input id="rName" class="border border-neutral-300 px-1 py-0.5 w-36 shrink-0" value="${esc(r.name)}">
           <select id="rIoType" class="border border-neutral-300 px-1 py-0.5 text-[12px] shrink-0" title="接口类型：存储和返回方式">
             ${ioTypesOf().map((t2) => `<option value="${esc(t2.id)}" ${t2.id === io.typeId ? 'selected' : ''}>${esc(t2.name)}</option>`).join('')}
           </select>
-          <select id="rMethod" class="border border-neutral-300 px-1 py-0.5 mono shrink-0">
+          <select id="rMethod" class="m-select m-${methodTone(r.method)} px-1 py-0.5 mono shrink-0">
             ${['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map((m) => `<option ${m === r.method ? 'selected' : ''}>${m}</option>`).join('')}
           </select>
           <input id="rPath" class="border border-neutral-300 px-1 py-0.5 mono flex-1 min-w-24" value="${esc(r.path)}">
@@ -2152,7 +2171,7 @@ function tabRoutes(it) {
       </div>` : ''}
       <div class="flex-1 flex min-h-0">
         <div class="flex-1 min-w-0 flex flex-col min-h-0">
-          <div class="code-shell">
+          <div class="code-shell method-frame m-${methodTone(r.method)}">
             <div class="code-gutter"><div class="code-gutter-inner" id="codeGutterInner">${scriptGutter(r.script, [])}</div></div>
             <div class="code-stage">
               <div class="code-highlight"><div class="code-highlight-inner" id="codeHighlightInner">${scriptHighlight(r.script, [])}</div></div>
@@ -2341,7 +2360,7 @@ function tabIo(it) {
             const t = tableOfIface(it, io.tableKey) || it.tables[0] || { fields: [] };
             const fieldOpts = (t.fields || []).filter((f) => !f.pk).map((f) => `<option value="${esc(f.name)}" ${f.name === io.field ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
             return `<tr data-io-route="${esc(r.id)}">
-              <td><span class="pill">${esc(r.method)}</span> <span class="mono">${esc(r.path)}</span><div class="text-[10px] text-neutral-500 truncate">${esc(r.name)}</div></td>
+              <td>${methodBadge(r.method)} <span class="mono">${esc(r.path)}</span><div class="text-[10px] text-neutral-500 truncate">${esc(r.name)}</div></td>
               <td><select data-ior="typeId" data-id="${esc(r.id)}" class="cell-in w-full">${types.map((t2) => `<option value="${esc(t2.id)}" ${t2.id === io.typeId ? 'selected' : ''}>${esc(t2.name)}</option>`).join('')}</select></td>
               <td>${ioSelect('storage', io.storage, `data-ior="storage" data-id="${esc(r.id)}" class="cell-in w-full"`, io.response)}</td>
               <td><select data-ior="tableKey" data-id="${esc(r.id)}" class="cell-in w-full">${it.tables.map((tb) => `<option value="${esc(tb.key)}" ${tb.key === io.tableKey ? 'selected' : ''}>${esc(tb.name)}</option>`).join('')}</select></td>
@@ -2579,7 +2598,7 @@ function tabPermissions(it) {
       <thead><tr><th style="width:70px">方法</th><th>路由</th>${perm.roles.map((r) => `<th style="width:100px" class="text-center">${esc(r.name)}<div class="mono text-[10px] text-neutral-500">${esc(r.key)}</div></th>`).join('')}</tr></thead>
       <tbody>
         ${it.routes.map((r) => `<tr>
-          <td class="mono">${esc(r.method)}</td>
+          <td class="mono">${methodBadge(r.method)}</td>
           <td><div>${esc(r.name)}</div><div class="mono text-[11px] text-neutral-500">${esc(r.path)}</div></td>
           ${perm.roles.map((role) => `<td class="text-center"><input type="checkbox" data-role-route="${r.id}" data-role="${role.key}" ${(r.roles || []).includes(role.key) ? 'checked' : ''}></td>`).join('')}
         </tr>`).join('') || '<tr><td colspan="3" class="text-neutral-500">没有路由。</td></tr>'}
@@ -2720,7 +2739,7 @@ function tabDocs(it) {
         ${it.routes.map((r) => {
           const rd = r.docs || {};
           return `<tr data-route-doc="${r.id}" data-doc-fp="${(r.docsAuto && r.docsAuto.fingerprint) || ''}">
-            <td><span class="pill">${esc(r.method)}</span><div class="mono text-[11px] text-neutral-500 break-all">${esc(r.path)}</div>${(r.docsAuto && r.docsAuto.fields && r.docsAuto.fields.length) ? '<span class="docs-auto-tag">脚本生成</span>' : ''}</td>
+            <td>${methodBadge(r.method)}<div class="mono text-[11px] text-neutral-500 break-all">${esc(r.path)}</div>${(r.docsAuto && r.docsAuto.fields && r.docsAuto.fields.length) ? '<span class="docs-auto-tag">脚本生成</span>' : ''}</td>
             <td><textarea class="cell-in" rows="2" data-rd="summary" placeholder="这条路由做什么">${esc(rd.summary || r.summary || '')}</textarea>
               <textarea class="cell-in monoarea" rows="6" data-rd="description" placeholder="参数、错误码">${esc(rd.description || '')}</textarea></td>
             <td><textarea class="cell-in monoarea" rows="6" data-rd="requestExample">${esc(rd.requestExample || '')}</textarea></td>
@@ -2795,7 +2814,7 @@ function tabCache(it) {
       <thead><tr><th>路由</th><th>方法</th><th style="width:80px">启用</th><th style="width:90px">TTL 秒</th><th>缓存键模板</th></tr></thead>
       <tbody>
         ${it.routes.map((r) => `<tr>
-          <td>${esc(r.name)}</td><td class="mono">${esc(r.method)}</td>
+          <td>${esc(r.name)}</td><td>${methodBadge(r.method)}</td>
           <td class="text-center"><input type="checkbox" data-cr="${r.id}" ${r.cache.enabled ? 'checked' : ''}></td>
           <td><input class="cell-in mono" data-ct="${r.id}" value="${esc(r.cache.ttl)}"></td>
           <td><input class="cell-in mono" data-ck="${r.id}" value="${esc(r.cache.key)}" placeholder="icb:{{t:main}}:{{queryHash}}"></td>
