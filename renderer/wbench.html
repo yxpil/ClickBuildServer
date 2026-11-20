@@ -36,17 +36,39 @@
     .rb .t { font-size: 10px; }
   }
   header.appbar { -webkit-app-region: drag; user-select: none; }
-  header.appbar > .btn { white-space: nowrap; flex-shrink: 0; }
-  #viewSwitch { flex-shrink: 0; }
+  header.appbar > .btn { white-space: nowrap; flex: 0 0 auto; min-width: max-content; }
+  header.appbar > .brand-word,
+  header.appbar > .app-subtitle { flex: 0 0 auto; white-space: nowrap; }
+  #viewSwitch, #viewSwitch button { flex: 0 0 auto; white-space: nowrap; min-width: max-content; }
+  #langSel { flex: 0 0 auto; white-space: nowrap; }
+  #winControls { flex: 0 0 auto; }
+  header.appbar > .relative { min-width: 0; }
+  @media (max-width: 1560px) {
+    header.appbar { gap: 10px; padding-left: 10px; }
+    .app-subtitle { display: none; }
+    #projectName { width: 170px; margin-left: 0; }
+    header.appbar .searchbox { width: 300px; }
+  }
   @media (max-width: 1250px) {
     header.appbar { gap: 8px; padding-left: 8px; }
-    .app-subtitle { display: none; }
     #projectName { width: 150px; margin-left: 0; }
     #viewSwitch button { padding-left: 8px; padding-right: 8px; }
     .searchbox { width: 200px; }
     header.appbar > .btn { padding-left: 6px; padding-right: 6px; font-size: 11px; }
     header.appbar .searchbox { width: 200px; }
     #langSel { width: 80px; flex-shrink: 0; }
+  }
+  @media (max-width: 1120px) {
+    header.appbar { gap: 6px; padding-left: 6px; }
+    #projectName { width: 120px; }
+    header.appbar > .btn { padding-left: 5px; padding-right: 5px; }
+    header.appbar .searchbox { width: 170px; }
+    #langSel { width: 72px; }
+    #winControls .winbtn { width: 40px; }
+  }
+  @media (max-width: 1320px) {
+    #ribbon { flex-wrap: wrap; overflow-x: hidden; }
+    #ribbon .ribbon-group { flex: 0 0 auto; min-width: 88px; }
   }
   #viewSwitch button.active { background:#111; color:#fff; }
   #viewSwitch button:not(.active) { background:#fff; color:#111; }
