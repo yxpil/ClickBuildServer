@@ -340,6 +340,7 @@ function generate(project, options) {
   add('server.js', template('server.js'));
   add('src/render.js', engine('render.js'));
   add('src/funcs.js', engine('funcs.js'));
+  add('src/rowstore.js', engine('rowstore.js'));
   add('src/script.js', engine('script.js'));
   add('public/console.html', template('console.html'));
 
@@ -410,7 +411,7 @@ function generate(project, options) {
     description: p.description || 'ClickBuild 生成的接口服务',
     main: 'server.js',
     scripts: { start: 'node server.js', dev: 'node dev.js', hot: 'node dev.js' },
-    dependencies: { mysql2: '^3.11.0', ioredis: '^5.4.1', minio: '^8.0.1' },
+    dependencies: { mysql2: '^3.11.0', ioredis: '^5.4.1', minio: '^8.0.1', alasql: '^4.23.1' },
   }, null, 2));
 
   if (opts.ide) addIdeaFiles(add);

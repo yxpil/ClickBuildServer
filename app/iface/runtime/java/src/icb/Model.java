@@ -22,11 +22,19 @@ public class Model {
         public String def = "";
     }
 
+    public static class Store {
+        public String mode = "mysql";
+        public int ttl;
+        public int max = 10000;
+        public int flushMs = 5000;
+    }
+
     public static class Table {
         public String key = "main";
         public String name = "";
         public String schema = "";
         public String comment = "";
+        public Store store = new Store();
         public List<Field> fields = new ArrayList<>();
     }
 

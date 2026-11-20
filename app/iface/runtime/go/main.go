@@ -32,12 +32,20 @@ type Table struct {
 	Name    string  `json:"name"`
 	Schema  string  `json:"schema"`
 	Comment string  `json:"comment"`
+	Store   Store   `json:"store"`
 	Fields  []Field `json:"fields"`
 }
 
 type Cache struct {
 	Enabled bool `json:"enabled"`
 	TTL     int  `json:"ttl"`
+}
+
+type Store struct {
+	Mode    string `json:"mode"`
+	TTL     int    `json:"ttl"`
+	Max     int    `json:"max"`
+	FlushMs int    `json:"flushMs"`
 }
 
 type Route struct {
@@ -109,6 +117,14 @@ func main() {
 	svc, err := loadService("service.json")
 	if err != nil {
 		log.Fatalf("读取 service.json 失败：%v", err)
+	}
+	for _, it := range svc.Interfaces {
+		for _, t := range it.Tables {
+			m := strings.ToLower(strings.TrimSpace(t.Store.Mode))
+			if m != "" && m != "mysql" {
+				log.Fatalf("表 %s 使用 %s 存储；Go 原生运行时目前只支持 mysql，请改用 Node 运行时或把该表改回直连 MySQL", t.Name, t.Store.Mode)
+			}
+		}
 	}
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
 		env("MYSQL_USER", "root"), env("MYSQL_PASSWORD", ""),

@@ -25,6 +25,17 @@ public class Main {
         if (svc == null) throw new RuntimeException("service.json 解析为空");
         if (svc.apiPrefix == null || svc.apiPrefix.isEmpty()) svc.apiPrefix = "/api";
         if (svc.page == null) svc.page = new LinkedHashMap<>(Map.of("size", 20));
+        if (svc.interfaces != null) {
+            for (Model.Iface it : svc.interfaces) {
+                if (it.tables == null) continue;
+                for (Model.Table t : it.tables) {
+                    String mode = t.store == null || t.store.mode == null ? "mysql" : t.store.mode.toLowerCase(Locale.ROOT).trim();
+                    if (!mode.isEmpty() && !mode.equals("mysql")) {
+                        throw new RuntimeException("表 " + t.name + " 使用 " + t.store.mode + " 存储；Java 原生运行时目前只支持 mysql，请改用 Node 运行时或把该表改回直连 MySQL");
+                    }
+                }
+            }
+        }
 
         Server server = new Server(svc);
         String port = env("PORT", "18100");

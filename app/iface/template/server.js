@@ -123,6 +123,10 @@ let redis = null;
 let s3 = null;
 let bucketReady = false;
 let logPool = null;
+let rowstore = null;
+try {
+  rowstore = require(path.join(ROOT, 'src', 'rowstore')).create({ project, interfaces: IFACES, redis: () => redis });
+} catch (e) { console.error('[rowstore] 纯表引擎不可用，回退 MySQL：', e.message); }
 
 const RING = [];
 const SSE = new Set();
@@ -699,6 +703,7 @@ async function handle(req, res, item) {
   }
 
   async function txBeginAll() {
+    if (rowstore) rowstore.begin();
     const started = [];
     for (const key of txKeys) {
       if (txStates.get(key) && txStates.get(key).inTx) continue;
@@ -712,6 +717,7 @@ async function handle(req, res, item) {
   }
 
   async function txRollbackAll(reason) {
+    if (rowstore) rowstore.rollback();
     const failed = [];
     for (const [key, st] of txStates) {
       if (!st.inTx) continue;
@@ -741,10 +747,15 @@ async function handle(req, res, item) {
         break; // 保留连接给 txRollbackAll 做补偿
       }
     }
+    if (!failure && rowstore) await rowstore.commit();
     return { committed, failure };
   }
 
   async function dbQuery(sql, params) {
+    if (rowstore) {
+      const pure = await rowstore.query(iface, sql, params || []);
+      if (pure) return pure;
+    }
     const key = connKeyForSql(sql);
     const st = txStates.get(key);
     const runner = st && st.inTx ? st.conn : (await poolFor(key)).pool;
@@ -752,12 +763,12 @@ async function handle(req, res, item) {
     if (policy.mode === 'mysql') return (await runner.query(sql, params))[0];
     const ikey = iface.id || iface.name;
     const qkey = `q:${ikey}:${storeVersion(iface)}:${crypto.createHash('sha1').update(sql + '|' + JSON.stringify(params || [])).digest('hex')}`;
-    const useMem = ['lru', 'lru-redis', 'periodic'].includes(policy.mode);
-    const useRedis = ['cache', 'redis', 'redis-mysql', 'lru-redis'].includes(policy.mode);
-    const ttl = policy.mode === 'periodic' ? Math.max(1, Math.round(policy.flushMs / 1000)) : policy.ttl;
+    const useMem = ['cache', 'redis-mysql', 'periodic'].includes(policy.mode);
+    const useRedis = ['cache', 'redis-mysql'].includes(policy.mode);
+    const ttl = policy.ttl;
     if (useMem) {
       const hit = STORE_MEM.get(qkey);
-      if (hit && (policy.mode === 'periodic' || Date.now() - hit.at < ttl * 1000)) return hit.val;
+      if (hit && Date.now() - hit.at < ttl * 1000) return hit.val;
     }
     if (useRedis && redis) {
       try {
@@ -777,6 +788,10 @@ async function handle(req, res, item) {
     return rows;
   }
   async function dbExecute(sql, params) {
+    if (rowstore) {
+      const pure = await rowstore.exec(iface, sql, params || []);
+      if (pure) return pure;
+    }
     const key = connKeyForSql(sql);
     const st = txStates.get(key);
     const runner = st && st.inTx ? st.conn : (await poolFor(key)).pool;
@@ -1261,6 +1276,24 @@ async function bootstrap() {
     redis = new Redis({ host: rc.host || CFG.redisHost, port: Number(rc.port || CFG.redisPort), db: Number(rc.db || CFG.redisDb), lazyConnect: false, maxRetriesPerRequest: 2, enableOfflineQueue: false });
     redis.on('error', (e) => console.error('[redis]', e.message));
   } catch (e) { console.error('Redis 连接失败，缓存/会话不可用', e.message); redis = null; }
+
+  if (redis && redis.status !== 'ready') {
+    await new Promise((resolve) => {
+      const done = () => { try { clearTimeout(t); } catch (x) {} resolve(); };
+      const t = setTimeout(done, 2500);
+      redis.once('ready', done);
+      redis.once('error', done);
+    }).catch(() => {});
+  }
+
+  if (rowstore) {
+    try {
+      await rowstore.init();
+      console.log('纯表存储已初始化：' + (rowstore.PURE_MODES ? [...rowstore.PURE_MODES].join(' / ') : ''));
+    } catch (e) {
+      console.error('纯表存储初始化失败', e.message);
+    }
+  }
 
   try {
     const sc = (CONNS.s3 || [])[0] || {};

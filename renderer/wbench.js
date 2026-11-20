@@ -838,7 +838,7 @@ function tabTables(it) {
         <span class="text-[11px]">库 <input id="tSchema" class="border border-neutral-300 px-1 py-0.5 mono w-28" placeholder="留空=默认库" value="${esc(t.schema)}"></span>
         <span class="text-[11px]">注释 <input id="tComment" class="border border-neutral-300 px-1 py-0.5 w-40" value="${esc(t.comment)}"></span>
         <span class="text-[11px]">加速 <select id="tStore" class="border border-neutral-300 px-1 py-0.5 text-[11px]" title="${esc(STORE_MODES.map((m) => `${m.name}：${m.desc}`).join('\n'))}">${STORE_MODES.map((m) => `<option value="${m.id}" ${m.id === st.mode ? 'selected' : ''} title="${esc(m.desc)}">${esc(m.name)}</option>`).join('')}</select></span>
-        <span class="text-[11px] ${st.mode === 'cache' || st.mode === 'redis' || st.mode === 'redis-mysql' || st.mode === 'periodic' ? '' : 'hidden'}" data-store-for="ttl">TTL(秒) <input id="tStoreTtl" type="number" min="0" step="1" class="border border-neutral-300 px-1 py-0.5 mono w-16" value="${st.ttl}"></span>
+        <span class="text-[11px] ${st.mode === 'cache' || st.mode === 'redis' || st.mode === 'redis-mysql' ? '' : 'hidden'}" data-store-for="ttl">TTL(秒) <input id="tStoreTtl" type="number" min="0" step="1" class="border border-neutral-300 px-1 py-0.5 mono w-16" value="${st.ttl}"></span>
         <span class="text-[11px] ${st.mode === 'lru' || st.mode === 'lru-redis' ? '' : 'hidden'}" data-store-for="max">上限(条) <input id="tStoreMax" type="number" min="100" step="100" class="border border-neutral-300 px-1 py-0.5 mono w-20" value="${st.max}"></span>
         <span class="text-[11px] ${st.mode === 'periodic' ? '' : 'hidden'}" data-store-for="flush">刷盘(毫秒) <input id="tStoreFlush" type="number" min="500" step="500" class="border border-neutral-300 px-1 py-0.5 mono w-20" value="${st.flushMs}"></span>
         <button class="btn thin ml-auto" data-action="delTable">删表</button>
@@ -900,7 +900,7 @@ function bindTables(it) {
   const syncStoreFields = () => {
     const mode = t.store && t.store.mode ? t.store.mode : 'mysql';
     $$('[data-store-for]').forEach((el) => {
-      const show = (el.dataset.storeFor === 'ttl' && ['cache', 'redis', 'redis-mysql', 'periodic'].includes(mode))
+      const show = (el.dataset.storeFor === 'ttl' && ['cache', 'redis', 'redis-mysql'].includes(mode))
         || (el.dataset.storeFor === 'max' && ['lru', 'lru-redis'].includes(mode))
         || (el.dataset.storeFor === 'flush' && mode === 'periodic');
       el.classList.toggle('hidden', !show);
@@ -2197,11 +2197,11 @@ function fieldNameFromHeader(h, i) {
 
 const STORE_MODES = [  { id: 'mysql', name: '直连 MySQL', desc: '每次都读库，最稳，适合账务和必须实时的数据' },
   { id: 'cache', name: 'MySQL + Redis 查询缓存', desc: '读走 Redis 缓存，写后失效，适合读多写少' },
-  { id: 'redis', name: 'Redis 临时缓存表', desc: '读走 Redis、带 TTL；写仍落 MySQL，适合验证码、在线状态等热读' },
+  { id: 'redis', name: 'Redis 表（读写都走 Redis）', desc: '表数据只存 Redis，增删改查不再写 MySQL；支持 TTL，重启从 Redis 恢复' },
   { id: 'redis-mysql', name: 'Redis 热读 + MySQL 权威', desc: '热读 Redis，MySQL 保底，适合排行榜与高频详情' },
-  { id: 'lru', name: 'LRU 内存淘汰', desc: '进程内 LRU 查询缓存，超上限淘汰最久未用' },
-  { id: 'lru-redis', name: 'LRU + Redis 两级', desc: '本地 LRU 一级、Redis 二级，适合多实例热点' },
-  { id: 'periodic', name: '定期刷新缓存', desc: '按设定的秒数定期失效重读，降低数据库压力；不是持久化队列' },
+  { id: 'lru', name: 'LRU 内存表', desc: '表数据只在进程内存，超过上限淘汰最旧行；重启清空' },
+  { id: 'lru-redis', name: 'LRU 内存表 + Redis 持久', desc: '读写内存表，每次写入同步 Redis；重启恢复，适合单机热表' },
+  { id: 'periodic', name: '内存表 + 定期写 Redis', desc: '读写内存表，按刷盘间隔批量写 Redis；重启恢复最后一次落盘' },
 ];
 function storeOf(t) {
   const s = (t && t.store) || {};
@@ -2305,6 +2305,7 @@ function showSettings() {
             ${STORE_MODES.map((m) => `<div><span class="mono">${esc(m.name)}</span><span class="text-neutral-500"> · ${esc(m.desc)}</span></div>`).join('')}
           </div>
           <div class="text-[10px] text-neutral-500 mt-2">在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。</div>
+          <div class="text-[10px] text-neutral-500 mt-1">纯表模式（Redis / LRU / 定期落盘）只由 Node 运行时执行；Go / Java 原生运行时只支持“直连 MySQL”，遇到其他模式会拒绝启动，避免静默读写不一致。</div>
         </section>
         <section class="border border-neutral-300 p-3 mt-3">
           <b class="text-[12px]">界面</b>
