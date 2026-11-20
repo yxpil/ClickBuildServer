@@ -216,14 +216,34 @@ function parseExpr(src) {
 
 /* ---------------- 脚本 ---------------- */
 
-function stripComment(line) {
-  const t = String(line);
-  if (/^\s*(#|\/\/)/.test(t)) return '';
-  return t.replace(/\s+#.*$/, '');
-}
-
 function scriptLines(text) {
-  return String(text || '').split(/\r?\n/).map(stripComment);
+  // 逐行去注释，但保留 /* ... */ 跨行状态；注释里的行号不会挪动。
+  let block = false;
+  return String(text || '').split(/\r?\n/).map((line) => {
+    const s = String(line);
+    let out = '';
+    let quote = '';
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      const n = s[i + 1];
+      if (block) {
+        if (c === '*' && n === '/') { block = false; i++; }
+        continue;
+      }
+      if (quote) {
+        out += c;
+        if (c === '\\' && i + 1 < s.length) { out += s[++i]; continue; }
+        if (c === quote) quote = '';
+        continue;
+      }
+      if (c === '"' || c === "'") { quote = c; out += c; continue; }
+      if (c === '/' && n === '/') break;
+      if (c === '/' && n === '*') { block = true; i++; continue; }
+      if (c === '#') break;
+      out += c;
+    }
+    return out;
+  });
 }
 
 function splitStatus(rest) {
@@ -232,10 +252,58 @@ function splitStatus(rest) {
   return { status: 200, exprText: rest.trim() };
 }
 
+function diagHint(message) {
+  const m = String(message || '');
+  if (/缺少 END/.test(m)) return '在这个 IF / FOREACH 结束的位置补一行 END';
+  if (/占位符没有闭合/.test(m)) return '写成 {{body.name}} 或 {{query.id}}，补全后面的 }}';
+  if (/不认识的语句/.test(m)) return '语句必须以 LET / QUERY / EXEC / IF / FOREACH / RETURN / LOG / WAIT / TX / TOKEN / PUBLISH 开头';
+  if (/表达式语法错误|表达式多出了内容|表达式在这里断了/.test(m)) return '检查括号、逗号、运算符和字符串引号是否成对';
+  if (/变量未赋值/.test(m)) return '先在这一行之前用 LET $name = ... 赋值';
+  if (/已赋值但未使用/.test(m)) return '不需要这个变量就删掉；需要排查就加 LOG DEBUG $name;';
+  if (/未知占位符/.test(m)) return '可用 {{body.x}}、{{query.x}}、{{path.x}}、{{t:主表}} 等，参考右侧脚本助手';
+  if (/对象占位符/.test(m)) return '对象占位符要取字段，例如 {{user.username}}，不要直接写 {{user}}';
+  return '按提示修正这一行，保存前会持续自动检查';
+}
+function diagCode(message) {
+  const m = String(message || '');
+  if (/缺少 END/.test(m)) return 'MISSING_END';
+  if (/占位符没有闭合/.test(m)) return 'UNCLOSED_PLACEHOLDER';
+  if (/不认识的语句/.test(m)) return 'UNKNOWN_STATEMENT';
+  if (/未知占位符/.test(m)) return 'UNKNOWN_PLACEHOLDER';
+  if (/对象占位符/.test(m)) return 'OBJECT_PLACEHOLDER';
+  if (/变量未赋值/.test(m)) return 'UNDEFINED_VARIABLE';
+  if (/已赋值但未使用/.test(m)) return 'UNUSED_VARIABLE';
+  return 'SYNTAX';
+}
+function firstColumn(line) {
+  const i = String(line || '').search(/\S/);
+  return i < 0 ? 1 : i + 1;
+}
+function throwAt(message, line, column) {
+  const e = new Error(message);
+  e.line = line;
+  e.column = column;
+  return e;
+}
+
 function parseScript(text) {
   const lines = scriptLines(text);
   const errors = [];
+  const diagnostics = [];
   let i = 0;
+  const statementStart = /^(LET|SET|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|RETURN|LOG|WAIT|TX|PUBLISH|TOKEN)\b/i;
+
+  // 允许把一条 SQL / JSON 排成多行：只有下一行不是新语句时才续行，行号仍从语句首行算。
+  function joinContinuation(line) {
+    let out = line;
+    while (!/;\s*$/.test(out) && i + 1 < lines.length) {
+      const next = lines[i + 1].trim();
+      if (!next || statementStart.test(next)) break;
+      i++;
+      out += ' ' + next;
+    }
+    return out;
+  }
 
   function parseBlock(stopWords) {
     const body = [];
@@ -251,7 +319,11 @@ function parseScript(text) {
       try {
         body.push(parseStatement());
       } catch (e) {
-        errors.push(`第 ${i + 1} 行：${e.message}（${line.slice(0, 60)}）`);
+        const ln = e.line || i + 1;
+        const col = e.column || firstColumn(lines[ln - 1]);
+        const msg = e.message;
+        errors.push(`第 ${ln} 行：${msg}（${String(lines[ln - 1] || '').trim().slice(0, 60)}）`);
+        diagnostics.push({ line: ln, column: col, severity: 'error', code: diagCode(msg), message: msg, hint: diagHint(msg) });
         i++;
       }
     }
@@ -259,11 +331,25 @@ function parseScript(text) {
   }
 
   function parseStatement() {
+    const startLine = i + 1;
+    const startColumn = firstColumn(lines[i]);
+    try {
+      return parseStatementInner();
+    } catch (e) {
+      if (!e.line) e.line = startLine;
+      if (!e.column) e.column = startColumn;
+      throw e;
+    }
+  }
+
+  function parseStatementInner() {
     const raw = lines[i];
-    const line = raw.trim();
+    let line = raw.trim();
     const upper = ((line.match(/^([A-Za-z]+)/) || [])[1] || '').toUpperCase();
+    if (/^(LET|SET|QUERY|EXEC|RETURN|LOG|WAIT|PUBLISH|TOKEN)\b/i.test(upper)) line = joinContinuation(line);
 
     if (upper === 'IF' || upper === 'ELSEIF') {
+      const startLine = i + 1;
       const condText = line.replace(/^(IF|ELSEIF)\s*/i, '');
       i++;
       const branches = [];
@@ -282,17 +368,18 @@ function parseScript(text) {
         blk = parseBlock(['END']);
         elseBody = blk.body;
       }
-      if (blk.stop !== 'END') throw new Error('IF 缺少 END');
+      if (blk.stop !== 'END') throw throwAt('IF 缺少 END', startLine, 1);
       i++;
       return { k: 'if', branches, elseBody };
     }
 
     if (upper === 'FOREACH') {
+      const startLine = i + 1;
       const m = /^FOREACH\s+\$([A-Za-z0-9_]+)\s+IN\s+(.+)$/i.exec(line);
       if (!m) throw new Error('FOREACH 写法：FOREACH $row IN $rows.rows');
       i++;
       const blk = parseBlock(['END']);
-      if (blk.stop !== 'END') throw new Error('FOREACH 缺少 END');
+      if (blk.stop !== 'END') throw throwAt('FOREACH 缺少 END', startLine, 1);
       i++;
       return { k: 'foreach', name: m[1], expr: parseExpr(m[2]), body: blk.body };
     }
@@ -399,8 +486,13 @@ function parseScript(text) {
   }
 
   const root = parseBlock([]);
-  if (root.stop) errors.push(`多余的 ${root.stop}`);
-  return { ast: root.body, errors };
+  if (root.stop) {
+    const ln = Math.min(lines.length, i + 1);
+    const msg = `多余的 ${root.stop}`;
+    errors.push(`第 ${ln} 行：${msg}`);
+    diagnostics.push({ line: ln, column: firstColumn(lines[ln - 1]), severity: 'error', code: diagCode(msg), message: msg, hint: diagHint(msg) });
+  }
+  return { ast: root.body, errors, diagnostics };
 }
 
 /* ---------------- 求值 ---------------- */
@@ -744,18 +836,101 @@ async function runScript(ast, env) {
 /* ---------------- 校验 ---------------- */
 
 function checkScript(text) {
-  const { errors } = parseScript(text);
-  const problems = errors.slice();
+  const parsed = parseScript(text);
+  const problems = parsed.errors.slice();
+  const diagnostics = (parsed.diagnostics || []).slice();
+  const rawLines = String(text || '').split(/\r?\n/);
+  const lines = scriptLines(text);
+  const seen = new Set();
+
+  const add = (d, legacy) => {
+    const key = `${d.code}|${d.line}|${d.column}|${d.message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    diagnostics.push(d);
+    if (legacy && d.severity === 'error') problems.push(legacy);
+  };
+
   const re = /\{\{\s*([A-Za-z0-9_.:]+)\s*\}\}/g;
-  let m;
-  while ((m = re.exec(String(text || '')))) {
-    const token = m[1];
-    const base = render.splitToken(token)[0];
-    if (render.STRUCT.has(base) || render.VALUES.has(token)) continue;
-    if (/^(query|body|path|file|vars|user|token|env|req)\.[A-Za-z0-9_]+/.test(token)) continue;
-    problems.push(`未知占位符：{{${token}}}`);
+  lines.forEach((line, idx) => {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(line))) {
+      const token = m[1];
+      const base = render.splitToken(token)[0];
+      const lineNo = idx + 1;
+      const column = m.index + 1;
+      if (render.STRUCT.has(base) || render.VALUES.has(token)) continue;
+      if (/^(query|body|path|file|vars|user|token|env|req)\.[A-Za-z0-9_]+/.test(token)) continue;
+      if (['user', 'token', 'req', 'env', 'vars'].includes(token)) {
+        add({
+          line: lineNo, column, severity: 'error', code: 'OBJECT_PLACEHOLDER',
+          message: `对象占位符 {{${token}}} 不能直接使用，取不到字段`,
+          hint: `改成 {{${token}.username}} 这类具体字段；不确定对象结构就先 LOG DEBUG '${token}';`,
+        }, `第 ${lineNo} 行：对象占位符 {{${token}}} 不能直接使用`);
+        continue;
+      }
+      add({
+        line: lineNo, column, severity: 'error', code: 'UNKNOWN_PLACEHOLDER',
+        message: `未知占位符：{{${token}}}`,
+        hint: diagHint('未知占位符'),
+      }, `第 ${lineNo} 行：未知占位符 {{${token}}}`);
+    }
+  });
+
+  // 变量检查：声明前使用、声明后从未使用。注释里的内容已经剔除，不会误报。
+  const declared = new Map();
+  const uses = [];
+  lines.forEach((line, idx) => {
+    const lineNo = idx + 1;
+    let work = line;
+    const lm = /^(\s*)(LET|SET)\s+\$([A-Za-z0-9_]+)/i.exec(line);
+    if (lm) {
+      const name = lm[3];
+      const column = lm[0].indexOf('$') + 1;
+      if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
+      work = work.replace(`$${name}`, ' '.repeat(name.length + 1));
+    }
+    const fm = /^(\s*)FOREACH\s+\$([A-Za-z0-9_]+)/i.exec(line);
+    if (fm) {
+      const name = fm[2];
+      const column = fm[0].indexOf('$') + 1;
+      if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
+      work = work.replace(`$${name}`, ' '.repeat(name.length + 1));
+    }
+    const vr = /\$([A-Za-z0-9_]+)/g;
+    let vm;
+    while ((vm = vr.exec(work))) uses.push({ name: vm[1], line: lineNo, column: vm.index + 1 });
+  });
+
+  for (const u of uses) {
+    const d = declared.get(u.name);
+    if (!d) {
+      add({
+        line: u.line, column: u.column, severity: 'warning', code: 'UNDEFINED_VARIABLE',
+        message: `变量 $${u.name} 没有声明就使用了`,
+        hint: diagHint('变量未赋值'),
+      });
+    } else {
+      d.used = true;
+    }
   }
-  return { ok: problems.length === 0, problems };
+  for (const [name, d] of declared) {
+    if (!d.used) {
+      add({
+        line: d.line, column: d.column, severity: 'warning', code: 'UNUSED_VARIABLE',
+        message: `变量 $${name} 赋值后没有使用`,
+        hint: diagHint('已赋值但未使用'),
+      });
+    }
+  }
+
+  // 注释/空行上的提示不参与工程校验，但会让面板更干净。
+  const severityRank = { error: 0, warning: 1, info: 2 };
+  diagnostics.sort((a, b) => (a.line - b.line) || (a.column - b.column) || (severityRank[a.severity] - severityRank[b.severity] || 0));
+  const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
+  const warningCount = diagnostics.filter((d) => d.severity === 'warning').length;
+  return { ok: problems.length === 0, problems, diagnostics, errorCount, warningCount, lines: rawLines.length };
 }
 
 /* ---------------- 转 JS（导出用） ---------------- */

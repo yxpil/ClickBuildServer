@@ -93,6 +93,53 @@
   .dot.on { background: #111; }
   .dot.off { background: #fff; border: 1px solid #999; }
   .monoarea { font-family: Consolas, monospace; font-size: 12px; line-height: 1.55; tab-size: 2; }
+  .code-shell { flex: 1; min-height: 0; display: flex; background: #fcfcfa; border-bottom: 1px solid #d8d8d8; }
+  .code-gutter { width: 46px; flex: 0 0 46px; overflow: hidden; background: #f3f3f1; border-right: 1px solid #d8d8d8; }
+  .code-gutter-inner { padding: 10px 8px 10px 0; will-change: transform; }
+  .code-gutter .gl { height: 21px; line-height: 21px; text-align: right; font: 11.5px/21px Consolas, "Cascadia Mono", monospace; color: #9a9a9a; user-select: none; }
+  .code-gutter .gl.line-error { color: #c62828; font-weight: 600; background: #fff0f0; }
+  .code-gutter .gl.line-warning { color: #9a6700; font-weight: 600; background: #fff9e8; }
+  .code-stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+  .code-highlight { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: #24292f; }
+  .code-highlight-inner { padding: 10px 12px; will-change: transform; }
+  .code-highlight .cl { height: 21px; line-height: 21px; white-space: pre; font: 12.5px/21px Consolas, "Cascadia Mono", monospace; }
+  .code-highlight .cl.line-error { background: linear-gradient(90deg, rgba(198, 40, 40, .10), rgba(198, 40, 40, 0) 62%); }
+  .code-highlight .cl.line-warning { background: linear-gradient(90deg, rgba(154, 103, 0, .09), rgba(154, 103, 0, 0) 62%); }
+  .code-highlight .tok-kw { color: #0033b3; font-weight: 600; }
+  .code-highlight .tok-sql { color: #7a3e9d; font-weight: 600; }
+  .code-highlight .tok-str { color: #067d17; }
+  .code-highlight .tok-num { color: #1750eb; }
+  .code-highlight .tok-var { color: #660e7a; }
+  .code-highlight .tok-ph { color: #9e4a00; background: #fff1dd; border-radius: 2px; }
+  .code-highlight .tok-fn { color: #00627a; }
+  .code-highlight .tok-op { color: #444; }
+  .code-highlight .tok-comment { color: #8a8a8a; font-style: italic; }
+  .code-editor {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 10px 12px;
+    border: 0; outline: none; resize: none; overflow: auto; white-space: pre; tab-size: 2;
+    background: transparent; color: transparent; caret-color: #111;
+    font: 12.5px/21px Consolas, "Cascadia Mono", monospace;
+  }
+  .code-editor::selection { background: rgba(35, 101, 202, .20); color: transparent; }
+  .code-editor:focus { box-shadow: inset 0 0 0 1px #111; }
+  .code-problems { flex: 0 0 auto; background: #fbfbfa; max-height: 116px; overflow: auto; }
+  .code-problems-head { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #e3e3e0; font-size: 11px; color: #555; }
+  .code-problems-head b { color: #222; }
+  .code-diag-list { padding: 2px 0; }
+  .code-diag { display: flex; align-items: flex-start; gap: 7px; padding: 4px 10px; border-left: 3px solid transparent; cursor: pointer; font-size: 11px; line-height: 1.45; }
+  .code-diag:hover { background: #f0f0ed; }
+  .code-diag.error { border-left-color: #c62828; }
+  .code-diag.warning { border-left-color: #b8860b; }
+  .code-diag-badge { flex: 0 0 auto; width: 14px; text-align: center; font-weight: 700; color: #c62828; }
+  .code-diag.warning .code-diag-badge { color: #9a6700; }
+  .code-diag-msg { min-width: 0; flex: 0 0 auto; max-width: 55%; }
+  .code-diag-msg b { font-weight: 600; }
+  .code-diag-hint { color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .code-diag-code { margin-left: auto; color: #999; font: 10px/1.6 Consolas, monospace; white-space: nowrap; }
+  .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #999; margin-right: 4px; }
+  .live-dot.ok { background: #1f8f3a; }
+  .live-dot.err { background: #c62828; }
+  .live-dot.warn { background: #b8860b; }
   .side-sect { border-bottom: 1px solid #e4e4e4; padding: 8px 10px; }
   .side-sect h4 { font-size: 11px; color: #777; letter-spacing: .5px; margin: 0 0 6px 0; text-transform: uppercase; }
   .searchbox { width: 300px; }

@@ -688,7 +688,6 @@ function renderRibbon() {
   </div><div class="lbl">表结构</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('check', 'check', '校验', '校验全部脚本')}
     ${rb('preview', 'sql', '预览', '把脚本里的 SQL 展开看看')}
     ${rb('test', 'play', '测试', '发送请求到生成的服务')}
   </div><div class="lbl">脚本</div></div>
@@ -1178,9 +1177,286 @@ function insertScriptText(text) {
   const end = ta.selectionEnd == null ? start : ta.selectionEnd;
   ta.setRangeText(text, start, end, 'end');
   ta.focus();
-  const r = activeIface() && activeIface().routes.find((x) => x.id === S.routeId);
-  if (r) { r.script = ta.value; scheduleSave(); }
-  $('#rStatus').textContent = `${ta.value.split(/\n/).length} 行`;
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+const CB_KEYWORDS = new Set(['LET', 'SET', 'QUERY', 'EXEC', 'IF', 'ELSEIF', 'ELSE', 'END', 'FOREACH', 'IN', 'RETURN', 'LOG', 'WAIT', 'TX', 'BEGIN', 'COMMIT', 'ROLLBACK', 'TOKEN', 'NEW', 'PUBLISH', 'CRAWL', 'REDIS', 'GET', 'PUT', 'DEL', 'INCR', 'EXPIRE']);
+const CB_SQL = new Set(['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AS', 'NULL', 'IS', 'LIKE', 'IN', 'EXISTS', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'UNION', 'ALL']);
+
+function scriptTok(cls, text) {
+  if (!text) return '';
+  return `<span class="tok-${cls}">${esc(text)}</span>`;
+}
+
+// 单行高亮；st.block 在行间保留，所以跨行 /* */ 注释不会串色。
+function highlightScriptLine(line, st) {
+  let out = '';
+  let i = 0;
+  while (i < line.length) {
+    if (st.block) {
+      const end = line.indexOf('*/', i);
+      if (end < 0) { out += scriptTok('comment', line.slice(i)); break; }
+      out += scriptTok('comment', line.slice(i, end + 2));
+      st.block = false;
+      i = end + 2;
+      continue;
+    }
+    const c = line[i];
+    const n = line[i + 1];
+    if ((c === '/' && n === '/') || c === '#') { out += scriptTok('comment', line.slice(i)); break; }
+    if (c === '/' && n === '*') { st.block = true; out += scriptTok('comment', '/*'); i += 2; continue; }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < line.length) {
+        if (line[j] === '\\') { j += 2; continue; }
+        if (line[j] === c) { j++; break; }
+        j++;
+      }
+      out += scriptTok('str', line.slice(i, j));
+      i = j;
+      continue;
+    }
+    if (c === '{' && n === '{') {
+      const end = line.indexOf('}}', i + 2);
+      if (end < 0) { out += scriptTok('ph', line.slice(i)); break; }
+      out += scriptTok('ph', line.slice(i, end + 2));
+      i = end + 2;
+      continue;
+    }
+    if (c === '$') {
+      const m = /^\$[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+|\s*\[[^\]]*\])*/.exec(line.slice(i));
+      if (m) { out += scriptTok('var', m[0]); i += m[0].length; continue; }
+    }
+    if (/[0-9]/.test(c)) {
+      const m = /^\d+(\.\d+)?/.exec(line.slice(i));
+      out += scriptTok('num', m[0]);
+      i += m[0].length;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(c)) {
+      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(line.slice(i));
+      const word = m[0];
+      const upper = word.toUpperCase();
+      let cls = '';
+      if (CB_KEYWORDS.has(upper)) cls = 'kw';
+      else if (CB_SQL.has(upper)) cls = 'sql';
+      else if (/^\s*\(/.test(line.slice(i + word.length))) cls = 'fn';
+      out += cls ? scriptTok(cls, word) : esc(word);
+      i += word.length;
+      continue;
+    }
+    if ('+-*/%<>!=&|(){}[],:;.'.includes(c)) { out += scriptTok('op', c); i++; continue; }
+    out += esc(c);
+    i++;
+  }
+  return out;
+}
+
+function scriptHighlight(text, diagnostics) {
+  const lines = String(text == null ? '' : text).split('\n');
+  const byLine = new Map();
+  for (const d of diagnostics || []) {
+    const cur = byLine.get(d.line);
+    if (!cur || d.severity === 'error' || cur === 'warning') byLine.set(d.line, d.severity);
+  }
+  const st = { block: false };
+  return lines.map((line, idx) => {
+    const sev = byLine.get(idx + 1);
+    const cls = sev === 'error' ? ' line-error' : sev === 'warning' ? ' line-warning' : '';
+    return `<div class="cl${cls}" data-line="${idx + 1}">${highlightScriptLine(line, st) || ''}</div>`;
+  }).join('');
+}
+
+function scriptGutter(text, diagnostics) {
+  const lines = String(text == null ? '' : text).split('\n');
+  const byLine = new Map();
+  for (const d of diagnostics || []) {
+    if (d.severity === 'error') byLine.set(d.line, 'error');
+    else if (!byLine.has(d.line)) byLine.set(d.line, 'warning');
+  }
+  return lines.map((_, idx) => {
+    const sev = byLine.get(idx + 1);
+    return `<div class="gl${sev ? ' line-' + sev : ''}">${idx + 1}</div>`;
+  }).join('');
+}
+
+function scriptProblemsHtml(diagnostics, checking) {
+  const ds = diagnostics || [];
+  const errors = ds.filter((d) => d.severity === 'error').length;
+  const warnings = ds.filter((d) => d.severity === 'warning').length;
+  const head = `<div class="code-problems-head"><b>实时检查</b><span>${checking ? '扫描中…' : `${errors} 错误 / ${warnings} 警告`}</span><span class="ml-auto text-neutral-400">自动进行，不需要手动校验</span></div>`;
+  if (checking) return `${head}<div class="code-diag"><span class="code-diag-badge">·</span><span>正在分析脚本…</span></div>`;
+  if (!ds.length) return `${head}<div class="code-diag" style="border-left-color:#1f8f3a"><span class="code-diag-badge" style="color:#1f8f3a">✓</span><span>没有发现问题。继续输入会自动重新检查。</span></div>`;
+  const rows = ds.slice(0, 24).map((d) => {
+    const sev = d.severity === 'warning' ? 'warning' : 'error';
+    const flag = sev === 'error' ? 'E' : 'W';
+    const code = d.code || 'ISSUE';
+    return `<div class="code-diag ${sev}" data-diag-line="${d.line}" title="跳到第 ${d.line} 行">
+      <span class="code-diag-badge">${flag}</span>
+      <span class="code-diag-msg"><b>第 ${d.line} 行${d.column ? ':' + d.column : ''}</b> ${esc(d.message || '')}</span>
+      <span class="code-diag-hint">${esc(d.hint || '')}</span>
+      <span class="code-diag-code">${esc(code)}</span>
+    </div>`;
+  }).join('');
+  const more = ds.length > 24 ? `<div class="code-diag"><span class="code-diag-badge">…</span><span>还有 ${ds.length - 24} 条，先修正前面的问题</span></div>` : '';
+  return `${head}<div class="code-diag-list">${rows}${more}</div>`;
+}
+
+function scriptCursorInfo(ta) {
+  const pos = ta.selectionStart == null ? 0 : ta.selectionStart;
+  const before = ta.value.slice(0, pos);
+  const line = before.split('\n').length;
+  const col = pos - before.lastIndexOf('\n');
+  return `第 ${line} 行，第 ${col} 列`;
+}
+
+function setupScriptEditor(onChange) {
+  const ta = $('#rScript');
+  if (!ta) return;
+  const hi = $('#codeHighlightInner');
+  const gut = $('#codeGutterInner');
+  const problems = $('#codeProblems');
+  const status = $('#rStatus');
+  const cursor = $('#rCursor');
+  let diagnostics = [];
+  let timer = 0;
+  let seq = 0;
+  let checking = true;
+
+  const syncScroll = () => {
+    if (hi) hi.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
+    if (gut) gut.style.transform = `translateY(${-ta.scrollTop}px)`;
+  };
+  const paint = () => {
+    if (hi) hi.innerHTML = scriptHighlight(ta.value, diagnostics);
+    if (gut) gut.innerHTML = scriptGutter(ta.value, diagnostics);
+    if (problems) problems.innerHTML = scriptProblemsHtml(diagnostics, checking);
+  };
+  const setStatus = (c) => {
+    const dot = $('#liveDot');
+    const errors = c && c.errorCount || 0;
+    const warnings = c && c.warningCount || 0;
+    if (dot) dot.className = `live-dot ${errors ? 'err' : warnings ? 'warn' : 'ok'}`;
+    if (!status) return;
+    if (checking) status.textContent = '检查中…';
+    else if (errors) status.textContent = `${errors} 个错误${warnings ? ` · ${warnings} 个警告` : ''}`;
+    else if (warnings) status.textContent = `${warnings} 个警告`;
+    else status.textContent = '实时检查通过';
+    status.style.color = errors ? '#c62828' : warnings ? '#9a6700' : '#1f8f3a';
+  };
+  const check = () => {
+    const token = ++seq;
+    checking = true;
+    paint();
+    setStatus(null);
+    api.checkScript(ta.value).then((c) => {
+      if (token !== seq) return;
+      diagnostics = Array.isArray(c && c.diagnostics) ? c.diagnostics : [];
+      checking = false;
+      paint();
+      setStatus(c);
+    }).catch((e) => {
+      if (token !== seq) return;
+      checking = false;
+      diagnostics = [{ line: 1, column: 1, severity: 'error', code: 'CHECK_FAILED', message: `检查器调用失败：${e.message}`, hint: '确认主进程 IPC 正常后重试' }];
+      paint();
+      setStatus({ errorCount: 1, warningCount: 0 });
+    });
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    timer = setTimeout(check, 320);
+  };
+
+  ta.addEventListener('scroll', syncScroll, { passive: true });
+  ta.addEventListener('input', () => {
+    schedule();
+    paint();
+    if (cursor) cursor.textContent = scriptCursorInfo(ta);
+    onChange(ta.value);
+  });
+  ta.addEventListener('click', () => { if (cursor) cursor.textContent = scriptCursorInfo(ta); });
+  ta.addEventListener('keyup', () => { if (cursor) cursor.textContent = scriptCursorInfo(ta); });
+  ta.addEventListener('select', () => { if (cursor) cursor.textContent = scriptCursorInfo(ta); });
+
+  ta.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      e.preventDefault();
+      const s = ta.selectionStart;
+      const en = ta.selectionEnd;
+      const value = ta.value;
+      const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+      const lineEnd = en === s ? value.indexOf('\n', en) : en;
+      const block = value.slice(lineStart, lineEnd === -1 ? value.length : lineEnd);
+      const rows = block.split('\n');
+      const allComment = rows.filter((x) => x.trim()).every((x) => /^\s*\/\//.test(x));
+      const next = rows.map((x) => {
+        if (!x.trim()) return x;
+        return allComment ? x.replace(/^(\s*)\/\/\s?/, '$1') : x.replace(/^(\s*)/, '$1// ');
+      }).join('\n');
+      ta.setRangeText(next, lineStart, lineEnd === -1 ? value.length : lineEnd, 'select');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = ta.selectionStart;
+      const en = ta.selectionEnd;
+      if (s === en) {
+        if (e.shiftKey) {
+          const ls = ta.value.lastIndexOf('\n', s - 1) + 1;
+          const head = ta.value.slice(ls, s);
+          const cut = head.endsWith('  ') ? 2 : head.endsWith('\t') ? 1 : 0;
+          if (cut) ta.setRangeText('', s - cut, s, 'end');
+        } else {
+          ta.setRangeText('  ', s, en, 'end');
+        }
+      } else {
+        const ls = ta.value.lastIndexOf('\n', s - 1) + 1;
+        const le = ta.value.indexOf('\n', en) === -1 ? ta.value.length : ta.value.indexOf('\n', en);
+        const block = ta.value.slice(ls, le);
+        const next = block.split('\n').map((x) => e.shiftKey ? x.replace(/^(  |\t)/, '') : '  ' + x).join('\n');
+        ta.setRangeText(next, ls, le, 'select');
+      }
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const s = ta.selectionStart;
+      const ls = ta.value.lastIndexOf('\n', s - 1) + 1;
+      const line = ta.value.slice(ls, s);
+      const indent = (line.match(/^\s*/) || [''])[0];
+      const deeper = /^\s*(IF|ELSEIF|ELSE|FOREACH|TX\s+BEGIN|BEGIN)\b/i.test(line);
+      const dedent = /^\s*(END|ELSE|ELSEIF)\b/i.test(line) ? 2 : 0;
+      const base = indent.length >= dedent ? indent.slice(0, indent.length - dedent) : '';
+      ta.setRangeText('\n' + base + (deeper ? '  ' : ''), s, ta.selectionEnd, 'end');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+  });
+
+  if (problems) {
+    problems.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-diag-line]');
+      if (!row) return;
+      const line = Number(row.dataset.diagLine);
+      const lines = ta.value.split('\n');
+      let pos = 0;
+      for (let k = 0; k < line - 1 && k < lines.length; k++) pos += lines[k].length + 1;
+      const end = pos + (lines[line - 1] || '').length;
+      ta.focus();
+      ta.setSelectionRange(pos, end);
+      ta.scrollTop = Math.max(0, (line - 1) * 21 - 34);
+      syncScroll();
+      if (cursor) cursor.textContent = `第 ${line} 行，第 1 列`;
+    });
+  }
+
+  paint();
+  if (cursor) cursor.textContent = scriptCursorInfo(ta);
+  syncScroll();
+  check();
 }
 
 function showScriptGuide() {
@@ -1190,6 +1466,7 @@ function showScriptGuide() {
     <table class="help-grid">
       <thead><tr><th style="width:220px">写法</th><th>作用</th></tr></thead>
       <tbody>
+        <tr><td class="mono"># 注释 / // 注释 / /* 多行 */</td><td>三种注释；字符串里的 # 和 // 不会被当成注释</td></tr>
         <tr><td class="mono">LET $x = QUERY SELECT …;</td><td>查询，结果在 $x.rows</td></tr>
         <tr><td class="mono">LET $x = EXEC INSERT/UPDATE/DELETE …;</td><td>增删改，结果在 $x.affectedRows / $x.insertId</td></tr>
         <tr><td class="mono">IF 条件 … ELSE … END</td><td>分支；条件可用 LEN、IN、CONTAINS</td></tr>
@@ -1245,7 +1522,6 @@ function tabRoutes(it) {
           <button class="btn thin shrink-0 whitespace-nowrap" data-action="toggleAssist">脚本提示</button>
           <span class="text-[10px] text-neutral-500 truncate" id="rIoHint">${esc(io.response)} → ${esc(io.storage)}${io.response === 'file' ? ' · S3 · ' + esc(io.field || '未选字段') : ''}${io.response === 'cookie' ? ' · ' + esc(io.cookieName || 'icb_token') : ''}</span>
           <div class="ml-auto flex items-center gap-1 shrink-0">
-            <button class="btn thin whitespace-nowrap" data-action="checkOne">校验</button>
             <button class="btn thin whitespace-nowrap" data-action="tryRoute">试运行</button>
             <button class="btn thin whitespace-nowrap" data-action="preview">预览 SQL</button>
             <button class="btn thin whitespace-nowrap" data-action="delRoute">删除</button>
@@ -1262,12 +1538,23 @@ function tabRoutes(it) {
         <label class="flex items-center gap-1"><input type="checkbox" id="pxHeaders" ${!(r.proxy && r.proxy.forwardHeaders === false) ? 'checked' : ''}> 转发请求头</label>
       </div>` : ''}
       <div class="flex-1 flex min-h-0">
-        <textarea id="rScript" class="flex-1 min-w-0 border-0 p-3 monoarea outline-none" spellcheck="false">${esc(r.script)}</textarea>
+        <div class="flex-1 min-w-0 flex flex-col min-h-0">
+          <div class="code-shell">
+            <div class="code-gutter"><div class="code-gutter-inner" id="codeGutterInner">${scriptGutter(r.script, [])}</div></div>
+            <div class="code-stage">
+              <div class="code-highlight"><div class="code-highlight-inner" id="codeHighlightInner">${scriptHighlight(r.script, [])}</div></div>
+              <textarea id="rScript" class="code-editor" spellcheck="false" autocapitalize="off" autocomplete="off">${esc(r.script)}</textarea>
+            </div>
+          </div>
+          <div id="codeProblems" class="code-problems">${scriptProblemsHtml([], true)}</div>
+        </div>
         ${scriptAssistHtml(it)}
       </div>
-      <div class="shrink-0 border-t border-neutral-300 px-3 py-1 text-[11px] text-neutral-600 flex gap-3">
-        <span>LET / QUERY / EXEC / IF / ELSE / END / FOREACH / RETURN / LOG</span>
-        <span class="ml-auto" id="rStatus">${r.script.split(/\n/).length} 行</span>
+      <div class="shrink-0 border-t border-neutral-300 px-3 py-1 text-[11px] text-neutral-600 flex items-center gap-3 min-w-0">
+        <span class="mono shrink-0">ClickBuild Script</span>
+        <span class="text-neutral-400 truncate">Ctrl+/ 注释 · Tab 缩进 · Enter 继承缩进 · 停止输入 0.3 秒后自动检查</span>
+        <span class="ml-auto mono shrink-0" id="rCursor">第 1 行，第 1 列</span>
+        <span class="shrink-0 inline-flex items-center gap-1"><i id="liveDot" class="live-dot"></i><span id="rStatus">自动检查中…</span></span>
       </div>
     </div>
   </div>`;
@@ -1324,6 +1611,7 @@ function bindRoutes(it) {
         if (assist) assist.classList.toggle('hidden');
       }
     });
+    setupScriptEditor((value) => { r.script = value; scheduleSave(); });
   }
   const tryBtn = $('[data-action="tryRoute"]');  if (tryBtn) tryBtn.onclick = () => {
     const sampleBody = (r.docs && r.docs.requestExample) || (['POST', 'PUT', 'PATCH'].includes(r.method) ? '{\n  \n}' : '');
@@ -1350,16 +1638,6 @@ function bindRoutes(it) {
         out.textContent = typeof res.body === 'string' ? res.body : JSON.stringify(res.body, null, 2);
       };
     }, { width: 860, maxHeight: '86vh' });
-  };
-  $('#rScript').oninput = (e) => {
-    r.script = e.target.value;
-    $('#rStatus').textContent = `${e.target.value.split(/\n/).length} 行`;
-    scheduleSave();
-    clearTimeout(bindRoutes._t);
-    bindRoutes._t = setTimeout(async () => {
-      const c = await api.checkScript(r.script);
-      $('#rStatus').textContent = c.ok ? `${r.script.split(/\n/).length} 行 · 语法通过` : c.problems.join('；');
-    }, 900);
   };
 }
 
@@ -2444,12 +2722,6 @@ async function act(name, el) {
     S.problems = (await api.validate(S.project)).errors;
     renderSide();
     toast(S.problems.length ? `有 ${S.problems.length} 处问题` : '脚本都通过了');
-    return;
-  }
-  if (name === 'checkOne' && it) {
-    const r = it.routes.find((x) => x.id === S.routeId);
-    const c = await api.checkScript(r.script);
-    toast(c.ok ? '这条脚本没问题' : c.problems.slice(0, 2).join('；'), 4000);
     return;
   }
   if (name === 'preview' && it) {
