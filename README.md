@@ -84,12 +84,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.26.exe
+dist\ClickBuildServer-Setup-1.1.27.exe
 ```
 
-安装包 225,818,660 B（约 215 MB），构建时间 2026-11-20 13:32:41，SHA256 `21B5276DE31671DD01A12A6DCA8D197C0E33AAC6EB1FA00A4819061F354F9691`。
+安装包 225,819,190 B（约 215 MB），构建时间 2026-11-20 13:51:47，SHA256 `F6A1F6E7BDA7395A6A2F959AF4FFCF9B595B4727618F3F4D365913CE98DA4B33`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.27 是 1.1.26 的全量回归基线版本，功能代码与 1.1.26 一致，只同步测试结果与版本文档：本轮完整跑通 26 套测试、1002 条断言，覆盖离线单元、真实 MariaDB / Redis / RustFS、21 套行业案例、社交接口库 86 条路由、问卷/报名真实 HTTP、四套导出运行时、源码版与安装版 UI 冒烟，以及本机真实 Ollama 生成与 UI 追加链路；安装版与源码版 `ui-smoke` 均为 124/124。测试结果表已按本轮实际输出更新，后续版本以这一版作为安装包回归基线。
 
 1.1.26 把工作台补成“新手能直接上手、接口多了也不乱”的版本：底部控制台改为 IDEA 式可拖高工具窗，生成服务 / MariaDB / Redis / RustFS 可同时开多个标签，支持过滤、自动滚动、清屏、复制和单标签关闭，`Alt+F12` 或 ``Ctrl+` `` 开关，日志按行差量刷新；路由页右侧新增脚本助手，提供列表、新增、校验、事务、抓取、等待六类模板和当前表 / 字段 / 占位符 chips，点一下插到光标处，`Ctrl+Space` 收起，另带完整语法速查；帮助页新增“在这里能做什么”五张卡片；搜索改为精确 / 前缀 / 包含打分，命中高亮，`↑↓` 选择、`Enter` 跳转，超过 60 条显示总数和“显示前 60 条”，点字段结果直接跳到表结构并聚焦该字段；接口表新增当前分类筛选与 `shown / total` 计数，长名称省略号，130 个接口下工作区和表格均无横向溢出。验收：`test-i18n` 20/20、`test-pack` 19/19、`test-export-runtimes --no-serve` 17/17，源码版 `ui-smoke` 124/124（含脚本助手、双控制台、130 接口、分类筛选、搜索限流、字段跳转）。
 
@@ -353,11 +355,17 @@ npm run dist       # 发布安装包
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言） | **20/20** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程绑定/自动保存/启动主页、AI 配置与失败保护、新建引导） | **107/107** |
-| `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **16/16** |
-| `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过** |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程绑定/自动保存/启动主页、AI 配置与失败保护、新建引导） | **124/124**（安装版与源码版各 124/124） |
+| `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
+| `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
 | `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **19/19** |
-| 生成服务真实验收（注册/登录/CRUD/缓存/事务/限流/上传/日志/CORS） | **30/30** |
+| `tools/test-export-runtimes.js --go`（Node/Bun/Java/Go 四套运行时，Java/Go 骨架编译） | **23/23** |
+| `tools/test-integration.js`（生成服务集成与导出配置） | **6/6** |
+| `tools/test-rowstore.js`（纯表存储四种模式） | **通过** |
+| `tools/test-pure-redis.js`（真实 Redis 存储 create/list/detail/update/search） | **通过** |
+| `tools/e2e.js`（示例工程注册/CRUD/缓存/事务/限流/上传/日志） | **23/23** |
+| `tools/e2e-template.js`（商城模版真实下单与库存事务） | **13/13** |
+| `tools/e2e-crossdb.js`（跨库下单、辅库明细与失败回滚） | **11/11** |
 
 
 ## 已知限制
