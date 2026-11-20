@@ -7,6 +7,7 @@ const script = require('./script');
 const docs = require('./docs');
 const native = require('./native');
 const fe = require('./frontend');
+const testgen = require('./testgen');
 
 const DEFAULT_PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
 
@@ -429,6 +430,7 @@ function generate(project, options) {
     p = { ...p, interfaces: p.interfaces.filter((i) => i.categoryId === opts.category) };
   }
   const files = [];
+  const testSuite = testgen.build(p, { port: opts.port || DEFAULT_PORTS.http });
 
   const add = (rel, content) => files.push({ path: rel, content: String(content).replace(/\r\n/g, '\n') });
 
@@ -511,6 +513,11 @@ function generate(project, options) {
     '', '字段注释就是文档说明，路由的 summary 会出现在文档摘要里。',
   ].join('\n'));
 
+  // 自动测试套件：与接口一起生成，默认只读，写入生命周期需显式开启。
+  add('tests/api.test.js', testSuite.test);
+  add('tests/plan.json', JSON.stringify(testSuite.plan, null, 2));
+  add('tests/README.md', testSuite.readme);
+
   if (wantNode) {
   add('package.json', JSON.stringify({
     name: slug(p.name, 'clickbuild-server'),
@@ -518,7 +525,7 @@ function generate(project, options) {
     private: true,
     description: p.description || 'ClickBuild 生成的接口服务',
     main: 'server.js',
-    scripts: { start: 'node server.js', dev: 'node dev.js', hot: 'node dev.js' },
+    scripts: { start: 'node server.js', dev: 'node dev.js', hot: 'node dev.js', 'test:api': 'node --test tests/api.test.js' },
     dependencies: { mysql2: '^3.11.0', ioredis: '^5.4.1', minio: '^8.0.1', alasql: '^4.23.1' },
   }, null, 2));
   }
@@ -872,7 +879,7 @@ Write-Host "已创建登录自启任务：$TaskName"
     });
   });
 
-  return { project: p, files, ports: DEFAULT_PORTS };
+  return { project: p, files, ports: DEFAULT_PORTS, tests: testSuite.summary };
 }
 
 function writeTo(project, outDir, options) {
@@ -889,7 +896,7 @@ function writeTo(project, outDir, options) {
   const legacyLauncher = path.join(dir, 'launcher');
   if (fs.existsSync(legacyLauncher)) fs.rmSync(legacyLauncher, { recursive: true, force: true });
   const runtime = String((options && options.runtime) || 'node').toLowerCase();
-  if (!(options && options.runtimeOnly) || runtime === 'java') native.copyAssets('java', dir);  return { dir, files: result.files.map((f) => f.path), project: result.project };
+  if (!(options && options.runtimeOnly) || runtime === 'java') native.copyAssets('java', dir);  return { dir, files: result.files.map((f) => f.path), project: result.project, tests: result.tests };
 }
 
 module.exports = { DEFAULT_PORTS, generate, writeTo, slug, exportJs, exportJava, exportGo, buildOpenApi, docsPage };

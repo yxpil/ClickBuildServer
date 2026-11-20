@@ -406,6 +406,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const testTools = await val(`(()=>{S.mode='editor';S.tab='test';render();return JSON.stringify({rt:!!document.querySelector('#tRuntime'),hot:!!document.querySelector('#tHot'),checked:document.querySelector('#tHot')&&document.querySelector('#tHot').checked,opts:Array.from(document.querySelectorAll('#tRuntime option')).map(o=>o.textContent)});})()`);
   const tt = JSON.parse(testTools);
   t('测试页可选运行时与热部署', tt.rt && tt.hot && tt.checked && tt.opts.length >= 4, testTools);
+  const autoTest = await val(`(()=>{S.mode='editor';S.tab='test';render();return JSON.stringify({btn:!!document.querySelector('[data-action="genTests"]'),info:document.querySelector('#tGenInfo')&&document.querySelector('#tGenInfo').innerText,desc:/自动测试/.test(document.querySelector('#tabBody').innerText)});})()`);
+  const at = JSON.parse(autoTest);
+  t('测试页有自动测试生成入口与计数', at.btn && at.desc && at.info.length > 0, autoTest);
 
   // 导出对话框有 404/500 与详情开关
   const exportText = await val(`(()=>{act('exportProject');const t=document.querySelector('#modal')?document.querySelector('#modal').innerText:'';closeModal();return t;})()`);

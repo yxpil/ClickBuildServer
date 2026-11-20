@@ -18,6 +18,7 @@ const S = {
   routeId: '',
   help: null,
   genDir: '',
+  testCounts: null,
   saveTimer: null,
   saveState: 'saved',
   saveText: '已保存',
@@ -2847,11 +2848,24 @@ function runnerOptions() {
   }).join('');
 }
 
+function testCountsText() {
+  const c = S.testCounts;
+  if (!c) return S.genDir ? '还没有生成测试' : '生成服务会自动带出 tests/';
+  return `${c.interfaces} 接口 · ${c.routes} 路由 · ${c.cases} 用例 · ${c.runnable} 可执行 · ${c.writeCases || 0} 写入用例 · ${c.skipped} 跳过`;
+}
+
 function tabTest(it) {
   const server = ((S.services && S.services.items) || []).find((x) => x.id === 'server') || {};
   const running = !!server.running;
   return `
   <div class="h-full flex flex-col p-3 gap-2 text-[12px] overflow-auto">
+    <div class="border border-neutral-300 bg-neutral-50 px-2 py-1.5 flex items-center gap-2 flex-wrap">
+      <b class="text-[12px]">自动测试</b>
+      <span class="text-neutral-500">按接口、路由、字段和鉴权生成 Node 测试，不用手写</span>
+      <button class="btn thin" data-action="genTests">生成测试</button>
+      <button class="btn thin" data-action="openGenDir">打开生成目录</button>
+      <span id="tGenInfo" class="mono text-[11px] text-neutral-600 ml-auto">${esc(testCountsText())}</span>
+    </div>
     <div class="flex items-center gap-2 flex-wrap">
       <select id="tRoute" class="border border-neutral-300 px-1 py-1 mono">
         ${it.routes.map((r) => `<option value="${r.id}">${esc(r.method)} ${esc(r.path)} · ${esc(r.name)}</option>`).join('')}
@@ -2907,6 +2921,7 @@ function tabExport(it) {
     </div>
     <div class="text-[11px] text-neutral-500">导出工程会新建一个独立目录，带 <span class="mono">.idea</span> 配置、启动配置和 <span class="mono">dev.js</span> 热部署脚本；IDEA 里 File → Open 直接打开。</div>
     <div class="mono text-[11px] break-all">${esc(S.genDir || '还没有生成')}</div>
+    <div class="text-[11px] text-neutral-500">生成服务时会一起写 tests/。列表与 404 断言默认只读；写入生命周期在工程目录用 CBS_WRITE_TESTS=1 npm run test:api 显式开启，跳过原因写进 tests/plan.json。</div>
 
     <div class="help-h">生成物</div>
     <table class="help-grid">
@@ -2918,6 +2933,8 @@ function tabExport(it) {
         <tr><td class="mono">src/render.js</td><td>占位符 / 参数化 SQL 引擎</td></tr>
         <tr><td class="mono">src/funcs.js</td><td>HASH / SM3 / SM4 / SUBSTR… 扩展函数</td></tr>
         <tr><td class="mono">interfaces.json</td><td>接口、表、脚本的完整描述</td></tr>
+        <tr><td class="mono">tests/api.test.js</td><td>按接口、路由、字段和鉴权自动生成的 API 测试（Node 原生 test runner）</td></tr>
+        <tr><td class="mono">tests/plan.json</td><td>测试计划：可执行用例、跳过原因、写入开关</td></tr>
         <tr><td class="mono">sql/*.sql</td><td>每张表的建表语句</td></tr>
         <tr><td class="mono">export/js|java|go</td><td>每条路由转成 JS / Java / Go</td></tr>
       </tbody>
@@ -3951,6 +3968,27 @@ async function act(name, el) {
     return;
   }
   if (name === 'test') { if (it) { S.mode = 'editor'; S.tab = 'test'; renderWorkspace(); } return; }
+  if (name === 'genTests') {
+    let dir = S.genDir;
+    if (!dir) {
+      const g = await api.generate(S.project);
+      if (!g.ok) return toast('生成失败：' + String(g.error || '').slice(0, 120), 5000);
+      dir = g.dir;
+      S.genDir = dir;
+      if (g.tests) S.testCounts = g.tests;
+    }
+    const r = await api.generateTests(S.project, dir);
+    if (!r.ok) return toast('测试生成失败：' + String(r.error || '').slice(0, 120), 5000);
+    S.testCounts = r.counts;
+    if (S.tab === 'test') renderWorkspace();
+    toast(`已生成 ${r.counts.cases} 个用例：${r.counts.runnable} 个可执行，${r.counts.writeCases || 0} 个写入用例，${r.counts.skipped} 个跳过`, 4500);
+    return;
+  }
+  if (name === 'openGenDir') {
+    if (!S.genDir) return toast('先生成工程或测试，再打开目录', 4000);
+    await api.openPath(S.genDir);
+    return;
+  }
   if (name === 'check') {
     S.problems = (await api.validate(S.project)).errors;
     renderSide();
@@ -3988,10 +4026,11 @@ async function act(name, el) {
     const g = await api.generate(S.project);
     if (!g.ok) { toast('生成失败：' + String(g.error || '').slice(0, 120), 5000); return; }
     S.genDir = g.dir;
+    if (g.tests) S.testCounts = g.tests;
     if (S.mode !== 'editor') S.mode = 'grid';
     S.tab = 'export';
     render();
-    toast(`已生成 ${g.files.length} 个文件${g.warnings && g.warnings.length ? `（插件提示 ${g.warnings.length} 条）` : ''}`, 3500);
+    toast(`已生成 ${g.files.length} 个文件${g.tests ? ` · ${g.tests.runnable} 个可执行测试` : ''}${g.warnings && g.warnings.length ? `（插件提示 ${g.warnings.length} 条）` : ''}`, 3500);
     return;
   }
   if (name === 'deployUpdate') { return deployUpdate(); }
@@ -6194,6 +6233,8 @@ async function enterWorkspace(p, opts) {
   hideProjectHub();
   S.project = p;
   S.res = null;
+  S.genDir = '';
+  S.testCounts = null;
   if (!TASK_KINDS[S.project.taskType]) S.project.taskType = 'mixed';
   $('#projectName').value = S.project.name;
   $('#taskKind').value = taskKindOf(S.project);

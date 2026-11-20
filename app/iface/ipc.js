@@ -10,6 +10,7 @@ const script = require('./script');
 const docs = require('./docs');
 const funcs = require('./funcs');
 const codegen = require('./codegen');
+const testgen = require('./testgen');
 const services = require('./services');
 const resources = require('./resources');
 const projects = require('./project-store');
@@ -252,7 +253,21 @@ function registerIpc() {
     const target = outDir || path.join(store.defaultGeneratedRoot(), 'iface', dirName);
     const gen = codegen.writeTo(p, target, { port: services.settings().ports.http, only: o.only, category: o.category, ide: !!o.ide });
     await plugins.fire('generate.after', { project: p, dir: gen.dir, count: gen.files.length });
-    return { ok: true, dir: gen.dir, files: gen.files.map((f) => ({ path: f, size: 0 })), ports: gen.ports, warnings: plugged.warnings, count: gen.project.interfaces.length };
+    return { ok: true, dir: gen.dir, files: gen.files.map((f) => ({ path: f, size: 0 })), ports: gen.ports, warnings: plugged.warnings, count: gen.project.interfaces.length, tests: gen.tests };
+  });
+
+  ipcMain.handle('iface:generateTests', async (e, project, outDir, opts) => {
+    try {
+      const p = spec.normalizeProject(project);
+      const o = opts || {};
+      const dirName = String(o.dirName || p.name || '接口服务').replace(/[\\/:*?"<>|]/g, '_');
+      const target = outDir || path.join(store.defaultGeneratedRoot(), 'iface', dirName);
+      const port = Number(o.port || services.settings().ports.http);
+      const r = testgen.writeTests(p, target, { port, apiPrefix: o.apiPrefix });
+      return { ...r, port };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   ipcMain.handle('iface:services', async () => services.status());

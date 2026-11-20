@@ -356,6 +356,15 @@
     "接口门": "API Gate",
     "微服务": "Microservices",
     "测试页": "Test Page",
+    "自动测试": "Auto Tests",
+    "生成测试": "Generate Tests",
+    "按接口、路由、字段和鉴权生成 Node 测试，不用手写": "Generate Node tests from APIs, routes, fields, and auth. No handwritten tests needed.",
+    "生成服务会自动带出 tests/": "Generating the service also produces tests/",
+    "还没有生成测试": "No tests generated yet",
+    "测试生成失败：": "Test generation failed: ",
+    "生成服务时会一起写 tests/。列表与 404 断言默认只读；写入生命周期在工程目录用 CBS_WRITE_TESTS=1 npm run test:api 显式开启，跳过原因写进 tests/plan.json。": "Generating the service also writes tests/. List and 404 checks are read-only by default; explicitly enable the write lifecycle in the project directory with CBS_WRITE_TESTS=1 npm run test:api. Skip reasons are recorded in tests/plan.json.",
+    "按接口、路由、字段和鉴权自动生成的 API 测试（Node 原生 test runner）": "API tests generated from APIs, routes, fields, and auth (Node native test runner)",
+    "测试计划：可执行用例、跳过原因、写入开关": "Test plan: runnable cases, skip reasons, and the write switch",
     "生成页": "Generate Page",
     "文档页": "Documentation Page",
     "缓存": "Cache",
@@ -1527,6 +1536,18 @@
     {
       "src": "资源处于正常区间，CPU、内存、磁盘都没有接近瓶颈。",
       "dst": "Resource usage is within normal ranges. CPU, memory, and disk are not approaching bottlenecks."
+    },
+    {
+      "src": "${interfaces} 接口 · ${routes} 路由 · ${cases} 用例 · ${runnable} 可执行 · ${writeCases} 写入用例 · ${skipped} 跳过",
+      "dst": "$1 APIs · $2 routes · $3 cases · $4 read-only · $5 write cases · $6 skipped"
+    },
+    {
+      "src": "已生成 ${cases} 个用例：${runnable} 个可执行，${writeCases} 个写入用例，${skipped} 个跳过",
+      "dst": "Generated $1 cases: $2 executable, $3 write cases, $4 skipped"
+    },
+    {
+      "src": "已生成 ${files} 个文件 · ${tests} 个可执行测试",
+      "dst": "Generated $1 files · $2 runnable tests"
     }
   ]
 }
