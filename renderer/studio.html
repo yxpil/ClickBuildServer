@@ -9552,14 +9552,29 @@ function uiBlockMarkup(t, p, editor) {
     var avMode = String(p.mode || 'content');
     var avNav = lines(p.nav || '首页|home\n列表|collection\n详情|detail\n新建|create');
     var avActive = String(p.view || 'home');
-    var avRows = ['今天新增 12 条', '待处理 3 条', '本周完成 48 条', '异常 1 条'];
-    var avKpis = [['总记录', '1,284'], ['今日新增', '12'], ['待处理', '3'], ['完成率', '96%']];
+    var avApp = {};
+    try { if (p.appJson) avApp = JSON.parse(p.appJson) || {}; } catch (e) { avApp = {}; }
+    if (!Object.keys(avApp).length && typeof S !== 'undefined' && S.proj && S.proj.app) avApp = S.proj.app;
+    var avHome = avApp.home || {};
+    var avBrand = avHome.brand || avApp.brand || p.brand || '业务应用';
+    var avMark = avApp.mark || p.mark || 'APP';
+    var avKicker = avHome.kicker || avApp.kicker || p.kicker || 'BUSINESS APP';
+    var avTitle = avHome.title || p.title || avBrand;
+    var avSub = avHome.sub || p.sub || '';
+    var avCounts = avApp.counts || {};
+    var avKpis = [['接口', String(avCounts.interfaces == null ? '—' : avCounts.interfaces)], ['分类', String(avCounts.categories == null ? '—' : avCounts.categories)], ['路由', String(avCounts.routes == null ? '—' : avCounts.routes)], ['数据表', String(avCounts.tables == null ? '—' : avCounts.tables)]];
+    var avActions = [];
+    var avWrite = avApp.writeLabel || '';
+    if (avWrite) avActions.push(avWrite);
+    (avApp.actions || []).forEach(function (a) { if (a && a.label) avActions.push(a.label); });
+    if (!avActions.length) avActions = ['新建记录', '查看详情']; 
+    var avRows = [];
     return '<div style="height:100%;box-sizing:border-box;background:' + uiColor(p.bg, '#F6F3EC') + ';color:' + uiColor(p.color, '#171613') + ';font-family:' + (p.font ? String(p.font).replace(/[<>"';]/g, '') : '-apple-system,"Segoe UI","Microsoft YaHei",sans-serif') + ';overflow:hidden;border-radius:' + radius + 'px;border:1px solid ' + line + '">' +
       '<div style="height:54px;display:flex;align-items:center;gap:10px;padding:0 18px;background:#fff;border-bottom:1px solid ' + line + '">' +
-        '<span style="width:30px;height:30px;border-radius:9px;background:' + ink + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;letter-spacing:.04em">' + esc(String(p.mark || 'APP').slice(0, 2)) + '</span>' +
-        '<b style="font-size:14px;color:' + ink + '">' + esc(p.brand || '业务应用') + '</b>' +
-        '<span style="font-size:9px;letter-spacing:.12em;color:' + muted + ';text-transform:uppercase">' + esc(p.kicker || 'BUSINESS APP') + '</span>' +
-        '<span style="margin-left:auto;font-size:10px;color:' + muted + '">真实接口 · 真实列表 · 真实表单</span>' +
+        '<span style="width:30px;height:30px;border-radius:9px;background:' + ink + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;letter-spacing:.04em">' + esc(String(avMark).slice(0, 2)) + '</span>' +
+        '<b style="font-size:14px;color:' + ink + '">' + esc(avBrand) + '</b>' +
+        '<span style="font-size:9px;letter-spacing:.12em;color:' + muted + ';text-transform:uppercase">' + esc(avKicker) + '</span>' +
+        '<span style="margin-left:auto;font-size:10px;color:' + muted + '">业务模型预览 · 导出后读取真实数据</span>' +
       '</div>' +
       '<div style="display:flex;height:calc(100% - 54px)">' +
         '<div style="width:176px;flex:none;background:#fff;border-right:1px solid ' + line + ';padding:12px 10px">' +
@@ -9573,7 +9588,7 @@ function uiBlockMarkup(t, p, editor) {
         '</div>' +
         '<div style="flex:1;min-width:0;padding:16px 18px;overflow:hidden">' +
           '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px">' +
-            '<div><div style="font-size:9px;letter-spacing:.14em;color:' + muted + '">' + esc((p.kicker || avMode).toUpperCase()) + '</div><b style="font-size:20px;color:' + ink + '">' + esc(p.title || p.brand || '业务应用') + '</b><div style="font-size:10.5px;color:' + muted + ';margin-top:3px">' + esc(p.sub || '') + '</div></div>' +
+            '<div><div style="font-size:9px;letter-spacing:.14em;color:' + muted + '">' + esc(String(avKicker).toUpperCase()) + '</div><b style="font-size:20px;color:' + ink + '">' + esc(avTitle) + '</b><div style="font-size:10.5px;color:' + muted + ';margin-top:3px">' + esc(avSub) + '</div></div>' +
             '<span style="font-size:10px;padding:5px 10px;border-radius:999px;background:' + ink + ';color:#fff">' + esc(avMode) + '</span>' +
           '</div>' +
           '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">' +
@@ -9583,12 +9598,13 @@ function uiBlockMarkup(t, p, editor) {
             '<div style="flex:1.6;min-width:0;background:#fff;border:1px solid ' + line + ';border-radius:9px;padding:10px;overflow:hidden">' +
               '<div style="display:flex;gap:6px;margin-bottom:8px"><span style="flex:1;height:24px;border:1px solid ' + line + ';border-radius:5px;background:' + uiColor(p.bg, '#F6F3EC') + ';font-size:9px;line-height:24px;padding-left:8px;color:' + muted + '">搜索真实记录…</span><span style="padding:0 10px;height:24px;line-height:24px;border-radius:5px;background:' + ink + ';color:#fff;font-size:9px">新建</span></div>' +
               '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:5px 4px;border-bottom:1px solid ' + line + ';font-size:8.5px;color:' + muted + '"><span>标题 / 业务对象</span><span>状态</span><span>时间</span></div>' +
-              avRows.map(function (r, i) { return '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:6px 4px;border-bottom:1px solid ' + uiColor(p.bg, '#F6F3EC') + ';font-size:9.5px;color:' + color + '"><b style="color:' + ink + '">' + esc(r) + '</b><span style="color:' + muted + '">' + (i % 2 ? '处理中' : '已完成') + '</span><span style="color:' + muted + '">今天</span></div>'; }).join('') +
+              (avRows.length ? avRows.map(function (r, i) { return '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:6px 4px;border-bottom:1px solid ' + uiColor(p.bg, '#F6F3EC') + ';font-size:9.5px;color:' + color + '"><b style="color:' + ink + '">' + esc(r) + '</b><span style="color:' + muted + '">' + (i % 2 ? '处理中' : '已完成') + '</span><span style="color:' + muted + '">今天</span></div>'; }).join('')
+                : '<div style="padding:18px 4px;color:' + muted + ';font-size:9.5px;line-height:1.7">画布不请求接口，因此这里不伪造记录。<br>导出后，列表会按 <b style="color:' + ink + '">primary.list</b> 读取真实数据。</div>') +
             '</div>' +
             '<div style="flex:.75;min-width:0;background:#fff;border:1px solid ' + line + ';border-radius:9px;padding:10px;overflow:hidden">' +
               '<div style="font-size:9px;letter-spacing:.1em;color:' + muted + ';margin-bottom:7px">业务动作</div>' +
-              ['提交表单', '推进状态', '导出数据', '查看关联'].map(function (x) { return '<div style="margin-bottom:6px;padding:6px 8px;border:1px solid ' + line + ';border-radius:6px;font-size:9px;color:' + color + '">' + x + ' →</div>'; }).join('') +
-              '<div style="margin-top:8px;font-size:8.5px;line-height:1.55;color:' + muted + '">点击右侧预览可打开真实应用；所有数据来自当前工程的接口模块。</div>' +
+              avActions.slice(0, 5).map(function (x) { return '<div style="margin-bottom:6px;padding:6px 8px;border:1px solid ' + line + ';border-radius:6px;font-size:9px;color:' + color + '">' + esc(x) + ' →</div>'; }).join('') +
+              '<div style="margin-top:8px;font-size:8.5px;line-height:1.55;color:' + muted + '">动作清单来自工程业务模型；导出后才会真正请求接口。</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
