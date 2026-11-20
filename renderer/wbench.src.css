@@ -65,7 +65,10 @@
 .hub-stats span{border-top:1px solid #dedacf;padding-top:5px}
 .hub-path{margin-top:9px;font-family:Consolas,monospace;font-size:9.5px;color:#a09b90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hub-path.missing{color:#a33}
-.hub-x{position:absolute;right:10px;top:10px;width:28px;height:28px;border-radius:50%;border:1px solid #9d1c1c;background:#b62323;color:#fff;font-size:20px;line-height:1;font-weight:400;display:flex;align-items:center;justify-content:center;opacity:.85;transition:transform .12s,background .12s}
+.hub-x{position:absolute;right:10px;top:10px;width:28px;height:28px;border-radius:50%;border:1px solid #9d1c1c;background:#b62323;color:#fff;font-size:0;line-height:0;padding:0;display:block;opacity:.85;transition:transform .12s,background .12s;overflow:hidden}
+.hub-x::before,.hub-x::after{content:'';position:absolute;left:50%;top:50%;width:12px;height:2px;margin:-1px 0 0 -6px;background:#fff;border-radius:1px;transform-origin:center}
+.hub-x::before{transform:rotate(45deg)}
+.hub-x::after{transform:rotate(-45deg)}
 .hub-x:hover{background:#8e1414;transform:scale(1.06);opacity:1}
 .hub-empty{border:1px dashed #bdb8aa;background:#f8f6ef;padding:28px;color:#777268;font-size:12px;text-align:center}
 .hub-templates{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
