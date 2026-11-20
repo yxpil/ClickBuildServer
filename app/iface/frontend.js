@@ -140,6 +140,169 @@ function readRuntimeFile(name) {
   try { return fs.readFileSync(file, 'utf8'); } catch (e) { return ''; }
 }
 
+// 把案例 seed.sql 拆成预览表数据；只在 PageStudio 画布预览里使用，不改生成服务。
+function splitSqlTuples(text) {
+  const out = [];
+  let depth = 0, quote = false, start = -1;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === "'" && text[i - 1] !== '\\') {
+      if (quote && text[i + 1] === "'") { i += 1; continue; }
+      quote = !quote;
+    } else if (!quote) {
+      if (c === '(') { if (depth === 0) start = i + 1; depth += 1; }
+      else if (c === ')') { depth -= 1; if (depth === 0 && start >= 0) { out.push(text.slice(start, i)); start = -1; } }
+    }
+  }
+  return out;
+}
+
+function splitSqlFields(text) {
+  const out = [];
+  let quote = false, start = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === "'" && text[i - 1] !== '\\') {
+      if (quote && text[i + 1] === "'") { i += 1; continue; }
+      quote = !quote;
+    } else if (c === ',' && !quote) { out.push(text.slice(start, i)); start = i + 1; }
+  }
+  out.push(text.slice(start));
+  return out.map((x) => x.trim());
+}
+
+function parseSqlValue(raw) {
+  const text = String(raw || '').trim();
+  if (/^null$/i.test(text)) return null;
+  if (/^'.*'$/.test(text)) return text.slice(1, -1).replace(/''/g, "'");
+  if (/^now\(\)$/i.test(text) || /^current_timestamp$/i.test(text)) return new Date().toISOString();
+  if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
+  return text;
+}
+
+function seedTables(sql) {
+  const tables = {};
+  const re = /INSERT\s+INTO\s+([A-Za-z0-9_]+)\s*\(([^)]+)\)\s*VALUES\s*([\s\S]*?);/gi;
+  let m;
+  while ((m = re.exec(String(sql || '')))) {
+    const name = m[1];
+    const cols = m[2].split(',').map((x) => x.trim().replace(/^`|`$/g, ''));
+    const rows = splitSqlTuples(m[3]).map((tuple) => {
+      const vals = splitSqlFields(tuple).map(parseSqlValue);
+      const row = {};
+      cols.forEach((c, i) => { row[c] = vals[i]; });
+      return row;
+    });
+    tables[name] = (tables[name] || []).concat(rows);
+  }
+  return tables;
+}
+
+function routeRegex(routePath) {
+  const keys = [];
+  const pathText = String(routePath || '');
+  let src = '';
+  let last = 0;
+  pathText.replace(/:([A-Za-z0-9_]+)/g, (all, key, index) => {
+    src += pathText.slice(last, index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    src += '([^/]+)';
+    keys.push(key);
+    last = index + all.length;
+    return all;
+  });
+  src += pathText.slice(last).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return { source: '^' + src + '$', keys };
+}
+
+function appPreviewData(app, seed) {
+  const a = app || {};
+  const tables = seedTables(seed && seed.sql);
+  const routes = [];
+  (a.interfaces || []).forEach((iface) => {
+    const tableMap = {};
+    (iface.tables || []).forEach((t) => { tableMap[t.key || 'main'] = t.name; });
+    (iface.routes || []).forEach((r) => {
+      const full = '/api' + String(iface.basePath || '') + String(r.path || '');
+      const table = tableMap[r.table || 'main'] || ((iface.tables || [])[0] || {}).name || '';
+      const rx = routeRegex(full);
+      routes.push({ method: String(r.method || 'GET').toUpperCase(), path: full, source: rx.source, keys: rx.keys, table });
+    });
+  });
+  const auth = a.auth || {};
+  const userTable = ((a.interfaces || []).find((i) => i.name === auth.iface) || {}).tables || [];
+  const userRows = userTable.length ? (tables[userTable[0].name] || []) : [];
+  return { tables, routes, user: userRows[0] || { only_id: 'preview_user', nickname: '预览用户', username: 'preview' } };
+}
+
+function previewRuntimeScript(data) {
+  const payload = JSON.stringify(data).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  return `<script>
+(function(){
+  window.CBS_PREVIEW = true;
+  var P = ${payload};
+  window.CBS_PREVIEW_AUTH = { token: 'preview-token', user: P.user || {} };
+  var tables = P.tables || {};
+  var routes = P.routes || [];
+  var seq = 9000;
+  function bodyOf(init) {
+    try { return init && init.body ? JSON.parse(init.body) : {}; } catch (e) { return {}; }
+  }
+  function dataRes(data, status) {
+    return Promise.resolve(new Response(JSON.stringify({ ok: true, data: data }), { status: status || 200, headers: { 'content-type': 'application/json' } }));
+  }
+  function matchRoute(method, path) {
+    var hit = null;
+    routes.forEach(function (r) {
+      if (r.method !== method) return;
+      var m = path.match(new RegExp(r.source));
+      if (!m) return;
+      var params = {};
+      (r.keys || []).forEach(function (k, i) { params[k] = decodeURIComponent(m[i + 1] || ''); });
+      hit = { route: r, params: params };
+    });
+    return hit;
+  }
+  function rowsFor(route) { return (tables[route.table] || []).slice(); }
+  function findRow(rows, id) {
+    var key = ['id', 'only_id', 'code', 'order_no'].filter(function (k) { return rows[0] && rows[0][k] !== undefined; })[0] || 'id';
+    return rows.find(function (x) { return String(x[key]) === String(id); }) || rows[0] || null;
+  }
+  window.fetch = function (input, init) {
+    var raw = String(input && input.url ? input.url : input);
+    var path = (raw.match(/\\/api\\/[^?#]*/) || [''])[0];
+    var method = String((init && init.method) || 'GET').toUpperCase();
+    var hit = matchRoute(method, path);
+    if (!hit) return dataRes({ rows: [], total: 0 });
+    var route = hit.route;
+    var rows = rowsFor(route);
+    if (method === 'GET') {
+      if (Object.keys(hit.params).length) {
+        var row = findRow(rows, hit.params.id || hit.params[Object.keys(hit.params)[0]]);
+        return dataRes(row || {});
+      }
+      return dataRes({ rows: rows, total: rows.length, page: 1, pageSize: rows.length });
+    }
+    if (method === 'POST' && /\\/login$|\\/register$/.test(path)) {
+      return dataRes({ token: 'preview-token', user: P.user });
+    }
+    if (method === 'POST' && /\\/add$/.test(path)) return dataRes({ ok: true });
+    if (method === 'POST' || method === 'PUT') {
+      var body = bodyOf(init);
+      var id = body.id || (hit.params && (hit.params.id || hit.params[Object.keys(hit.params)[0]])) || (++seq);
+      body.id = Number(id) || id;
+      tables[route.table] = rows.filter(function (x) { return String(x.id) !== String(id); }).concat([body]);
+      return dataRes(body, method === 'POST' ? 201 : 200);
+    }
+    if (method === 'DELETE') {
+      tables[route.table] = rows.filter(function (x) { return String(x.id) !== String(hit.params.id); });
+      return dataRes({ deleted: 1 });
+    }
+    return dataRes({ ok: true });
+  };
+})();
+</script>`;
+}
+
 // app 模式：project.app 是业务应用描述（模式、接口、菜单、动作、权限）。
 // 页面由 PageStudio 的「业务应用」组件声明，运行时按同一份描述渲染真实列表、表单、详情和流程。
 function htmlFromApp(studioProject, meta) {
@@ -148,7 +311,12 @@ function htmlFromApp(studioProject, meta) {
   const title = esc(meta && meta.name ? meta.name : (app.name || p.name || 'ClickBuild 应用'));
   const css = readRuntimeFile('app.css');
   const js = readRuntimeFile('app-runtime.js');
-  const payload = JSON.stringify(app).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const preview = meta && meta.preview && app.mode;
+  const previewInfo = preview ? appPreviewData(app, p.previewSeed || (app.seed && app.seed.sql ? app.seed : null)) : null;
+  const appForPayload = Object.assign({}, app);
+  delete appForPayload.seed;
+  const payload = JSON.stringify(appForPayload).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const previewScript = previewInfo ? previewRuntimeScript(previewInfo) : '';
   if (!css || !js) {
     return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title></head><body>
 <div style="font:14px/1.7 system-ui;padding:40px;max-width:720px;margin:0 auto">
@@ -169,7 +337,8 @@ ${css}
 <header id="topbar" class="topbar"></header>
 <main id="app"></main>
 <div id="toasts" class="toast-wrap"></div>
-<script>window.CASE = ${payload}; window.UX = window.CASE;</script>
+<script>window.CASE = ${payload}; window.UX = window.CASE;${preview ? ` window.CBS_PREVIEW_VIEW = ${JSON.stringify(meta.view || 'home')};` : ''}</script>
+${previewScript}
 <script>
 ${js}
 </script>
@@ -272,4 +441,8 @@ function writeYxpp(file, yxpp) {
   return { file, size: fs.statSync(file).size };
 }
 
-module.exports = { parseYxpp, attach, htmlFromProject, readYxpp, writeYxpp };
+function previewHtml(studioProject, meta) {
+  return htmlFromProject(studioProject, Object.assign({ preview: true }, meta || {}));
+}
+
+module.exports = { parseYxpp, attach, htmlFromProject, previewHtml, readYxpp, writeYxpp };

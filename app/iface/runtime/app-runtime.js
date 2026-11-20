@@ -2834,6 +2834,17 @@ App.render = render;
 
 function boot() {
   loadSession();
+  if (window.CBS_PREVIEW_AUTH) {
+    const a = window.CBS_PREVIEW_AUTH || {};
+    const u = a.user || {};
+    state.token = String(a.token || 'preview-token');
+    state.user = Object.assign({}, u, {
+      onlyId: u.only_id || u.onlyId || '',
+      name: u.nickname || u.display_name || u.name || u.username || '预览用户',
+      nickname: u.nickname || u.display_name || '',
+    });
+  }
+  if (window.CBS_PREVIEW_VIEW) state.view = String(window.CBS_PREVIEW_VIEW);
   renderChrome();
   refreshMe().finally(() => { renderChrome(); App.render(); });
 }

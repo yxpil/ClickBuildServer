@@ -9559,6 +9559,15 @@ function uiBlockMarkup(t, p, editor) {
   if (t === 'sidebar') return sidebarMarkup(p, editor);
 
   if (t === 'appview') {
+    var avLive = (typeof S !== 'undefined' && S.previewHtml) ? String(S.previewHtml) : '';
+    if (avLive) {
+      var avPageView = String(p.view || 'home').replace(/[^A-Za-z0-9_-]/g, '') || 'home';
+      avLive = avLive.replace(/window\.CBS_PREVIEW_VIEW = "[^"]*"/, 'window.CBS_PREVIEW_VIEW = "' + avPageView + '"');
+      return '<div style="position:relative;height:100%;border-radius:' + radius + 'px;overflow:hidden;border:1px solid ' + line + ';background:#fff">' +
+        '<iframe title="业务应用真实运行时预览" srcdoc="' + esc(avLive) + '" sandbox="allow-scripts allow-forms allow-modals" style="display:block;width:100%;height:100%;border:0;background:#fff;pointer-events:none"></iframe>' +
+        '<span style="position:absolute;right:9px;bottom:8px;padding:4px 8px;border-radius:999px;background:rgba(23,22,19,.78);color:#fff;font-size:9px;letter-spacing:.02em;pointer-events:none">真实运行时预览 · 数据来自案例 seed</span>' +
+      '</div>';
+    }
     var avMode = String(p.mode || 'content');
     var avNav = lines(p.nav || '首页|home\n列表|collection\n详情|detail\n新建|create');
     var avActive = String(p.view || 'home');
@@ -10828,7 +10837,7 @@ function fieldsFor(n) {
       content.push({ p: 'props.appJson', l: '业务模型 JSON（菜单 / 动作 / 首页 / 接口名，可留空）', k: 'textarea', rows: 8 });
       content.push({ p: 'props.accent', l: '强调色', k: 'color' });
       content.push({ p: 'props.bg', l: '页面底色', k: 'color' });
-      content.push({ l: '业务应用视图是真实组件：保存 .yxpp 后由 app 运行时读取 project.app 的接口、字段和动作，渲染列表、详情、表单和工作流；不是静态占位图。', k: 'hint' });
+      content.push({ l: '业务应用视图是真实组件：保存 .yxpp 后由 app 运行时读取 project.app 的接口、字段和动作，渲染列表、详情、表单和工作流；不是静态占位图。画布里是同一套运行时的只读预览，数据取自案例 previewSeed；导出后打开网页即可用真实接口交互。', k: 'hint' });
     }
     if (t === 'chatbox') {
       content.push({ p: 'props.title', l: '聊天框标题', k: 'text' });
@@ -21324,6 +21333,7 @@ setupGlobalSearch();
     if (!d || typeof d.type !== 'string' || d.type.indexOf('cbs:yxpp:') !== 0) return;
     if (d.type === 'cbs:yxpp:load') {
       S.ifaces = Array.isArray(d.ifaces) ? d.ifaces : [];
+      S.previewHtml = String(d.previewHtml || '');
       applyProject(d.project, d.binding, d.lang);
       markSynced(d.at);
       return;

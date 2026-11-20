@@ -147,7 +147,13 @@ const BUILTINS = [
 
 function projectOf(file) {
   const raw = fs.readFileSync(path.join(CASES_DIR, file), 'utf8');
-  return spec.normalizeProject(JSON.parse(raw));
+  const data = JSON.parse(raw);
+  const project = spec.normalizeProject(data);
+  const studioProject = project && project.frontend && project.frontend.project;
+  if (studioProject && data.seed && data.seed.sql) {
+    studioProject.previewSeed = { enabled: data.seed.enabled !== false, sql: data.seed.sql, note: data.seed.note || '' };
+  }
+  return project;
 }
 
 function counts(project) {

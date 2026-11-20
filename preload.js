@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld('icb', {
   setLocale: (locale) => invoke('i18n:set', locale),
   newWindow: (projectName) => invoke('window:new', projectName || ''),
   studioHtml: () => invoke('iface:studioHtml'),
+  studioPreview: (payload) => invoke('iface:studioPreview', payload),
   frontendBuild: (payload) => invoke('iface:frontend:build', payload),
   frontendImport: () => invoke('iface:frontend:import'),
   startupState: () => invoke('startup:state'),

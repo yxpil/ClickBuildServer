@@ -550,6 +550,10 @@ function registerIpc() {
   });
 
   ipcMain.handle('iface:studioHtml', () => fs.readFileSync(path.join(__dirname, '..', '..', 'renderer', 'studio.html'), 'utf8'));
+  ipcMain.handle('iface:studioPreview', (e, payload) => {
+    const p = payload || {};
+    return { ok: true, html: frontend.previewHtml(p.project, { name: p.name || '业务应用' }) };
+  });
   // .yxpp：ClickBuild 前端工程 → 可打包的前端快照
   ipcMain.handle('iface:frontend:build', (e, payload) => {
     const p = payload || {};

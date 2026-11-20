@@ -5801,12 +5801,19 @@ function studioIfaces() {
     })),
   }));
 }
-function studioLoadProject(project, binding) {
+async function studioLoadProject(project, binding) {
   if (!project) return;
   const language = String((S.settings && S.settings.language) || 'zh-CN').toLowerCase();
   const lang = language.startsWith('en') ? 'en' : 'zh';
   const ifaces = studioIfaces();
-  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, ifaces, at: studioLastAt });
+  let previewHtml = '';
+  if (project.app && project.app.mode && project.previewSeed && project.previewSeed.sql) {
+    try {
+      const got = await api.studioPreview({ project, name: (S.project && S.project.name) || project.name || '' });
+      previewHtml = (got && got.html) || '';
+    } catch (e) { previewHtml = ''; }
+  }
+  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, ifaces, previewHtml, at: studioLastAt });
 }
 
 function captureStudioProject() {
