@@ -30,7 +30,7 @@ INSERT INTO blog_comment (post_id,author,content,status,created_at) VALUES
   },
   booking: {
     guard: 'bk_service',
-    note: '预约：4 个服务、未来时段、3 条预约',
+    note: '预约：4 个服务、5 个未来时段、4 条预约',
     sql: `
 INSERT INTO bk_service (id,name,price,duration,status,created_at) VALUES
 (1,'肩颈理疗',168.00,60,1,NOW()),(2,'足部护理',128.00,45,1,NOW()),(3,'头皮养护',198.00,75,1,NOW()),(4,'初次体验',88.00,30,1,NOW());
