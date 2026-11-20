@@ -972,6 +972,28 @@ function renderEditor() {
   if (S.tab === 'export') bindExport(it);
 }
 
+function nextFieldName(t) {
+  const used = new Set((t.fields || []).map((f) => f.name));
+  let n = (t.fields || []).length + 1;
+  while (used.has(`field_${n}`)) n++;
+  return `field_${n}`;
+}
+
+function addFieldQuick(it) {
+  const t = it && tableOfIface(it, S.tableKey);
+  if (!t) return;
+  S.tab = 'tables';
+  t.fields.push({ name: nextFieldName(t), type: 'varchar', comment: '', pk: false, autoIncrement: false, nullable: true, search: true, hidden: false, query: true, writable: true, default: '' });
+  scheduleSave();
+  const idx = t.fields.length - 1;
+  renderWorkspace();
+  setTimeout(() => {
+    const el = document.querySelector(`[data-fi="${idx}"][data-fk="name"]`);
+    if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'center' }); }
+  }, 0);
+  toast('已新增字段，直接输入名字');
+}
+
 /* ----- 表结构 ----- */
 function tabTables(it) {
   const t = tableOfIface(it, S.tableKey);
@@ -1034,6 +1056,11 @@ function tabTables(it) {
             <td><input class="cell-in" data-fi="${i}" data-fk="comment" value="${esc(f.comment)}"></td>
             <td class="text-center"><button class="btn thin" data-del="${i}">×</button></td>
           </tr>`).join('')}
+          <tr class="add-field-row" data-add-field title="点击新增字段；在字段名里按 Enter 也可以">
+            <td class="rownum">＋</td>
+            <td colspan="9">点击新增字段，或在字段名里按 Enter 继续新增；行内直接改名字、选类型</td>
+            <td></td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -1147,8 +1174,13 @@ function bindTables(it) {
         if (k === 'name') renderSide();
       };
       if (el.tagName === 'SELECT') el.onchange = el.oninput;
+      if (k === 'name') el.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addFieldQuick(it); }
+      };
     }
   });
+  const addRow = $('[data-add-field]');
+  if (addRow) addRow.onclick = () => addFieldQuick(it);
   $$('[data-del]').forEach((b) => {
     b.onclick = async () => {
       if (t.fields.length <= 1) return toast('至少留一个字段');
@@ -2758,11 +2790,7 @@ async function act(name, el) {
   }
   if (name === 'importTable') { const inp = $('#tImport'); if (inp) inp.click(); return; }
   if (name === 'addField' && it) {
-    const t = tableOfIface(it, S.tableKey);
-    const n = await ask('字段名', 'new_field');
-    if (!n) return;
-    t.fields.push({ name: n, type: 'varchar', comment: '', pk: false, autoIncrement: false, nullable: true, search: true, hidden: false, query: true, writable: true, default: '' });
-    scheduleSave(); renderWorkspace();
+    addFieldQuick(it);
     return;
   }
   if (name === 'addRoute' && it) {
