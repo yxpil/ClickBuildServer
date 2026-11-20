@@ -553,6 +553,25 @@ function normalizeTable(t, idx, used) {
     conn: t.conn || 'main',
     comment: t.comment || '',
     store: storeOf(t),
+    indexes: (Array.isArray(t.indexes) ? t.indexes : []).map((x, i) => {
+      const idx = x && typeof x === 'object' ? x : {};
+      return {
+        name: idx.name || `idx_${t.name || `table_${idx + 1}`}_${i + 1}`,
+        unique: !!idx.unique,
+        columns: Array.isArray(idx.columns) ? idx.columns.map(String) : [],
+      };
+    }),
+    relations: (Array.isArray(t.relations) ? t.relations : []).map((r) => {
+      const rel = r && typeof r === 'object' ? r : {};
+      return {
+        name: String(rel.name || ''),
+        kind: String(rel.kind || 'many-to-one'),
+        target: String(rel.target || rel.to || ''),
+        field: String(rel.field || rel.foreignKey || ''),
+        targetKey: String(rel.targetKey || 'id'),
+        through: String(rel.through || ''),
+      };
+    }),
     fields,
   };
 }
