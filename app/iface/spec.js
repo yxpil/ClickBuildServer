@@ -44,6 +44,89 @@ function defaultGuard() {
 }
 
 const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'proxy', 'objects', 'crawl', 'custom'];
+const IO_RESPONSES = ['json', 'cookie', 'file', 'object', 'proxy', 'crawl'];
+const IO_STORES = ['none', 'mysql', 'redis', 'memory', 's3'];
+const FILE_KINDS = ['any', 'image', 'video', 'audio', 'document', 'pdf', 'archive'];
+const COOKIE_SAME_SITE = ['Lax', 'Strict', 'None'];
+
+function defaultIoTypes() {
+  return [
+    { id: 'json', name: '普通 JSON', response: 'json', storage: 'none', fileKind: 'any', maxMb: 20, tableKey: 'main', field: '', autoBind: false, cookieName: '', ttl: 0, prefix: '', note: '查表/写入后直接返回 JSON' },
+    { id: 'cookie', name: 'Cookie 会话', response: 'cookie', storage: 'redis', fileKind: 'any', maxMb: 0, tableKey: 'main', field: '', autoBind: false, cookieName: 'icb_token', ttl: 7200, prefix: 'icb:token:', note: '脚本 TOKEN NEW 签发，会话写 Redis，响应自动 Set-Cookie' },
+    { id: 'file', name: '文件上传', response: 'file', storage: 's3', fileKind: 'any', maxMb: 20, tableKey: 'main', field: 'file_key', autoBind: true, cookieName: '', ttl: 0, prefix: '', note: 'multipart 文件进 S3，SQL 只存 objectKey' },
+    { id: 'image', name: '图片上传', response: 'file', storage: 's3', fileKind: 'image', maxMb: 8, tableKey: 'main', field: 'file_key', autoBind: true, cookieName: '', ttl: 0, prefix: '', note: '只收图片，进 S3，SQL 存对象键' },
+    { id: 'object', name: '对象列表', response: 'object', storage: 's3', fileKind: 'any', maxMb: 0, tableKey: 'main', field: '', autoBind: false, cookieName: '', ttl: 0, prefix: '', note: '直接列桶内对象，不走 SQL' },
+    { id: 'proxy', name: '上游代理', response: 'proxy', storage: 'none', fileKind: 'any', maxMb: 0, tableKey: 'main', field: '', autoBind: false, cookieName: '', ttl: 0, prefix: '', note: '透传到“上游”页配置的服务' },
+    { id: 'crawl', name: '网页抓取', response: 'crawl', storage: 'none', fileKind: 'any', maxMb: 0, tableKey: 'main', field: '', autoBind: false, cookieName: '', ttl: 0, prefix: '', note: '抓网页后在脚本里加工' },
+    { id: 'cache', name: 'Redis 缓存结果', response: 'json', storage: 'redis', fileKind: 'any', maxMb: 0, tableKey: 'main', field: '', autoBind: false, cookieName: '', ttl: 60, prefix: 'icb:', note: '查询结果写 Redis，键按路由模板生成' },
+  ];
+}
+
+function normalizeIoTypes(list) {
+  const defaults = defaultIoTypes();
+  const given = Array.isArray(list) ? list : [];
+  const out = [];
+  const seen = new Set();
+  const push = (raw, i) => {
+    const base = defaults.find((x) => x.id === String(raw && raw.id)) || defaults[0];
+    const id = safeIdent((raw && raw.id) || base.id || `type_${i + 1}`, 'type');
+    if (seen.has(id)) return;
+    seen.add(id);
+    const pick = (key, allowed, def) => (allowed.includes(raw && raw[key]) ? raw[key] : def);
+    out.push({
+      id,
+      name: String((raw && raw.name) || base.name || id),
+      response: pick('response', IO_RESPONSES, base.response),
+      storage: pick('storage', IO_STORES, base.storage),
+      fileKind: pick('fileKind', FILE_KINDS, base.fileKind),
+      maxMb: Math.max(0, Number((raw && raw.maxMb != null ? raw.maxMb : base.maxMb) || 0)),
+      tableKey: String((raw && raw.tableKey) || base.tableKey || 'main'),
+      field: String((raw && raw.field != null ? raw.field : (base.field || ''))),
+      autoBind: raw && raw.autoBind != null ? !!raw.autoBind : !!base.autoBind,
+      cookieName: String((raw && raw.cookieName) || base.cookieName || ''),
+      ttl: Math.max(0, Number((raw && raw.ttl != null ? raw.ttl : base.ttl) || 0)),
+      prefix: String((raw && raw.prefix) || base.prefix || ''),
+      note: String((raw && raw.note) || base.note || ''),
+    });
+  };
+  given.forEach(push);
+  defaults.forEach((d, i) => { if (!seen.has(d.id)) push(d, i); });
+  return out;
+}
+
+function ioFromKind(kind, scriptText) {
+  const base = defaultIoTypes();
+  if (kind === 'upload') return base.find((x) => x.id === 'file');
+  if (kind === 'objects') return base.find((x) => x.id === 'object');
+  if (kind === 'proxy') return base.find((x) => x.id === 'proxy');
+  if (kind === 'crawl') return base.find((x) => x.id === 'crawl');
+  if (/TOKEN\s+NEW/i.test(String(scriptText || ''))) return base.find((x) => x.id === 'cookie');
+  return base.find((x) => x.id === 'json');
+}
+
+function ioOf(route) {
+  const kind = ROUTE_KINDS.includes(route && route.key) ? route.key : 'custom';
+  const fallback = ioFromKind(kind, route && route.script);
+  const raw = (route && route.io) || {};
+  const pick = (key, allowed, def) => (allowed.includes(raw[key]) ? raw[key] : def);
+  return {
+    typeId: String(raw.typeId || fallback.id),
+    response: pick('response', IO_RESPONSES, fallback.response),
+    storage: pick('storage', IO_STORES, fallback.storage),
+    fileKind: pick('fileKind', FILE_KINDS, fallback.fileKind),
+    maxMb: Math.max(0, Number(raw.maxMb != null ? raw.maxMb : fallback.maxMb) || 0),
+    tableKey: String(raw.tableKey || fallback.tableKey || 'main'),
+    field: String(raw.field != null ? raw.field : (fallback.field || '')),
+    autoBind: raw.autoBind != null ? !!raw.autoBind : !!fallback.autoBind,
+    cookieName: String(raw.cookieName || fallback.cookieName || ''),
+    ttl: Math.max(0, Number(raw.ttl != null ? raw.ttl : fallback.ttl) || 0),
+    cookiePath: String(raw.cookiePath || '/'),
+    httpOnly: raw.httpOnly !== false,
+    sameSite: COOKIE_SAME_SITE.includes(raw.sameSite) ? raw.sameSite : 'Lax',
+    prefix: String(raw.prefix || fallback.prefix || ''),
+    bucket: String(raw.bucket || ''),
+  };
+}
 
 const ROUTE_META = {
   list: { name: '列表', method: 'GET', path: '/:table' },
@@ -418,9 +501,10 @@ function seedProject() {
       { name: 'MASK_PHONE', params: ['v'], body: 'CONCAT(SUBSTR(v, 0, 3), "****", SUBSTR(v, 7, 4))' },
     ],
     interfaces: [order, user],
+    ioTypes: defaultIoTypes(),
     connections: defaultConnections(),
     log: { enabled: true, level: 'INFO', conn: 'main', database: '', table: 'sys_log', console: true },
-    token: { ttl: 7200, header: 'authorization', cookie: 'icb_token' },
+    token: { ttl: 7200, header: 'authorization', cookie: 'icb_token', store: 'redis' },
     docs: { title: '接口工程 API', version: '1.0.0', description: '由 ClickBuild 生成的接口服务文档' },
     services: [
       { key: 'self', label: '本服务', baseUrl: 'http://127.0.0.1:18100/' },
@@ -476,6 +560,7 @@ function normalizeRoute(r, idx) {
     },
     script: typeof r.script === 'string' ? r.script : ROUTE_TEMPLATES[kind],
     cache: { enabled: !!(r.cache && r.cache.enabled), key: (r.cache && r.cache.key) || '', ttl: Number((r.cache && r.cache.ttl) || 60) },
+    io: ioOf({ key: kind, script: typeof r.script === 'string' ? r.script : ROUTE_TEMPLATES[kind], io: r.io }),
     docs: {
       summary: (r.docs && r.docs.summary) || r.summary || '',
       description: (r.docs && r.docs.description) || '',
@@ -502,6 +587,22 @@ function normalizeIface(iface, project, idx) {
   ).map((t, i) => normalizeTable({ ...t, fields: t.fields || (i === 0 ? iface.fields : undefined) }, i, used));
   let routes = Array.isArray(iface.routes) ? iface.routes.map(normalizeRoute) : [];
   if (!routes.length) routes = ['list', 'detail', 'create', 'update', 'delete'].map((k) => newRoute(k, { tables }));
+  let storageBind = (iface.storage && iface.storage.bindField) || 'file_key';
+  for (const r of routes) {
+    if (r.io && r.io.response === 'file' && r.io.autoBind && r.io.field) {
+      const t = tables.find((x) => x.key === r.io.tableKey) || tables[0];
+      const field = safeIdent(r.io.field, 'field');
+      if (t && !t.fields.some((f) => f.name === field)) {
+        t.fields.push({
+          ...newField(field, 'varchar'),
+          hidden: true,
+          query: false,
+          comment: '对象键（S3 key）',
+        });
+      }
+      storageBind = field;
+    }
+  }
   return {
     id: iface.id || crypto.randomUUID().slice(0, 8),
     name: iface.name || `接口${idx + 1}`,
@@ -510,7 +611,7 @@ function normalizeIface(iface, project, idx) {
     basePath: iface.basePath || '',
     tables,
     routes,
-    storage: { enabled: iface.storage ? iface.storage.enabled !== false : true, bucket: (iface.storage && iface.storage.bucket) || 'clickbuild', bindField: (iface.storage && iface.storage.bindField) || 'file_key' },
+    storage: { enabled: iface.storage ? iface.storage.enabled !== false : true, bucket: (iface.storage && iface.storage.bucket) || 'clickbuild', bindField: storageBind },
     objects: {
       enabled: !!(iface.objects && iface.objects.enabled),
       bucket: (iface.objects && iface.objects.bucket) || ((iface.storage && iface.storage.bucket) || 'clickbuild'),
@@ -581,6 +682,7 @@ function normalizeProject(project) {
     name: p.name || '接口工程',
     description: p.description || '',
     categories,
+    ioTypes: normalizeIoTypes(p.ioTypes),
     functions,
     interfaces: ifaces,
     connections: {
@@ -600,6 +702,7 @@ function normalizeProject(project) {
       ttl: Number((p.token && p.token.ttl) || 7200),
       header: (p.token && p.token.header) || 'authorization',
       cookie: (p.token && p.token.cookie) || 'icb_token',
+      store: (p.token && p.token.store) === 'memory' ? 'memory' : 'redis',
     },
     docs: {
       title: (p.docs && p.docs.title) || (p.name || '接口工程'),
@@ -689,6 +792,14 @@ function validateProject(project) {
       const chk = script.checkScript(r.script);
       chk.problems.forEach((p) => errors.push(`接口「${it.name}」${r.method} ${r.path}：${p}`));
       if (r.proxy && r.proxy.enabled && !r.proxy.target && !r.proxy.upstream) errors.push(`接口「${it.name}」${r.method} ${r.path}：代理路由缺少上游或目标路径`);
+      if (r.io) {
+        if (r.io.response === 'file' && r.io.storage !== 's3') errors.push(`接口「${it.name}」${r.method} ${r.path}：文件上传必须使用 S3 存储`);
+        if (r.io.response === 'file' && r.io.autoBind) {
+          const target = it.tables.find((t) => t.key === r.io.tableKey) || it.tables[0];
+          if (!target || !target.fields.some((f) => f.name === r.io.field)) errors.push(`接口「${it.name}」${r.method} ${r.path}：自动入库字段不存在 ${r.io.field}`);
+        }
+        if (r.io.response === 'cookie' && !['redis', 'memory'].includes(r.io.storage)) errors.push(`接口「${it.name}」${r.method} ${r.path}：Cookie 会话只能存 Redis 或进程内存`);
+      }
       if (r.roles && r.roles.length) {
         const known = new Set(((project.permissions && project.permissions.roles) || []).map((x) => x.key));
         r.roles.forEach((role) => { if (!known.has(role)) errors.push(`接口「${it.name}」${r.method} ${r.path}：权限矩阵里没有角色 ${role}`); });
@@ -727,7 +838,9 @@ function ddlOf(iface) {
 
 module.exports = {
   TYPES, TYPE_KEYS, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES,
+  IO_RESPONSES, IO_STORES, FILE_KINDS,
   newField, defaultFields, newTable, newRoute, newIface, cloneIface, seedProject,
+  defaultIoTypes, normalizeIoTypes, ioOf,
   safeIdent,
   defaultConnections, defaultGuard,
   normalizeProject, normalizeIface, normalizeTable, normalizeRoute, validateProject, ddlOf,

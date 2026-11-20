@@ -206,7 +206,7 @@ function buildOpenApi(project, port) {
         operationId: `${iface.id}_${route.key}_${route.method}`.replace(/[^A-Za-z0-9_]/g, '_'),
         responses: { 200: { description: 'OK' }, 400: { description: '参数/业务错误' }, 401: { description: '未授权' }, 429: { description: '限流' }, 503: { description: '熔断/时间窗' } },
         security: route.auth ? [{ bearer: [] }] : undefined,
-        'x-clickbuild': { kind: route.key, tx: !!(route.guard && route.guard.tx), cache: route.cache },
+        'x-clickbuild': { kind: route.key, io: route.io, tx: !!(route.guard && route.guard.tx), cache: route.cache },
         'x-examples': {
           request: (route.docs && route.docs.requestExample) || '',
           response: (route.docs && route.docs.responseExample) || '',

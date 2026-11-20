@@ -320,23 +320,53 @@ function persistLog(entry) {
 
 // ---------------- 会话（token） ----------------
 const TOKEN_TTL = Number(TOKEN_CFG.ttl || 7200);
+const MEM_TOKENS = new Map();
+const MEM_ONLY = new Map();
+function memSet(token, payload, ttl) {
+  const ms = Math.max(1, Number(ttl || TOKEN_TTL)) * 1000;
+  MEM_TOKENS.set(token, { payload, expireAt: Date.now() + ms });
+  MEM_ONLY.set(String(payload.onlyId || ''), { token, expireAt: Date.now() + ms });
+}
+function memGet(token) {
+  const hit = MEM_TOKENS.get(token);
+  if (!hit) return null;
+  if (hit.expireAt <= Date.now()) { MEM_TOKENS.delete(token); return null; }
+  return hit.payload;
+}
+function memDel(token) {
+  const payload = memGet(token);
+  MEM_TOKENS.delete(token);
+  if (payload && payload.onlyId) MEM_ONLY.delete(String(payload.onlyId));
+  return !!payload;
+}
 const tokenStore = {
-  async mint(user) {
-    if (!redis) throw new Error('Redis 不可用，无法签发 token');
+  async mint(user, mode) {
+    const store = mode === 'memory' ? 'memory' : (TOKEN_CFG.store === 'memory' ? 'memory' : 'redis');
     const onlyId = (user && user.onlyId) || crypto.randomUUID().replace(/-/g, '');
     const token = crypto.randomBytes(24).toString('hex');
     const payload = { ...user, onlyId, issuedAt: new Date().toISOString() };
+    if (store === 'memory') {
+      if (!redis) console.warn('[token] Redis 不可用，会话写入进程内存');
+      memSet(token, payload, TOKEN_TTL);
+      return { token, onlyId, ttl: TOKEN_TTL, store: 'memory' };
+    }
+    if (!redis) throw new Error('Redis 不可用，无法签发 token；可在“接口类型”里把 Cookie 会话存储切到内存');
     await redis.setex(`icb:token:${token}`, TOKEN_TTL, JSON.stringify(payload));
     await redis.set(`icb:only:${onlyId}`, token, 'EX', TOKEN_TTL);
-    return { token, onlyId, ttl: TOKEN_TTL };
+    return { token, onlyId, ttl: TOKEN_TTL, store: 'redis' };
   },
   async get(token) {
-    if (!redis || !token) return null;
+    if (!token) return null;
+    const mem = memGet(token);
+    if (mem) return mem;
+    if (!redis) return null;
     const raw = await redis.get(`icb:token:${token}`);
     return raw ? JSON.parse(raw) : null;
   },
   async del(token) {
-    if (!redis || !token) return false;
+    if (!token) return false;
+    const mem = memDel(token);
+    if (!redis) return mem;
     const raw = await redis.get(`icb:token:${token}`);
     if (raw) {
       try {
@@ -345,7 +375,7 @@ const tokenStore = {
       } catch (e) { /* 忽略 */ }
     }
     await redis.del(`icb:token:${token}`);
-    return true;
+    return !!raw || mem;
   },
 };
 
@@ -360,11 +390,18 @@ function bearer(req) {
 
 // 登录脚本签发 token 后自动写入 HttpOnly cookie；退出时清除。
 // 这样浏览器只靠 cookie 就能维持登录态，API 客户端仍然可以用 Authorization。
-function authCookie(ctx) {
-  const name = String(TOKEN_CFG.cookie || 'icb_token');
-  if (ctx.tokenDeleted) return `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+function authCookie(ctx, route) {
+  const io = (route && route.io) || {};
+  const cookieRoute = io.response === 'cookie';
+  if (!cookieRoute && !ctx.mintedToken && !ctx.tokenDeleted) return '';
+  const name = String(io.cookieName || TOKEN_CFG.cookie || 'icb_token');
+  const path = String(io.cookiePath || '/');
+  const ttl = Number(io.ttl || TOKEN_TTL);
+  const same = ['Lax', 'Strict', 'None'].includes(io.sameSite) ? io.sameSite : 'Lax';
+  const flags = `Path=${path}; HttpOnly; SameSite=${same}${same === 'None' ? '; Secure' : ''}`;
+  if (ctx.tokenDeleted) return `${name}=; ${flags}; Max-Age=0`;
   if (!ctx.mintedToken) return '';
-  return `${name}=${encodeURIComponent(ctx.mintedToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${TOKEN_TTL}`;
+  return `${name}=${encodeURIComponent(ctx.mintedToken)}; ${flags}; Max-Age=${ttl}`;
 }
 
 // ---------------- 路由匹配 ----------------
@@ -649,10 +686,31 @@ function safeName(name) {
   return String(name || 'file').replace(/[^\w.\-\u4e00-\u9fa5]/g, '_').slice(0, 120);
 }
 
-async function putObject(iface, filename, contentType, buffer) {
+function fileKindOk(kind, filename, contentType) {
+  const k = String(kind || 'any');
+  if (k === 'any') return true;
+  const ct = String(contentType || '').toLowerCase();
+  const ext = (String(filename || '').match(/\.([A-Za-z0-9]+)$/) || [])[1] || '';
+  const image = /^image\//.test(ct) || /^(png|jpg|jpeg|gif|webp|bmp|svg|avif)$/i.test(ext);
+  const video = /^video\//.test(ct) || /^(mp4|mov|webm|mkv|avi)$/i.test(ext);
+  const audio = /^audio\//.test(ct) || /^(mp3|wav|ogg|m4a|flac|aac)$/i.test(ext);
+  const pdf = ct === 'application/pdf' || ext.toLowerCase() === 'pdf';
+  const doc = pdf || /^(doc|docx|xls|xlsx|ppt|pptx|csv|txt|md|rtf)$/i.test(ext) || /^(application\/(msword|vnd\.|pdf)|text\/)/.test(ct);
+  const archive = /^(zip|rar|7z|tar|gz|tgz|bz2)$/i.test(ext) || /^(application\/(zip|x-tar|x-rar-compressed))/.test(ct);
+  if (k === 'image') return image;
+  if (k === 'video') return video;
+  if (k === 'audio') return audio;
+  if (k === 'pdf') return pdf;
+  if (k === 'document') return doc;
+  if (k === 'archive') return archive;
+  return true;
+}
+
+async function putObject(iface, filename, contentType, buffer, opts) {
   const day = new Date().toISOString().slice(0, 10);
-  const bucket = (iface.storage && iface.storage.bucket) || 'clickbuild';
-  const key = `${iface.tables[0].name}/${day}/${crypto.randomUUID()}-${safeName(filename)}`;
+  const bucket = (opts && opts.bucket) || (iface.storage && iface.storage.bucket) || 'clickbuild';
+  const prefix = String((opts && opts.prefix) || '').replace(/^\/+|\/+$/g, '');
+  const key = `${prefix ? prefix + '/' : ''}${iface.tables[0].name}/${day}/${crypto.randomUUID()}-${safeName(filename)}`;
   if (!s3 || !bucketReady) {
     const localDir = (cfg.storage && cfg.storage.localDir) || './uploads';
     const full = path.join(localDir, key);
@@ -939,13 +997,47 @@ async function handle(req, res, item) {
     query, body, path: item.params, id: item.params.id != null ? item.params.id : (query.id != null ? query.id : body.id),
     file: null, vars: user ? { user } : {}, uuid: crypto.randomUUID().replace(/-/g, ''),
     user, token, remoteIp: ip, traceId, service: project.services || [],
+    io: route.io || {},
+    cookieStore: route.io && route.io.response === 'cookie' && route.io.storage === 'memory' ? 'memory' : 'redis',
     mintedToken: '', mintedOnlyId: '', tokenDeleted: false,
   };
 
   let uploaded = null;
-  if (file && iface.storage && iface.storage.enabled !== false && route.key === 'upload') {
-    uploaded = await putObject(iface, file.filename, file.contentType, file.buffer);
-    ctx.file = uploaded;
+  const io = route.io || {};
+  if (io.response === 'file') {
+    if (!file) return send(res, 400, { ok: false, error: 'FILE_REQUIRED', message: '该接口类型要求上传文件（multipart 字段 file）', traceId });
+    const maxMb = Number(io.maxMb || 0);
+    if (maxMb > 0 && file.buffer.length > maxMb * 1024 * 1024) {
+      return send(res, 413, { ok: false, error: 'FILE_TOO_LARGE', message: `文件超过 ${maxMb} MB`, traceId });
+    }
+    if (!fileKindOk(io.fileKind, file.filename, file.contentType)) {
+      return send(res, 415, { ok: false, error: 'FILE_TYPE_NOT_ALLOWED', message: `只允许 ${io.fileKind} 类型`, traceId });
+    }
+    try {
+      uploaded = await putObject(iface, file.filename, file.contentType, file.buffer, { bucket: io.bucket, prefix: io.prefix });
+      ctx.file = uploaded;
+      if (io.autoBind && io.field) {
+        const target = (iface.tables || []).find((t) => t.key === io.tableKey) || iface.tables[0];
+        if (target) {
+          const qf = '`' + String(io.field).replace(/`/g, '') + '`';
+          const qt = '`' + String(target.name).replace(/`/g, '') + '`';
+          const pk = (target.fields || []).find((f) => f.pk) || { name: 'id' };
+          const h = await poolFor(target.conn || 'main');
+          if (ctx.id != null && String(ctx.id) !== '') {
+            const r = await h.pool.query(`UPDATE ${qt} SET ${qf} = ? WHERE \`${pk.name}\` = ?`, [uploaded.objectKey, ctx.id]);
+            uploaded.boundRows = (r[0] || r).affectedRows;
+          } else {
+            const r = await h.pool.query(`INSERT INTO ${qt} (${qf}) VALUES (?)`, [uploaded.objectKey]);
+            const ins = r[0] || r;
+            uploaded.recordId = ins.insertId;
+            ctx.id = ins.insertId;
+          }
+        }
+      }
+    } catch (e) {
+      logPush({ level: 'ERROR', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 500, ms: Date.now() - started, ip, traceId, message: '文件入库失败', data: { error: e.message } });
+      return send(res, 500, { ok: false, error: 'UPLOAD_FAILED', message: e.message, traceId });
+    }
   }
 
   const ckey = route.cache && route.cache.enabled ? cacheKeyOf(iface, route, ctx) : '';
@@ -1195,7 +1287,7 @@ async function handle(req, res, item) {
     ...(logs.length ? { logs } : {}),
   };
   if (status >= 500) return sendError(req, res, status, out, '服务内部错误', outBody.message || '');
-  const setCookie = authCookie(ctx);
+  const setCookie = authCookie(ctx, route);
   return send(res, status, out, setCookie ? { 'set-cookie': setCookie } : undefined);
 }
 
@@ -1212,7 +1304,7 @@ function openapi() {
         operationId: `${iface.id}_${route.key}_${route.method}_${route.path}`.replace(/[^A-Za-z0-9_]/g, '_'),
         responses: { 200: { description: 'OK' }, 400: { description: '参数/请求体错误' }, 401: { description: '未授权' }, 403: { description: '无权访问' }, 404: { description: '资源/路由不存在' }, 405: { description: '请求方法不允许' }, 409: { description: '状态冲突' }, 413: { description: '请求体过大' }, 429: { description: '限流' }, 503: { description: '熔断/时间窗/服务不可用' } },
         ...(route.auth ? { security: [{ bearer: [] }] } : {}),
-        'x-clickbuild': { kind: route.key, tx: !!(route.guard && route.guard.tx), cache: route.cache },
+        'x-clickbuild': { kind: route.key, io: route.io, tx: !!(route.guard && route.guard.tx), cache: route.cache },
       };
       const params = [];
       const varKeys = Date.now();
@@ -1416,7 +1508,7 @@ const server = http.createServer(async (req, res) => {
         ok: true, name: project.name, database: CFG.database, prefix: CFG.apiPrefix,
         categories: project.categories,
         connections: CONNS,
-        log: LOG_CFG, token: { ttl: TOKEN_TTL, header: TOKEN_CFG.header, cookie: TOKEN_CFG.cookie },
+        log: LOG_CFG, token: { ttl: TOKEN_TTL, header: TOKEN_CFG.header, cookie: TOKEN_CFG.cookie, store: TOKEN_CFG.store || 'redis' },
         interfaces: IFACES.map((i) => ({
           id: i.id, name: i.name, comment: i.comment, categoryId: i.categoryId, docs: i.docs,
           tables: i.tables.map((t) => ({ key: t.key, name: t.name, schema: t.schema, conn: t.conn, fields: t.fields })),

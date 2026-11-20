@@ -491,6 +491,119 @@ function tableOfIface(iface, key) {
   return iface.tables.find((t) => t.key === key) || iface.tables[0];
 }
 
+const IO_RESPONSES = [
+  ['json', '返回 JSON'],
+  ['cookie', 'Cookie 会话'],
+  ['file', '文件上传'],
+  ['object', '对象列表'],
+  ['proxy', '上游代理'],
+  ['crawl', '网页抓取'],
+];
+const IO_STORES = [
+  ['none', '不额外存储'],
+  ['mysql', 'MySQL 表'],
+  ['redis', 'Redis'],
+  ['memory', '进程内存'],
+  ['s3', 'S3 对象存储'],
+];
+const IO_FILE_KINDS = [
+  ['any', '任意文件'],
+  ['image', '图片'],
+  ['video', '视频'],
+  ['audio', '音频'],
+  ['document', '文档'],
+  ['pdf', 'PDF'],
+  ['archive', '压缩包'],
+];
+function ioTypesOf() {
+  return (S.project && Array.isArray(S.project.ioTypes)) ? S.project.ioTypes : [];
+}
+function ioTypeOf(id) {
+  return ioTypesOf().find((x) => x.id === id) || ioTypesOf()[0] || null;
+}
+function ioOfRoute(r) {
+  const io = (r && r.io) || {};
+  return {
+    typeId: io.typeId || (r && r.key === 'upload' ? 'file' : (r && r.key === 'objects' ? 'object' : (r && r.key === 'proxy' ? 'proxy' : 'json'))),
+    response: io.response || 'json',
+    storage: io.storage || 'none',
+    fileKind: io.fileKind || 'any',
+    maxMb: Number(io.maxMb || 0),
+    tableKey: io.tableKey || 'main',
+    field: io.field || '',
+    autoBind: io.autoBind != null ? !!io.autoBind : io.response === 'file',
+    cookieName: io.cookieName || '',
+    ttl: Number(io.ttl || 0),
+    cookiePath: io.cookiePath || '/',
+    httpOnly: io.httpOnly !== false,
+    sameSite: io.sameSite || 'Lax',
+    prefix: io.prefix || '',
+    bucket: io.bucket || '',
+  };
+}
+function applyIoType(it, r, typeId) {
+  const type = ioTypeOf(typeId);
+  if (!type) return;
+  const io = ioOfRoute(r);
+  ['response', 'storage', 'fileKind', 'maxMb', 'tableKey', 'field', 'autoBind', 'cookieName', 'ttl', 'prefix'].forEach((k) => { io[k] = type[k]; });
+  io.typeId = type.id;
+  r.io = io;
+  if (type.response === 'cookie') {
+    S.project.token = S.project.token || {};
+    if (!r.io.cookieName) r.io.cookieName = (S.project.token && S.project.token.cookie) || 'icb_token';
+  }
+  if (type.response === 'file') {
+    const target = tableOfIface(it, type.tableKey);
+    if (target && type.field && !target.fields.some((f) => f.name === type.field)) {
+      target.fields.push({ name: type.field, type: 'varchar', comment: '对象键（S3 key）', pk: false, autoIncrement: false, nullable: true, search: false, hidden: true, query: false, writable: true, default: '' });
+      if (it.storage) it.storage.bindField = type.field;
+    }
+  }
+  if (type.storage === 'redis' && type.response === 'json') {
+    r.cache = r.cache || { enabled: true, key: 'icb:{{t:main}}:{{queryHash}}', ttl: Number(type.ttl || 60) };
+    r.cache.enabled = true;
+    r.cache.ttl = Number(type.ttl || 60);
+  }
+}
+function paramsOfRoute(it, r) {
+  const out = [];
+  String(r.path || '').split('/').filter((s) => s.startsWith(':')).forEach((s) => out.push('path:' + s.slice(1)));
+  const io = ioOfRoute(r);
+  if (io.response === 'file') out.push('file');
+  if (r.method !== 'GET') {
+    const t = tableOfIface(it, io.tableKey) || it.tables[0] || {};
+    (t.fields || []).filter((f) => f.writable !== false && !f.pk && !f.autoIncrement).slice(0, 6).forEach((f) => out.push('body:' + f.name));
+  }
+  const q = [];
+  if (r.key === 'list' || r.key === 'custom') q.push('page', 'size', 'keyword');
+  if (r.key === 'detail' && !out.some((x) => x.startsWith('path:'))) q.push('id');
+  return out.concat(q).join(', ') || '无';
+}
+function ioLogicText(it, r) {
+  const io = ioOfRoute(r);
+  const t = tableOfIface(it, io.tableKey) || it.tables[0] || { name: 'table' };
+  if (io.response === 'file') {
+    return [
+      `1. 接收 multipart 文件，拒绝超过 ${io.maxMb || 0} MB 或非「${io.fileKind}」类型`,
+      `2. 写入 S3 桶 ${io.bucket || (it.storage && it.storage.bucket) || 'clickbuild'}${io.prefix ? ' / 前缀 ' + io.prefix : ''}`,
+      `3. 对象键写入 ${t.name}.${io.field || '（未选字段）'}${io.autoBind ? '（服务器自动入库）' : '（由脚本入库）'}`,
+      `4. 响应附带 { objectKey, objectUrl, filename, size }`,
+    ].join('\n');
+  }
+  if (io.response === 'cookie') {
+    return [
+      `1. 脚本用 TOKEN NEW 签发会话`,
+      `2. 会话写 ${io.storage === 'memory' ? '进程内存（重启丢失）' : 'Redis ' + (io.prefix || 'icb:token:')}`,
+      `3. 响应 Set-Cookie: ${io.cookieName || 'icb_token'}，HttpOnly=${io.httpOnly ? 'true' : 'false'}，SameSite=${io.sameSite}，Max-Age=${io.ttl || 7200}`,
+      `4. 后续请求可从 Authorization 或 Cookie 读取同一会话`,
+    ].join('\n');
+  }
+  if (io.response === 'object') return '服务器直接列 S3 桶内对象，支持 marker 分页、下载与删除，不走 SQL。';
+  if (io.response === 'proxy') return '服务器把请求转发到“上游”页配置的 baseUrl，不进入脚本。';
+  if (io.response === 'crawl') return '服务器抓取目标网页，脚本里用 CRAWL 取得 title/text/links 后继续加工。';
+  if (io.storage === 'redis') return `查询结果写 Redis，TTL ${io.ttl || 60}s；命中缓存直接返回，写操作按路由缓存键失效。`;
+  return '执行脚本里的 QUERY / EXEC，按 RETURN 的 JSON 返回。';
+}
 function nextTableKey(iface, base) {
   const clean = String(base || 'table').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'table';
   if (!iface.tables.some((t) => t.key === clean)) return clean;
@@ -786,6 +899,7 @@ function renderEditor() {
   const tabs = [
     ['tables', '表结构'],
     ['routes', '路由脚本'],
+    ['io', '接口类型'],
     ['docs', '接口文档'],
     ['cache', '缓存与存储'],
     ['upstream', '上游'],
@@ -814,6 +928,7 @@ function renderEditor() {
   const body = $('#tabBody');
   if (S.tab === 'tables') body.innerHTML = tabTables(it);
   else if (S.tab === 'routes') body.innerHTML = tabRoutes(it);
+  else if (S.tab === 'io') body.innerHTML = tabIo(it);
   else if (S.tab === 'docs') body.innerHTML = tabDocs(it);
   else if (S.tab === 'cache') body.innerHTML = tabCache(it);
   else if (S.tab === 'upstream') body.innerHTML = tabUpstream(it);
@@ -830,6 +945,7 @@ function renderEditor() {
 
   if (S.tab === 'tables') bindTables(it);
   if (S.tab === 'routes') bindRoutes(it);
+  if (S.tab === 'io') bindIo(it);
   if (S.tab === 'docs') bindDocs(it);
   if (S.tab === 'cache') bindCache(it);
   if (S.tab === 'upstream') bindUpstream(it);
@@ -1094,6 +1210,7 @@ function showScriptGuide() {
 function tabRoutes(it) {
   const r = it.routes.find((x) => x.id === S.routeId) || it.routes[0];
   if (!r) return '<div class="p-4">没有路由。</div>';
+  const io = ioOfRoute(r);
   return `
   <div class="h-full flex min-h-0">
     <div class="w-60 shrink-0 border-r border-neutral-300 overflow-auto">
@@ -1115,6 +1232,9 @@ function tabRoutes(it) {
       <div class="shrink-0 px-3 py-2 border-b border-neutral-200 text-[12px]">
         <div class="flex items-center gap-2 min-w-0">
           <input id="rName" class="border border-neutral-300 px-1 py-0.5 w-36 shrink-0" value="${esc(r.name)}">
+          <select id="rIoType" class="border border-neutral-300 px-1 py-0.5 text-[12px] shrink-0" title="接口类型：存储和返回方式">
+            ${ioTypesOf().map((t2) => `<option value="${esc(t2.id)}" ${t2.id === io.typeId ? 'selected' : ''}>${esc(t2.name)}</option>`).join('')}
+          </select>
           <select id="rMethod" class="border border-neutral-300 px-1 py-0.5 mono shrink-0">
             ${['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map((m) => `<option ${m === r.method ? 'selected' : ''}>${m}</option>`).join('')}
           </select>
@@ -1123,7 +1243,7 @@ function tabRoutes(it) {
         </div>
         <div class="flex items-center gap-2 mt-1 min-w-0">
           <button class="btn thin shrink-0 whitespace-nowrap" data-action="toggleAssist">脚本提示</button>
-          <span class="text-[10px] text-neutral-500 truncate">Ctrl+空格 开关右侧助手；试运行会请求当前已启动的服务</span>
+          <span class="text-[10px] text-neutral-500 truncate" id="rIoHint">${esc(io.response)} → ${esc(io.storage)}${io.response === 'file' ? ' · S3 · ' + esc(io.field || '未选字段') : ''}${io.response === 'cookie' ? ' · ' + esc(io.cookieName || 'icb_token') : ''}</span>
           <div class="ml-auto flex items-center gap-1 shrink-0">
             <button class="btn thin whitespace-nowrap" data-action="checkOne">校验</button>
             <button class="btn thin whitespace-nowrap" data-action="tryRoute">试运行</button>
@@ -1157,6 +1277,16 @@ function bindRoutes(it) {
   const r = it.routes.find((x) => x.id === S.routeId) || it.routes[0];
   $$('[data-route]').forEach((el) => { el.onclick = () => { S.routeId = el.dataset.route; renderWorkspace(); }; });
   $('#rName').oninput = (e) => { r.name = e.target.value; scheduleSave(); };
+  if ($('#rIoType')) $('#rIoType').onchange = (e) => {
+    applyIoType(it, r, e.target.value);
+    if (ioOfRoute(r).response === 'file') {
+      const t = tableOfIface(it, r.io.tableKey) || it.tables[0];
+      if (t && r.io.field && !t.fields.some((f) => f.name === r.io.field)) {
+        t.fields.push({ name: r.io.field, type: 'varchar', comment: '对象键（S3 key）', pk: false, autoIncrement: false, nullable: true, search: false, hidden: true, query: true, writable: true, default: '' });
+      }
+    }
+    scheduleSave(); renderWorkspace();
+  };
   $('#rMethod').onchange = (e) => { r.method = e.target.value; scheduleSave(); renderWorkspace(); };
   $('#rPath').oninput = (e) => { r.path = e.target.value; scheduleSave(); };
   $('#rCache').onchange = (e) => { r.cache.enabled = e.target.checked; scheduleSave(); };
@@ -1231,6 +1361,218 @@ function bindRoutes(it) {
       $('#rStatus').textContent = c.ok ? `${r.script.split(/\n/).length} 行 · 语法通过` : c.problems.join('；');
     }, 900);
   };
+}
+
+/* ----- 接口类型 ----- */
+function ioStoresFor(response) {
+  if (response === 'cookie') return IO_STORES.filter(([k]) => k === 'redis' || k === 'memory');
+  if (response === 'file' || response === 'object') return IO_STORES.filter(([k]) => k === 's3');
+  return IO_STORES.filter(([k]) => k !== 's3');
+}
+function ioSelect(kind, value, attrs, response) {
+  if (kind === 'response') {
+    return `<select ${attrs || ''}>${IO_RESPONSES.map(([k, label]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
+  }
+  if (kind === 'storage') {
+    const fixed = response === 'file' || response === 'object';
+    const labels = ioStoresFor(response);
+    const val = labels.some(([k]) => k === value) ? value : labels[0][0];
+    return `<select ${attrs || ''} ${fixed ? 'disabled title="文件/对象类型固定走 S3，SQL 只存对象键"' : ''}>${labels.map(([k, label]) => `<option value="${k}" ${k === val ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
+  }
+  return `<select ${attrs || ''}>${IO_FILE_KINDS.map(([k, label]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
+}
+
+function tabIo(it) {
+  const types = ioTypesOf();
+  const tokenStore = (S.project.token && S.project.token.store) || 'redis';
+  return `<div class="h-full overflow-auto p-3 text-[12px]">
+    <div class="flex items-start gap-3 mb-3">
+      <div>
+        <div class="font-semibold text-[13px]">接口类型表</div>
+        <div class="text-neutral-500 leading-5 mt-1">类型不是写死的枚举。下面每一行都是一个可复用类型，路由页的下拉框直接引用；服务器按类型生成文件 / Cookie / 缓存处理逻辑。</div>
+      </div>
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        <span class="text-neutral-600">Cookie 会话全局存储</span>
+        <select id="ioTokenStore" class="border border-neutral-300 px-1 py-1">
+          <option value="redis" ${tokenStore !== 'memory' ? 'selected' : ''}>Redis（推荐）</option>
+          <option value="memory" ${tokenStore === 'memory' ? 'selected' : ''}>进程内存（重启丢失）</option>
+        </select>
+        <button class="btn thin" data-action="addIoType">＋ 加类型</button>
+      </div>
+    </div>
+    <div style="overflow:auto;border:1px solid #d4d4d4">
+      <table class="help-grid io-grid" style="width:100%;min-width:1160px;table-layout:fixed;margin:0">
+        <thead><tr>
+          <th style="width:112px">类型名称</th><th style="width:106px">返回处理</th><th style="width:112px">默认存储</th>
+          <th style="width:92px">文件类型</th><th style="width:64px">上限 MB</th><th style="width:100px">目标表</th>
+          <th style="width:92px">入库字段</th><th style="width:92px">Cookie 名</th><th style="width:62px">TTL 秒</th>
+          <th style="width:auto">说明</th><th style="width:38px"></th>
+        </tr></thead>
+        <tbody>
+          ${types.map((t, i) => `<tr>
+            <td><input data-iot="name" data-i="${i}" class="cell-in w-full" value="${esc(t.name)}"></td>
+            <td>${ioSelect('response', t.response, `data-iot="response" data-i="${i}" class="cell-in w-full"`)}</td>
+            <td>${ioSelect('storage', t.storage, `data-iot="storage" data-i="${i}" class="cell-in w-full"`, t.response)}</td>
+            <td>${ioSelect('file', t.fileKind, `data-iot="fileKind" data-i="${i}" class="cell-in w-full"`)}</td>
+            <td><input type="number" min="0" data-iot="maxMb" data-i="${i}" class="cell-in w-full mono" value="${Number(t.maxMb || 0)}"></td>
+            <td><select data-iot="tableKey" data-i="${i}" class="cell-in w-full">${it.tables.map((tb) => `<option value="${esc(tb.key)}" ${tb.key === t.tableKey ? 'selected' : ''}>${esc(tb.name)}</option>`).join('')}</select></td>
+            <td><input data-iot="field" data-i="${i}" class="cell-in w-full mono" value="${esc(t.field || '')}" placeholder="file_key"></td>
+            <td><input data-iot="cookieName" data-i="${i}" class="cell-in w-full mono" value="${esc(t.cookieName || '')}" placeholder="icb_token"></td>
+            <td><input type="number" min="0" data-iot="ttl" data-i="${i}" class="cell-in w-full mono" value="${Number(t.ttl || 0)}"></td>
+            <td><input data-iot="note" data-i="${i}" class="cell-in w-full" value="${esc(t.note || '')}"></td>
+            <td class="text-center"><button class="btn thin" data-action="delIoType" data-i="${i}" ${types.length <= 1 ? 'disabled' : ''}>删</button></td>
+          </tr>`).join('') || `<tr><td colspan="11" class="text-neutral-500">还没有类型表，点右上角「加类型」。</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex items-end gap-3 mt-5 mb-2">
+      <div>
+        <div class="font-semibold text-[13px]">本接口路由分配</div>
+        <div class="text-neutral-500 mt-1">每一行是一条真实路由。切换类型会自动改存储、补入库字段；文件类型固定走 S3，SQL 只存对象键。</div>
+      </div>
+      <span class="ml-auto text-neutral-500 mono">${it.routes.length} 条路由</span>
+    </div>
+    <div style="overflow:auto;border:1px solid #d4d4d4">
+      <table class="help-grid" style="min-width:1160px;margin:0">
+        <thead><tr>
+          <th style="width:220px">路由</th><th style="width:155px">接口类型</th><th style="width:130px">存储</th>
+          <th style="width:150px">目标表</th><th style="width:145px">SQL 字段</th><th style="width:75px">自动入库</th>
+          <th>接口要什么</th><th style="width:130px">操作</th>
+        </tr></thead>
+        <tbody>
+          ${it.routes.map((r) => {
+            const io = ioOfRoute(r);
+            const t = tableOfIface(it, io.tableKey) || it.tables[0] || { fields: [] };
+            const fieldOpts = (t.fields || []).filter((f) => !f.pk).map((f) => `<option value="${esc(f.name)}" ${f.name === io.field ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
+            return `<tr data-io-route="${esc(r.id)}">
+              <td><span class="pill">${esc(r.method)}</span> <span class="mono">${esc(r.path)}</span><div class="text-[10px] text-neutral-500 truncate">${esc(r.name)}</div></td>
+              <td><select data-ior="typeId" data-id="${esc(r.id)}" class="cell-in w-full">${types.map((t2) => `<option value="${esc(t2.id)}" ${t2.id === io.typeId ? 'selected' : ''}>${esc(t2.name)}</option>`).join('')}</select></td>
+              <td>${ioSelect('storage', io.storage, `data-ior="storage" data-id="${esc(r.id)}" class="cell-in w-full"`, io.response)}</td>
+              <td><select data-ior="tableKey" data-id="${esc(r.id)}" class="cell-in w-full">${it.tables.map((tb) => `<option value="${esc(tb.key)}" ${tb.key === io.tableKey ? 'selected' : ''}>${esc(tb.name)}</option>`).join('')}</select></td>
+              <td><select data-ior="field" data-id="${esc(r.id)}" class="cell-in w-full"><option value="">—</option>${fieldOpts}</select></td>
+              <td class="text-center"><input type="checkbox" data-ior="autoBind" data-id="${esc(r.id)}" ${io.autoBind ? 'checked' : ''}></td>
+              <td class="text-[11px] text-neutral-600">${esc(paramsOfRoute(it, r))}</td>
+              <td class="text-center whitespace-nowrap">
+                <button class="btn thin" data-action="ioLogic" data-id="${esc(r.id)}">逻辑</button>
+                <button class="btn thin" data-action="ioApply" data-id="${esc(r.id)}">套用</button>
+              </td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="8" class="text-neutral-500">没有路由。</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div class="text-neutral-500 text-[11px] mt-2">「套用」只生成与类型匹配的脚本骨架：文件上传会写 S3 键入库，Cookie 类型不会覆盖现有登录脚本，只配置 Set-Cookie 与会话存储。</div>
+  </div>`;
+}
+
+function bindIo(it) {
+  const save = () => scheduleSave();
+  $$('[data-iot]').forEach((el) => {
+    const i = Number(el.dataset.i);
+    const key = el.dataset.iot;
+    const t = ioTypesOf()[i];
+    if (!t) return;
+    const apply = () => {
+      t[key] = el.type === 'number' ? Number(el.value) || 0 : el.value;
+      if (key === 'response' && el.value === 'file') { t.storage = 's3'; t.autoBind = true; if (!t.field) t.field = 'file_key'; }
+      if (key === 'response' && el.value === 'cookie') { t.storage = 'redis'; if (!t.cookieName) t.cookieName = 'icb_token'; if (!t.ttl) t.ttl = 7200; }
+      save();
+    };
+    el.oninput = apply;
+    if (el.tagName === 'SELECT') el.onchange = () => { apply(); renderWorkspace(); };
+  });
+  const ts = $('#ioTokenStore');
+  if (ts) ts.onchange = () => {
+    S.project.token = S.project.token || {};
+    S.project.token.store = ts.value;
+    let n = 0;
+    (S.project.ioTypes || []).forEach((t) => {
+      if (t.response === 'cookie' && (t.storage === 'redis' || t.storage === 'memory' || !t.storage)) t.storage = ts.value;
+    });
+    S.project.interfaces.forEach((x) => (x.routes || []).forEach((r) => {
+      const io = r.io || {};
+      if ((io.response || '').toLowerCase() === 'cookie' && (io.storage === 'redis' || io.storage === 'memory' || !io.storage)) {
+        io.storage = ts.value;
+        r.io = io;
+        n += 1;
+      }
+    }));
+    save();
+    renderWorkspace();
+    toast(`Cookie 会话已切到${ts.value === 'memory' ? '进程内存' : 'Redis'}，同步 ${n} 条 Cookie 路由`);
+  };
+  $$('[data-ior]').forEach((el) => {
+    const r = it.routes.find((x) => x.id === el.dataset.id);
+    if (!r) return;
+    const io = ioOfRoute(r);
+    const key = el.dataset.ior;
+    const commit = () => {
+      if (el.type === 'checkbox') io[key] = el.checked;
+      else io[key] = el.value;
+      if (key === 'typeId') applyIoType(it, r, el.value);
+      else {
+        r.io = io;
+        if (key === 'storage' && io.response === 'file' && io.storage !== 's3') {
+          io.storage = 's3';
+          toast('文件上传必须用 S3，已自动改回 S3');
+        }
+      }
+      save();
+    };
+    el.onchange = () => { commit(); renderWorkspace(); };
+  });
+  $$('[data-action="addIoType"]').forEach((b) => { b.onclick = () => {
+    const id = 'type_' + Math.random().toString(16).slice(2, 7);
+    S.project.ioTypes = S.project.ioTypes || [];
+    S.project.ioTypes.push({ id, name: '新类型', response: 'json', storage: 'none', fileKind: 'any', maxMb: 20, tableKey: 'main', field: '', autoBind: false, cookieName: '', ttl: 0, prefix: '', note: '' });
+    save(); renderWorkspace();
+  }; });
+  $$('[data-action="delIoType"]').forEach((b) => { b.onclick = async () => {
+    const i = Number(b.dataset.i);
+    if (!(await confirmBox('删除接口类型', `删除「${ioTypesOf()[i].name}」？引用它的路由会回落到普通 JSON。`))) return;
+    S.project.ioTypes.splice(i, 1);
+    it.routes.forEach((r) => { if (!ioTypeOf(ioOfRoute(r).typeId)) applyIoType(it, r, (ioTypesOf()[0] || {}).id); });
+    save(); renderWorkspace();
+  }; });
+  $$('[data-action="ioLogic"]').forEach((b) => { b.onclick = () => {
+    const r = it.routes.find((x) => x.id === b.dataset.id);
+    if (!r) return;
+    const io = ioOfRoute(r);
+    modal(`<div class="p-4 text-[12px] leading-6" style="min-width:520px">
+      <div class="font-semibold text-[13px] mb-1">${esc(r.method)} ${esc(r.path)} · ${esc(io.typeId)}</div>
+      <div class="text-neutral-500 mb-3">服务器会按这套配置生成下面的处理链路，不是页面上的假按钮。</div>
+      <pre class="p-3 bg-neutral-50 border border-neutral-200 mono text-[12px] whitespace-pre-wrap">${esc(ioLogicText(it, r))}</pre>
+      <div class="mt-3 text-neutral-600">路由脚本：<span class="mono">${esc(r.script.split('\n')[0] || '(空)')}</span></div>
+      <div class="flex justify-end mt-4"><button class="btn thin" id="ioLogicClose">关闭</button></div>
+    </div>`, (root) => { root.querySelector('#ioLogicClose').onclick = closeModal; }, { width: 720 }); 
+  }; });
+  $$('[data-action="ioApply"]').forEach((b) => { b.onclick = () => {
+    const r = it.routes.find((x) => x.id === b.dataset.id);
+    if (!r) return;
+    const io = ioOfRoute(r);
+    const t = tableOfIface(it, io.tableKey) || it.tables[0] || { name: 'table' };
+    if (io.response === 'file') {
+      if (!io.field) return toast('先在“SQL 字段”里选一个对象键字段');
+      if (io.autoBind) {
+        r.script = 'RETURN 200 { "key": {{objectKey}}, "url": {{objectUrl}}, "name": {{filename}}, "size": {{size}} };';
+        toast('已使用服务器自动入库；脚本只返回对象信息');
+      } else {
+        r.script = `EXEC UPDATE {{t:${io.tableKey}}} SET ${io.field} = {{objectKey}} WHERE {{idColumn:${io.tableKey}}} = {{id}};\nRETURN 200 { "key": {{objectKey}}, "url": {{objectUrl}}, "name": {{filename}} };`;
+        toast('已生成按 id 写对象键的脚本');
+      }
+    } else if (io.storage === 'redis' && io.response === 'json') {
+      r.cache = r.cache || {};
+      r.cache.enabled = true;
+      r.cache.ttl = Number(io.ttl || 60);
+      toast('已启用 Redis 结果缓存');
+    } else if (io.response === 'cookie') {
+      toast('Cookie 类型已配置；脚本里保留 TOKEN NEW 即可，服务器会自动 Set-Cookie');
+    } else {
+      toast('这个类型不需要额外脚本');
+    }
+    save(); renderWorkspace();
+  }; });
 }
 
 /* ----- 上游 ----- */
@@ -2069,6 +2411,7 @@ async function act(name, el) {
   if (name === 'addRoute' && it) {
     const kind = ($('#newRouteKind') || {}).value || 'custom';
     const route = newRoute(it, kind);
+    applyIoType(it, route, route.io && route.io.typeId);
     it.routes.push(route); S.routeId = route.id; scheduleSave(); renderWorkspace();
     return;
   }
@@ -2774,12 +3117,23 @@ function newRoute(it, kind) {
     crawl: 'LET $page = CRAWL \'https://example.com\' { "maxBytes": 1048576 };\nRETURN 200 { "title": $page.title, "text": $page.text, "links": $page.links };',
     custom: '# 自定义脚本\nLET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} LIMIT {{limit}};\nRETURN 200 { "rows": $rows.rows };',
   };
+  const ioKind = {
+    upload: ['file', 'file', 's3', 'any', 20, 'file_key', true],
+    objects: ['object', 'object', 's3', 'any', 0, '', false],
+    proxy: ['proxy', 'proxy', 'none', 'any', 0, '', false],
+    crawl: ['crawl', 'crawl', 'none', 'any', 0, '', false],
+  }[kind] || ['json', 'json', 'none', 'any', 20, '', false];
   return {
     id: Math.random().toString(16).slice(2, 10),
     key: kind, name: meta[0], method: meta[1], path: meta[2], auth: false,
     roles: [],
     proxy: { enabled: kind === 'proxy', upstream: '', target: '', stripPrefix: true, forwardHeaders: true, timeout: 15000 },
     script: scripts[kind] || scripts.custom,
+    io: {
+      typeId: ioKind[0], response: ioKind[1], storage: ioKind[2], fileKind: ioKind[3],
+      maxMb: ioKind[4], tableKey: 'main', field: ioKind[5], autoBind: ioKind[6],
+      cookieName: '', ttl: 0, cookiePath: '/', httpOnly: true, sameSite: 'Lax', prefix: '', bucket: '',
+    },
     docs: { summary: meta[0], description: '', requestExample: '', responseExample: '' },
     cache: { enabled: kind === 'list' || kind === 'detail', key: 'icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}', ttl: 60 },
   };
@@ -3731,6 +4085,7 @@ function studioIfaces() {
     routes: (i.routes || []).map((r) => ({
       key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary,
       body: Array.isArray(r.body) ? r.body : studioRouteBody(r.script),
+      io: ioOfRoute(r),
     })),
     tables: (i.tables || []).map((t) => ({
       key: t.key, name: t.name, schema: t.schema || '', conn: t.conn || 'main', comment: t.comment || '',

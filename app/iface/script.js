@@ -655,7 +655,9 @@ async function runScript(ast, env) {
       } else if (st.from === 'token') {
         if (!env.token) throw new Error('TOKEN 没有可用的会话存储');
         const arg = evalExpr(st.expr, scope);
-        scope.vars[st.name] = st.action === 'NEW' ? await env.token.mint(arg) : await env.token.get(arg);
+        scope.vars[st.name] = st.action === 'NEW'
+          ? await env.token.mint(arg, env.ctx && env.ctx.cookieStore)
+          : await env.token.get(arg);
         // 让生成服务知道本次脚本签发了 token，可以在响应里自动种 cookie。
         if (st.action === 'NEW' && env.ctx) {
           env.ctx.mintedToken = scope.vars[st.name] && scope.vars[st.name].token;
