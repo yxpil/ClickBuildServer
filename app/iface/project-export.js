@@ -25,7 +25,51 @@ function uniqueDir(parent, name) {
   return `${base}-${Date.now()}`;
 }
 
-function readme(projectName) {
+function readme(projectName, runtime, runtimeOnly) {
+  runtime = String(runtime || 'node').toLowerCase();
+  const runtimeName = ({ node: 'Node.js', bun: 'Bun', go: 'Go 原生', java: 'Java 原生', python: 'Python Flask' })[runtime] || 'Node.js';
+  if (runtimeOnly && (runtime === 'node' || runtime === 'bun')) {
+    return `# 用 IntelliJ IDEA 打开
+
+这个目录是 ClickBuild 导出的 **${runtimeName}** 工程，只包含这一套服务端实现，已经带 \`.idea\` 配置。
+
+1. IDEA 菜单 **File → Open**，选择本目录（${projectName}）。
+2. 首次打开如提示选择 Node 解释器，指向系统 \`node.exe\`；IDEA Ultimate 已内置 JavaScript / Node.js 插件。
+3. 终端执行：
+
+\`\`\`bash
+${runtime === 'bun' ? 'bun install\nbun server.js' : 'npm install\nnpm start'}
+\`\`\`
+
+默认端口 ${codegen.DEFAULT_PORTS.http}，启动后打开 \`http://127.0.0.1:${codegen.DEFAULT_PORTS.http}/\`。
+端口、MySQL、Redis、S3 等参数都改根目录的 \`config.json\`；系统环境变量优先，\`.env\` 只作为可选覆盖。
+
+工程里的 \`server.js\` 是入口，\`src/modules/\` 每个目录是一个接口模块，\`src/\` 是解释器，\`sql/\` 是建表脚本，\`docs/\` 是接口文档，\`export/js/\` 是路由参考实现。本目录不包含 Go / Java / Python 服务端。
+`;
+  }
+  if (runtimeOnly && runtime !== 'node' && runtime !== 'bun') {
+    const cmds = {
+      go: ['cd native/go', 'go mod tidy', 'go run .'],
+      java: ['cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', 'java -cp "bin;lib/*" icb.Main'],
+      python: ['cd native/python', 'python -m venv .venv', 'pip install -r requirements.txt', 'python app.py'],
+    }[runtime] || [];
+    return `# 用 IntelliJ IDEA 打开
+
+这个目录是 ClickBuild 导出的 **${runtimeName}** 工程，只包含这一套服务端实现，已经带 \`.idea\` 配置。
+
+1. IDEA 菜单 **File → Open**，选择本目录（${projectName}）。
+2. 按 \`RUN.md\` 里的命令启动；本目录没有 Node 服务端文件，不要执行 \`npm start\`。
+3. 端口、MySQL、Redis、S3 等参数都改根目录的 \`config.json\`；系统环境变量优先，\`.env\` 只作为可选覆盖。
+
+\`\`\`bash
+${cmds.join('\n')}
+\`\`\`
+
+默认端口 ${codegen.DEFAULT_PORTS.http}，启动后打开 \`http://127.0.0.1:${codegen.DEFAULT_PORTS.http}/\`。
+
+\`sql/\` 是建表脚本，\`docs/\` 是接口文档，\`public/\` 是生成的前端；服务端源码在 \`native/${runtime}/\`。
+`;
+  }
   return `# 用 IntelliJ IDEA 打开
 
 这个目录是 ClickBuild 导出的完整工程，已经带 \`.idea\` 配置。
@@ -73,8 +117,9 @@ function writeProject(project, parentDir, opts) {
   const parent = parentDir || os.tmpdir();
   const dir = uniqueDir(parent, p.name);
   const runtime = String((opts && opts.runtime) || 'node').toLowerCase();
-  const gen = codegen.writeTo(p, dir, { port: (opts && opts.port) || codegen.DEFAULT_PORTS.http, ide: true, runtime });
-  fs.writeFileSync(path.join(dir, 'README-IDEA.md'), readme(p.name), 'utf8');
+  const runtimeOnly = !!(opts && opts.runtimeOnly);
+  const gen = codegen.writeTo(p, dir, { port: (opts && opts.port) || codegen.DEFAULT_PORTS.http, ide: true, runtime, runtimeOnly });
+  fs.writeFileSync(path.join(dir, 'README-IDEA.md'), readme(p.name, runtime, runtimeOnly), 'utf8');
   fs.writeFileSync(path.join(dir, '.gitignore'), gitignore(), 'utf8');
   return {
     ok: true,

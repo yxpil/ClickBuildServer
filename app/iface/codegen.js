@@ -282,7 +282,9 @@ function docsPage(project, port) {
 <p style="color:#777;margin-top:24px">文档由 ClickBuild 从路由脚本自动推导 · ${new Date().toISOString()}</p></body></html>`;
 }
 
-function addIdeaFiles(add) {
+function addIdeaFiles(add, runtime, runtimeOnly) {
+  runtime = String(runtime || 'node').toLowerCase();
+  const nodeRun = !runtimeOnly || runtime === 'node' || runtime === 'bun';
   add('.idea/modules.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectModuleManager">
@@ -313,7 +315,7 @@ function addIdeaFiles(add) {
 usage.statistics.xml
 shelf/
 `);
-  add('.run/启动接口服务.run.xml', `<component name="ProjectRunConfigurationManager">
+  if (nodeRun) add('.run/启动接口服务.run.xml', `<component name="ProjectRunConfigurationManager">
   <configuration default="false" name="启动接口服务" type="jsNodeRunConfiguration" factoryName="Node.js">
     <option name="NODE_PARAMETERS" value="" />
     <option name="PARAMETERS" value="" />
@@ -412,6 +414,13 @@ module.exports = modules;
 
 function generate(project, options) {
   const opts = options || {};
+  const runtime = String(opts.runtime || 'node').toLowerCase();
+  const runtimeOnly = !!opts.runtimeOnly;
+  const wantNode = !runtimeOnly || runtime === 'node' || runtime === 'bun';
+  const wantGo = !runtimeOnly || runtime === 'go';
+  const wantJava = !runtimeOnly || runtime === 'java';
+  const wantPython = !runtimeOnly || runtime === 'python';
+  const runtimeName = ({ node: 'Node.js', bun: 'Bun', go: 'Go 原生', java: 'Java 原生', python: 'Python Flask' })[runtime] || 'Node.js';
   let p = spec.normalizeProject(project);
   if (Array.isArray(opts.only) && opts.only.length) {
     p = { ...p, interfaces: p.interfaces.filter((i) => opts.only.includes(i.id) || opts.only.includes(i.name)) };
@@ -423,6 +432,7 @@ function generate(project, options) {
 
   const add = (rel, content) => files.push({ path: rel, content: String(content).replace(/\r\n/g, '\n') });
 
+  if (wantNode) {
   add('server.js', template('server.js'));
   add('src/render.js', engine('render.js'));
   add('src/funcs.js', engine('funcs.js'));
@@ -430,12 +440,14 @@ function generate(project, options) {
   add('src/script.js', engine('script.js'));
   add('public/console.html', template('console.html'));
   if (p.seed && p.seed.enabled && p.seed.sql) add('src/seed.json', JSON.stringify(p.seed, null, 2));
+  }
 
   p.interfaces.forEach((it, idx) => {
     const name = `${String(idx + 1).padStart(2, '0')}_${slug(it.name, 'iface')}.sql`;
     add(`sql/${name}`, `-- 接口：${it.name}\n-- ${it.comment || ''}\n\n${spec.ddlOf(it)}\n`);
   });
 
+  if (wantNode) {
   // 模块化单体：每个接口一个目录，server.js 只负责通用运行时。
   add('src/modules/index.js', modulesRegistry());
   add('src/modules/README.md', [
@@ -453,6 +465,7 @@ function generate(project, options) {
     add(`src/modules/${dir}/index.js`, moduleSource(it));
     add(`src/modules/${dir}/README.md`, moduleReadme(it));
   });
+  }
 
   if (p.frontend && p.frontend.project) {
     const yxpp = {
@@ -498,6 +511,7 @@ function generate(project, options) {
     '', '字段注释就是文档说明，路由的 summary 会出现在文档摘要里。',
   ].join('\n'));
 
+  if (wantNode) {
   add('package.json', JSON.stringify({
     name: slug(p.name, 'clickbuild-server'),
     version: '1.0.0',
@@ -507,8 +521,9 @@ function generate(project, options) {
     scripts: { start: 'node server.js', dev: 'node dev.js', hot: 'node dev.js' },
     dependencies: { mysql2: '^3.11.0', ioredis: '^5.4.1', minio: '^8.0.1', alasql: '^4.23.1' },
   }, null, 2));
+  }
 
-  if (opts.ide) addIdeaFiles(add);
+  if (opts.ide) addIdeaFiles(add, runtime, runtimeOnly);
 
   const conf = runtimeConfig(p, opts);
   add('config.json', JSON.stringify(conf, null, 2));
@@ -524,6 +539,7 @@ function generate(project, options) {
   // 语言版服务：Go 原生运行时。和 server.js 共用同一份项目快照和 AST，
   // 启动后不再调用 Node，可直接 go run / go build。
   const snapshot = native.serviceSnapshot(p);
+  if (wantGo) {
   add('native/go/service.json', JSON.stringify(snapshot, null, 2));
   native.runtimeFiles('go').forEach((f) => add(`native/go/${f.path}`, f.content));
   const goModule = `clickbuild.native/${slug(p.name, 'service')}`;
@@ -554,8 +570,10 @@ function generate(project, options) {
     '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
     '',
   ].join('\n'));
+  }
 
   // Java 原生运行时：同一份 service.json，JDK + JDBC 直连 MySQL，不启动 Node。
+  if (wantJava) {
   add('native/java/service.json', JSON.stringify(snapshot, null, 2));
   native.runtimeFiles('java').forEach((f) => add(`native/java/${f.path}`, f.content));
   add('native/java/README.md', [
@@ -574,7 +592,9 @@ function generate(project, options) {
     '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
     '',
   ].join('\n'));
+  }
 
+  if (wantPython) {
   add('native/python/service.json', JSON.stringify(snapshot, null, 2));
   native.runtimeFiles('python').forEach((f) => add(`native/python/${f.path}`, f.content));
   add('native/python/README.md', [
@@ -595,7 +615,9 @@ function generate(project, options) {
     '说明：Python 运行时直连 MySQL；Redis / S3 连接不上时会降级为内存 token / 本地 `uploads/`，并在启动日志中标注。',
     '',
   ].join('\n'));
+  }
 
+  if (wantNode) {
   add('dev.js', `#!/usr/bin/env node
 /* ClickBuild 热部署：监听 src / public / sql / interfaces.json，文件变化后自动重启 server.js */
 const fs = require('fs');
@@ -760,7 +782,9 @@ schtasks /Create /TN $TaskName /TR $cmd /SC ONLOGON /RL LIMITED /F
 if ($LASTEXITCODE -ne 0) { throw 'schtasks 创建失败，可改用 daemon\\start.ps1 手动前台启动' }
 Write-Host "已创建登录自启任务：$TaskName"
 `);
+  }
 
+  if (wantNode) {
   add('README.md', [
     `# ${p.name}`,
     '',
@@ -804,14 +828,41 @@ Write-Host "已创建登录自启任务：$TaskName"
     '- 前台守护：`powershell -ExecutionPolicy Bypass -File daemon/start.ps1`（崩溃自动重启，日志 `daemon/daemon.log`）',
     '- 登录自启：`powershell -ExecutionPolicy Bypass -File daemon/install-service.ps1`（创建计划任务，名字可传参）',
   ].join('\n'));
+  } else {
+  add('README.md', [
+    `# ${p.name}`,
+    '',
+    `ClickBuild 生成的 **${runtimeName}** 接口服务。本目录只包含这一套服务端实现，不再附带其它运行时。`,
+    '',
+    `- 接口数：${p.interfaces.length}`,
+    `- 表数：${p.interfaces.reduce((n, i) => n + i.tables.length, 0)}`,
+    `- 路由数：${p.interfaces.reduce((n, i) => n + i.routes.length, 0)}`,
+    '',
+    '## 启动',
+    '',
+    ...({
+      go: ['```bash', 'cd native/go', 'go mod tidy', 'go run .', '```', '', '需要 Go 1.21+；可直接 `go build` 生成独立二进制。'],
+      java: ['```bash', 'cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', 'java -cp "bin;lib/*" icb.Main', '```', '', '需要 JDK 17+。'],
+      python: ['```bash', 'cd native/python', 'python -m venv .venv', '.venv\\Scripts\\activate', 'pip install -r requirements.txt', 'python app.py', '```', '', 'Linux/macOS 用 `source .venv/bin/activate`。'],
+    }[runtime] || []),
+    '',
+    '## 配置',
+    '',
+    '- 根目录 `config.json` 管端口、接口前缀、MySQL、Redis、S3、错误页、日志与请求体上限。',
+    '- 优先级：系统环境变量 > `config.json` > `.env`；改完重启服务生效。',
+    '- `sql/` 是建表脚本，`docs/` 是接口文档，`public/` 是生成的前端。',
+    '',
+    `启动后打开 http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/ 。`,
+  ].join('\n'));
+  }
 
-  const runtime = String(opts.runtime || 'node').toLowerCase();
-  const runtimeName = ({ node: 'Node.js', bun: 'Bun', go: 'Go 原生', java: 'Java 原生', python: 'Python Flask' })[runtime] || 'Node.js';
   add('runtime.json', JSON.stringify({ runtime, name: runtimeName, port: Number(opts.port || DEFAULT_PORTS.http) }, null, 2));
-  add('RUN.md', [
+  const runLines = [
     `# ${p.name} · 运行方式`,
     '',
-    `导出时选择的主运行时：**${runtimeName}**。同一个工程目录已经带 Node / Go / Java / Python 四套服务端实现，共用 \`service.json\`、\`config.json\` 和 \`public/\` 前端。`,
+    runtimeOnly
+      ? `导出时选择的类型：**${runtimeName}**。本目录只包含这一套服务端实现，共用 \`config.json\` 和 \`public/\` 前端。`
+      : `导出时选择的主运行时：**${runtimeName}**。同一个工程目录带 Node / Go / Java / Python 四套服务端实现，共用 \`service.json\`、\`config.json\` 和 \`public/\` 前端。`,
     '',
     '## 1. ' + runtimeName,
     '',
@@ -823,21 +874,28 @@ Write-Host "已创建登录自启任务：$TaskName"
       python: ['```bash', 'cd native/python', 'python -m venv .venv', '.venv\\Scripts\\activate', 'pip install -r requirements.txt', 'python app.py', '```', '', 'Linux/macOS 用 `source .venv/bin/activate`，不依赖 Node。'],
     }[runtime] || []),
     '',
-    '## 2. 其它运行时',
-    '',
-    '- Node.js：`node server.js` / 热部署 `node dev.js`',
-    '- Bun：`bun server.js` / 热部署 `bun dev.js`',
-    '- Go：`cd native/go && go mod tidy && go run .`',
-    '- Java：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
-    '- Python：`cd native/python && pip install -r requirements.txt && python app.py`',
-    '',
+  ];
+  if (!runtimeOnly) {
+    runLines.push(
+      '## 2. 其它运行时',
+      '',
+      '- Node.js：`node server.js` / 热部署 `node dev.js`',
+      '- Bun：`bun server.js` / 热部署 `bun dev.js`',
+      '- Go：`cd native/go && go mod tidy && go run .`',
+      '- Java：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
+      '- Python：`cd native/python && pip install -r requirements.txt && python app.py`',
+      '',
+    );
+  }
+  runLines.push(
     `数据库、Redis、S3、端口都在根目录 \`config.json\`；系统环境变量优先。启动后打开 http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/ 。`,
     '',
-    '## 3. 前端',
+    '## 前端',
     '',
     '`public/index.html` 由 `.yxpp` 生成，`frontend/index.yxpp` 是 PageStudio 工程源文件。修改 `.yxpp` 后重新导出即可覆盖前端。',
     '',
-  ].join('\n'));
+  );
+  add('RUN.md', runLines.join('\n'));
 
   let routeNo = 0;
   p.interfaces.forEach((it) => {
@@ -845,9 +903,9 @@ Write-Host "已创建登录自启任务：$TaskName"
     (it.routes || []).forEach((r) => {
       routeNo += 1;
       const base = `${slug(mainTable || it.name, 'iface')}-${slug(r.kind || r.name, 'route')}-${routeNo}`;
-      add(`export/js/${base}.js`, exportJs(it, r));
-      add(`export/java/${pascal(base, 'Route')}.java`, exportJava(it, r, base));
-      add(`export/go/${base}.go`, exportGo(it, r, base));
+      if (wantNode) add(`export/js/${base}.js`, exportJs(it, r));
+      if (wantJava) add(`export/java/${pascal(base, 'Route')}.java`, exportJava(it, r, base));
+      if (wantGo) add(`export/go/${base}.go`, exportGo(it, r, base));
     });
   });
 
@@ -863,8 +921,8 @@ function writeTo(project, outDir, options) {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, f.content, 'utf8');
   }
-  native.copyAssets('java', dir);
-  return { dir, files: result.files.map((f) => f.path), project: result.project };
+  const runtime = String((options && options.runtime) || 'node').toLowerCase();
+  if (!(options && options.runtimeOnly) || runtime === 'java') native.copyAssets('java', dir);  return { dir, files: result.files.map((f) => f.path), project: result.project };
 }
 
 module.exports = { DEFAULT_PORTS, generate, writeTo, slug, exportJs, exportJava, exportGo, buildOpenApi, docsPage };

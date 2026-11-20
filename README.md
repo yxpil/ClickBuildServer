@@ -215,13 +215,12 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 
 ## 导出工程（IDEA 可直接打开）
 
-`工程 → 导出工程`（或「生成导出」页）选一个父目录，会在里面新建 `<工程名>` 独立目录，写入完整源码、SQL、文档、`package.json`、`.env` 和 `.idea`。
+`工程 → 导出工程`（或「生成导出」页）先在弹窗里下拉选择 **导出类型**：Node.js / Bun / Go / Java / Python。选一个父目录后，会在里面新建 `<工程名>` 独立目录，只写入这一套服务端实现和公共的 SQL、文档、`config.json`、`.env`、`public/`、`.idea`，不再把四套运行时一起塞进工程。
 
-- `.idea/clickbuild.iml` + `modules.xml`：IDEA 选 **File → Open** 直接识别工程。
-- `.run/启动接口服务.run.xml`：IDEA 里一键运行 `server.js`。
-- `README-IDEA.md`：首次打开、`npm install`、改 `.env` 的步骤。
-- 导出目录里的 `server.js` 会自动读取同目录 `.env`，终端 `npm start` 和 IDEA 运行配置行为一致。
-- 导出的工程不依赖 ClickBuild 的安装目录，换机器只要 Node 和依赖装好即可；数据库 / Redis / RustFS 可连本机已有的，也可在 ClickBuild 里启动内置的。
+- `.idea/clickbuild.iml` + `modules.xml`：IDEA 选 **File → Open** 直接识别工程；Node / Bun 还带 `.run/启动接口服务.run.xml`。
+- `README-IDEA.md`：按当前导出类型写启动步骤，不会在 Go 工程里让你 `npm install`。
+- 公共文件始终包含 `config.json`、interfaces.json、`sql/`、`docs/`、`public/`、`RUN.md`。
+- 导出的工程不依赖 ClickBuild 的安装目录；Node 工程换机器只要 Node 和依赖装好，Go / Java / Python 按 `RUN.md` 的对应命令启动。
 
 `服务 → 微服务` 的独立服务产物同样带 `.idea`，弹窗里可以直接「用 IDEA 打开」。
 
