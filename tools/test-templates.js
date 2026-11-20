@@ -45,6 +45,15 @@ for (const t of list.filter((x) => x.kind === 'builtin')) {
   }
 }
 
+if (gen) {
+  // 同一目录重复生成时，旧版本留下的 launcher/ 必须被清掉，不能继续误导用户。
+  const legacyDir = path.join(outRoot, 'legacy-launcher');
+  fs.mkdirSync(path.join(legacyDir, 'launcher'), { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, 'launcher', 'Server.java'), 'legacy', 'utf8');
+  codegen.writeTo(plugins.apply(spec.normalizeProject(templates.get('builtin:blog').project)).project, legacyDir, { port: 18999 });
+  check('重新生成清理旧 launcher 目录', !fs.existsSync(path.join(legacyDir, 'launcher')));
+}
+
 const cross = templates.get('builtin:crossdb').project;
 const crossIface = cross.interfaces[0];
 check('跨库案例：主表走 main', crossIface.tables.find((t) => t.key === 'main').conn === 'main');

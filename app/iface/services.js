@@ -174,8 +174,10 @@ async function cleanupOrphans() {
   return { ok: true, stopped: stale.map((x) => ({ pid: x.pid, name: path.basename(x.path) })) };
 }
 
-async function nextFreePort(start) {
+async function nextFreePort(start, skip) {
+  const used = skip || new Set();
   for (let p = start; p < start + 40; p += 1) {
+    if (used.has(p)) continue;
     if (!(await isPortOpen(p))) return p;
   }
   return 0;
@@ -207,7 +209,8 @@ async function preparePorts(wantOverride) {
       adoptedPid[item.key] = owner.pid;
       continue;
     }
-    const free = await nextFreePort(preferred + 1);
+    const used = new Set(Object.entries(ports).filter(([k]) => k !== item.key).map(([, v]) => Number(v)));
+    const free = await nextFreePort(preferred + 1, used);
     if (!free) throw new Error(`${item.label} 端口 ${preferred} 被占用，且后面 40 个端口也不可用`);
     ports[item.key] = free;
     conflicts.push({ key: item.key, label: item.label, from: preferred, to: free, reason: (owner && owner.name) || 'unknown' });
@@ -352,9 +355,10 @@ async function startS3() {
 
 function clearBootPort(name) {
   if (!boot.ports) return;
-  delete boot.ports[name];
+  // 生成服务停掉后保留本次实际端口。若删掉，状态探测会退回首选端口，
+  // 一旦首选端口上有别的程序（例如 18100 上的测试服务），就会误报“生成的服务正在运行”。
+  if (name !== 'server') delete boot.ports[name];
   if (name === 's3') delete boot.ports.s3Console;
-  if (name === 'server') delete boot.ports.http;
   delete boot.adopted[name];
   delete boot.adoptedPid[name];
   if (name === 's3') { delete boot.adopted.s3Console; delete boot.adoptedPid.s3Console; }

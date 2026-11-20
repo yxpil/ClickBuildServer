@@ -88,12 +88,16 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.42.exe
+dist\ClickBuildServer-Setup-1.1.45.exe
 ```
 
-安装包 226,050,160 B（约 216 MB），构建时间 2026-11-20 23:10:00，SHA256 `33DD4EE800087E41B92ED30390658F08488E32C4B53A2E00DF41FDF10B111849`。
+安装包 226,051,075 B（约 216 MB），构建时间 2026-11-20 22:47:37，SHA256 `E716D9BBA2DD78FF0C0A82DC8EB1272B8C77C56785EB9353979E95D0238370A4`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.45 是真人模拟暴露问题后的收尾版：同一生成目录重新生成时会清掉 1.1.42 遗留的 `launcher/`，不再让用户看到早已不会运行的 Java/Go 启动器；生成服务停掉后状态继续按本次实际端口探测，不会因为首选端口上恰好有别的程序就误报“生成的服务正在运行”。端口回归 11/11，模版生成回归 194/194。
+
+1.1.44 是全量测试与真人模拟后的修复版：修掉 RustFS 与 RustFS 控制台同时被占用时会分到同一个端口的 bug，现在两个端口分开避让，S3 与控制台都能起来；补齐「同频社区」模版说明与「社区 / 动态」英文词条，国际化回归 20/20；把写死版本号的测试改成语义化版本校验。安装版 UI 冒烟 129/129，源码版 129/129；真实服务端到端、社交接口库、跨库、帮助页、Rust 运行时、内核与真实 MariaDB 全部重跑通过。
 
 1.1.43 把 Phase 1 内核接进主生成链路，并把 Rust 全栈渲染器修到真能跑：`app/generator/sql.js` 统一走 `kernel/dialects`，MySQL / PostgreSQL / SQLite 三种方言可由 `project.dialect` 或 `generateSql(ir, { dialect })` 选择；旧 IR 通过 `kernel/ir-adapter` 转成元模型实体。Rust 生成器修掉搜索文本拼接、`QueryBuilder` 绑定生命周期、`AppError` 错误链、S3 SigV4 返回类型和 bootstrap 返回值，`cargo check` 通过；真实 MariaDB 上完成建表、`cargo run`、admin 登录和列表查询。完整导出不再生成转发 Node 的 `launcher/Server.java`、`launcher/main.go`，Java / Go 只走 `native/`。新增 `test-kernel-sqlgen` 4/4、真实 MariaDB 生成脚本 1/1、Rust 编译 5/5、Rust 运行 2/2。
 

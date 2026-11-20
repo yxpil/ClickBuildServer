@@ -620,8 +620,6 @@
     "歌曲": "Songs",
     "评论": "Comments",
     "收藏": "Favorites",
-    "分类": "Categories",
-    "标签": "Tags",
     "歌曲曲风（电影/课程/短音频）": "Song genres (movies, courses, short audio)",
     "歌曲元数据 + 封面/文件上传 + 播放计数": "Song metadata, cover/audio upload and play counts",
     "歌曲评论 + 删除": "Song comments with deletion",
@@ -644,9 +642,6 @@
     "暂时没有可用模版。": "No templates available.",
     "已保存的接口工程": "Saved interface project",
     "找不到文件": "File not found",
-    "内置": "Built-in",
-    "我的": "Mine",
-    "打开工程": "Open project",
     "复制工程": "Duplicate project",
     "删除工程": "Delete project",
     "上传": "Uploads",
@@ -692,8 +687,6 @@
     "货运": "Freight",
     "文章": "Articles",
     "作者": "Authors",
-    "评论": "Comments",
-    "收藏": "Favorites",
     "客户": "Customers",
     "服务项目": "Services",
     "时段": "Time slots",
@@ -913,7 +906,10 @@
     ".idea 配置、启动配置和 dev.js hot-reload script": ".idea config, run configurations, and a dev.js hot-reload script",
     "，脚本里用 {{columns:main}}、{{where:main}} 引用这张表。": "; reference it in scripts with {{columns:main}} and {{where:main}}.",
     "配置、启动配置和": "config, run configurations, and",
-    "运行中": "Running"
+    "运行中": "Running",
+    "账户、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报与统计；onlyId 定身份，打开就是可用的社区业务页面": "Accounts, friends, DMs, group chats, feeds, search, notifications, favorites, files, reports and stats; onlyId defines identity, and the community app is ready to use",
+    "社区": "Community",
+    "动态": "Feed"
   },
   "patterns": [
     {

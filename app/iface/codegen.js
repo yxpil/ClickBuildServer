@@ -884,6 +884,10 @@ function writeTo(project, outDir, options) {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, f.content, 'utf8');
   }
+  // 旧版本生成过 launcher/（Java/Go 启动器已移除）。同一目录重新生成时清掉，
+  // 否则用户会看到早就不会再运行的历史文件。
+  const legacyLauncher = path.join(dir, 'launcher');
+  if (fs.existsSync(legacyLauncher)) fs.rmSync(legacyLauncher, { recursive: true, force: true });
   const runtime = String((options && options.runtime) || 'node').toLowerCase();
   if (!(options && options.runtimeOnly) || runtime === 'java') native.copyAssets('java', dir);  return { dir, files: result.files.map((f) => f.path), project: result.project };
 }
