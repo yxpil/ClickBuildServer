@@ -88,12 +88,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.45.exe
+dist\ClickBuildServer-Setup-1.1.46.exe
 ```
 
-安装包 226,051,075 B（约 216 MB），构建时间 2026-11-20 22:47:37，SHA256 `E716D9BBA2DD78FF0C0A82DC8EB1272B8C77C56785EB9353979E95D0238370A4`。
+安装包 226,059,968 B（约 216 MB），构建时间 2026-11-20 23:22:36，SHA256 `4350E7B10E3669498721007D7F4C4ECAFAE97A1A9D205DA237C22B7BC1ABB460`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.46 修掉两个真实使用里的硬伤：工作台「新建」不再用示例工程覆盖当前工程，模版「套用」也不再替换当前工程，两个入口都改成先保存当前工程、再新建一个不重名的工程；保存失败就取消新建，原工程和未保存改动都保留。插件系统升到 v2：插件可用 `activate(api)` 注册 Ribbon 命令、接管保存/生成/导出/服务启停、注册工程模版、保存设置与私有数据、读写插件目录、访问网络或在授权后加载 Node 模块；插件面板新增启停、重载、新建脚手架、命令、模版、日志、开发者文档和界面内 API 说明，旧 `apply(project, api)` 继续兼容。内置 `audit-stamp` 用「补审计字段」「插件报告」、`generate.before` 注入和「审计示例」模版证明链路不是空壳。插件回归 22/22，UI 冒烟 131/131（新增“新建先保存再开新工程”“套用模版不覆盖”和插件 Ribbon 断言）。完整插件规范见 [docs/PLUGINS.md](docs/PLUGINS.md)。
 
 1.1.45 是真人模拟暴露问题后的收尾版：同一生成目录重新生成时会清掉 1.1.42 遗留的 `launcher/`，不再让用户看到早已不会运行的 Java/Go 启动器；生成服务停掉后状态继续按本次实际端口探测，不会因为首选端口上恰好有别的程序就误报“生成的服务正在运行”。端口回归 11/11，模版生成回归 194/194。
 
@@ -172,9 +174,10 @@ runtime\node\node.exe tools\ui-smoke.js 9222           # 界面冒烟（需 --re
 - **Excel 网格**：行号 + A–E 列；双击行进入接口编辑器，分类在底部 sheet 页（双击改名、右键新建/导出）。
 - **全局搜索** `Ctrl+K`：接口 / 表 / 字段 / 路由 / SQL 一把搜。
 - **六页编辑器**：表结构、路由脚本、缓存存储、接口文档、测试、生成导出。
-- **Ribbon**：文件、接口、表结构、脚本、服务、视图、工程、模版与插件、扩展。
-- **模版库**：26 套内置工程（商城 / 视频站 / 音乐网站 / 博客 / 小说网站 / 工单 / 问卷系统 / 活动报名 / 预约 / 跨库订单 / 同频社区 / 聊天等），一键替换当前工程；当前工程也能“存模版”。启动预览页可直接套用全部模版。
-- **插件**：`plugins/<id>/plugin.json + index.js` 可注入自定义函数、接口、路由、改写脚本；面板里启停/安装/卸载。
+- **Ribbon**：工程、接口、表结构、脚本、运行、导出与更多，再加一个按插件动态出现的「插件」组。
+- **模版库**：26 套内置工程（商城 / 视频站 / 音乐网站 / 博客 / 小说网站 / 工单 / 问卷系统 / 活动报名 / 预约 / 跨库订单 / 同频社区 / 聊天等）。套用模版和「新建」都先保存当前工程，再用模版/示例新建一个工程；当前工程不会被覆盖。当前工程也能“存模版”，启动预览页可直接套用全部模版。
+- **插件**：`plugins/<id>/plugin.json + index.js`。新插件用 `activate(api)` 注册 Ribbon 命令、接管保存/生成/导出/服务启停、注册模版、保存设置与数据；旧 `apply(project, api)` 继续兼容。面板里可启停、重载、新建脚手架、安装/卸载、看日志和开发者文档。完整规范见 [docs/PLUGINS.md](docs/PLUGINS.md)。
+- **内置插件**：`audit-stamp` 演示命令、工程写入、生成钩子和插件模版；`trace-tag` 演示旧写法并注入 `REQ_TAG()`。
 - **Defender**：插件面板里可一键把仓库、运行时、生成目录加入 Windows Defender 排除项。
 - **右键**：接口行、分类 sheet、路由都能右键（打开 / 复制 / 重命名 / 删除 / 导出）。
 - **复制接口**：自动编号 `订单2`、`订单3`，表名同时加后缀，路由路径自动避让。
@@ -308,7 +311,7 @@ module.exports.routes.push({
 ## 模版 / 插件 / 文档
 
 - 模版：`app/iface/templates.js`，内置 26 套业务工程（商城 / 视频站 / 音乐网站 / 博客 / 小说网站 / 工单 / 问卷系统 / 活动报名 / 预约 / 跨库订单 / 同频社区 / 聊天 / 视频会议 / CRM / 在线课程 / 餐饮 / 物流 / 预约挂号 / 费用报销 / IoT / 活动票务 / 网课系统 / 装修报价 / 印刷报价 / 软件项目报价 / 货运报价），用户模版落 `%APPDATA%\click-build-server\clickbuild\templates\`。
-- 插件：`app/iface/plugins.js`，仓库 `plugins/trace-tag` 是最小示例（注入 `REQ_TAG()`）；生成时自动应用，插件失败只记 warning。
+- 插件：`app/iface/plugins.js`，API v2。新插件 `activate(api)` 注册命令/钩子/模版，旧 `apply(project, api)` 兼容；内置 `plugins/audit-stamp` 演示四类能力和 `plugins/trace-tag` 演示旧写法。完整 manifest、权限、钩子和 API 见 [docs/PLUGINS.md](docs/PLUGINS.md)；回归 `tools/test-plugins-v2.js`。
 - 接口文档：编辑器第 3 页可填接口级 7 项 + 每条路由 4 项，直接进 `docs/openapi.json` 与 `/docs`。
 - Defender：`app/iface/defender.js`，读写 `Get-MpPreference`；权限不足会原样报错。
 
@@ -363,7 +366,8 @@ npm run dist       # 发布安装包
 
 | 套件 | 结果 |
 | --- | --- |
-| `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **193/193** |
+| `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **194/194** |
+| `tools/test-plugins-v2.js`（命令 / 权限 / 钩子取消与改写 / 模版 / 脚手架 / 安装卸载 / 旧插件兼容） | **26/26** |
 | `tools/e2e-cases.js`（21 套行业案例真实 HTTP） | **106/106** |
 | `tools/test-help.js`（生成服务 `/help`、404/405/413、OpenAPI 默认响应） | **28/28** |
 | `tools/test-new-iface.js`（新建接口默认路由、404 与创建引导参数） | **16/16** |
@@ -376,7 +380,7 @@ npm run dist       # 发布安装包
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言） | **20/20** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程绑定/自动保存/启动主页、AI 配置与失败保护、新建引导） | **124/124**（安装版与源码版各 124/124） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导） | **131/131**（源码版） |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
 | `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **19/19** |

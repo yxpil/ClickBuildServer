@@ -1,0 +1,26 @@
+{
+  "id": "audit-stamp",
+  "name": "审计字段",
+  "version": "1.1.0",
+  "description": "给表补「最后修改人」字段，给工程加审计函数，并提供一个审计示例模版。",
+  "main": "index.js",
+  "author": "ClickBuild",
+  "homepage": "https://github.com/yxpil/ClickBuildServer",
+  "permissions": ["project:read", "project:write", "ui:commands", "templates"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "add-audit",
+        "title": "补审计字段",
+        "icon": "field",
+        "description": "给当前表补 updated_by 字段"
+      },
+      {
+        "id": "report",
+        "title": "插件报告",
+        "icon": "page",
+        "description": "统计当前工程的接口、表、路由和插件状态"
+      }
+    ]
+  }
+}

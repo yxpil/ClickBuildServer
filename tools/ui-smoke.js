@@ -81,6 +81,8 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   const originalSettings = await val(`api.settings()`);
   const smokeName = `UI 冒烟 ${Date.now().toString(36)}`;
+  let templateName = '';
+  let newProjectName = '';
 
   // 选择历史工程后才进入工作台；没有历史时用商城模版建一个
   if (hubCards >= 1) {
@@ -97,11 +99,15 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
-  t('Ribbon 收敛为 6 组常用入口', await val(`document.querySelector('#ribbon').querySelectorAll('.ribbon-group').length === 6 && document.querySelector('#ribbon').querySelectorAll('[data-action]').length <= 16`), await val(`document.querySelector('#ribbon').querySelectorAll('.ribbon-group').length + ' 组 / ' + document.querySelector('#ribbon').querySelectorAll('[data-action]').length + ' 项'`));
+  t('Ribbon 收敛为 6 组常用入口 + 插件组', await val(`(()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));const baseActs=base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0);return g.length===7 && base.length===6 && baseActs<=16 && document.querySelectorAll('#ribbon [data-plugin-run]').length>0;})()`), await val(`((()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));return g.length+' 组 / 基础按钮 '+base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0)+' 项 / 插件命令 '+document.querySelectorAll('#ribbon [data-plugin-run]').length;})())`));
   const ribbonFit = await val(`(()=>{const r=document.querySelector('#ribbon');const b=document.querySelector('[data-action="moreMenu"]');return JSON.stringify({sw:r.scrollWidth,cw:r.clientWidth,aiLeft:b?b.getBoundingClientRect().left:-1,aiRight:b?b.getBoundingClientRect().right:-1,vw:innerWidth,ox:getComputedStyle(r).overflowX})})()`);
   const rf = JSON.parse(ribbonFit);
   const ribbonOk = rf.sw <= rf.cw + 1 ? rf.aiRight <= rf.vw : (rf.vw < 1400 && rf.ox === 'auto');
   t('Ribbon 宽屏完整、窄屏可滚动', ribbonOk, ribbonFit);
+  const newFlow = await val(`(async()=>{S.project.description='UNSAVED_BEFORE_NEW';const old=${JSON.stringify(smokeName)};document.querySelector('[data-action="seed"]').click();await new Promise(r=>setTimeout(r,1200));const next=S.project.name;const oldProject=await api.load(old);await enterWorkspace(await api.load(old));return JSON.stringify({next,savedDesc:oldProject&&oldProject.description,oldExists:!!oldProject})})()`);
+  const nf = JSON.parse(newFlow);
+  newProjectName = nf.next;
+  t('新建先保存当前工程再开新工程', nf.next !== smokeName && nf.savedDesc === 'UNSAVED_BEFORE_NEW' && nf.oldExists, newFlow);
   await val(`act('moreMenu')`);
   await wait(300);
   t('更多菜单收纳低频入口', await val(`!!document.querySelector('[data-more-action="exportYxpn"]') && !!document.querySelector('[data-more-action="ai"]') && /更多操作/.test(document.querySelector('#modal').innerText)`));
@@ -235,10 +241,10 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`act('templates')`);
   await wait(400);
   await val(`document.querySelector('[data-tpl-apply="builtin:blog"]').click()`);
-  await wait(300);
-  await val(`document.querySelector('#cYes').click()`);
   await wait(1200);
-  t('套用博客模版保留当前工程名', await val(`S.project.name===${JSON.stringify(smokeName)}`), await val(`S.project.name`));
+  templateName = await val(`S.project.name`);
+  t('套用博客模版新建工程而不是覆盖', templateName !== smokeName, templateName);
+  t('套用后原工程仍在历史里', await val(`api.load(${JSON.stringify(smokeName)}).then(x=>!!x && x.name===${JSON.stringify(smokeName)})`) === true, smokeName);
   t('博客模版带 5 个接口', await val(`S.project.interfaces.length === 5`), await val(`S.project.interfaces.length`));
   t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && S.project.frontend.project.elements && (S.project.frontend.project.elements.length > 10 || !!S.project.frontend.project.app) && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
   await val(`setView('studio')`);
@@ -535,7 +541,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`closeModal()`);
   await val(`S.dirty=false;S.project=null;S.genDir='';showProjectHub()`);
   await wait(900);
-  const cleanup = await val(`(async()=>{const r=await api.remove(${JSON.stringify(smokeName)});await refreshHubList();return r})()`, true);
+  const cleanup = await val(`(async()=>{const r=await api.remove(${JSON.stringify(smokeName)});${newProjectName ? `if(${JSON.stringify(newProjectName)}!==${JSON.stringify(smokeName)}) await api.remove(${JSON.stringify(newProjectName)});` : ''}${templateName ? `if(${JSON.stringify(templateName)}!==${JSON.stringify(smokeName)}) await api.remove(${JSON.stringify(templateName)});` : ''}await refreshHubList();return r})()`, true);
   t('隔离测试工程已清理', !!(cleanup && cleanup.ok), cleanup);
   await wait(700);
   const gone = await val(`api.exists(${JSON.stringify(sm.file || '')})`);

@@ -661,6 +661,12 @@ async function save(silent) {
   setSaveState('saving');
   try {
     const r = await api.save(S.project);
+    if (r && r.ok === false) {
+      setSaveState('error');
+      toast('保存被拦截：' + (r.error || '插件取消了保存'), 5000);
+      return false;
+    }
+    if (r && r.project) S.project = r.project;
     S.problems = r.problems || [];
     renderSide();
     setSaveState('saved', S.problems.length ? `已保存 · ${S.problems.length} 问题` : '已保存');
@@ -690,7 +696,7 @@ function renderRibbon() {
   const running = server && server.running;
   $('#ribbon').innerHTML = `
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb('seed', 'new', '新建', '重置为示例工程')}
+    ${rb('seed', 'new', '新建', '先保存当前工程，再新建一个示例工程')}
     ${rb('open', 'open', '打开', '打开已有工程')}
   </div><div class="lbl">工程</div></div>
 
@@ -718,11 +724,25 @@ function renderRibbon() {
     <div class="ribbon-status" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length} 运行</div>
   </div><div class="lbl">运行</div></div>
 
+  ${pluginRibbon()}
   <div class="ribbon-group ribbon-group-end"><div class="flex gap-1">
     ${rb('exportProject', 'package', '导出工程', '按所选类型导出源码工程')}
     ${rb('docs', 'page', '接口文档', '预览自动生成的 API 文档')}
     ${rb('moreMenu', 'more', '更多…', '模版、接口库、AI、导入导出和设置')}
   </div><div class="lbl">导出与更多</div></div>`;
+}
+
+// 插件贡献的命令只放前 3 个，剩下的在「插件」面板里；避免插件一多把 Ribbon 撑爆。
+function pluginRibbon() {
+  const info = S.pluginInfo;
+  const cmds = (info && info.commands) || [];
+  if (!cmds.length) return '';
+  const shown = cmds.slice(0, 3);
+  const enabled = (info.list || []).filter((p) => p.enabled).length;
+  return `<div class="ribbon-group"><div class="flex gap-1">
+    ${shown.map((c) => `<div class="rb" data-plugin-run="${esc(c.id)}" title="${esc(c.description || c.pluginName + ' · ' + c.title)}">${icon(c.icon || 'page')}<span class="t">${esc(c.title)}</span></div>`).join('')}
+    <div class="rb" data-action="plugins" title="管理插件、命令、日志和开发者文档">${icon('more')}<span class="t">插件…</span></div>
+  </div><div class="lbl">插件${enabled ? ' · ' + enabled : ''}</div></div>`;
 }
 
 function showMoreMenu() {
@@ -2825,6 +2845,27 @@ async function launchWeb() {
     launchingWeb = false;
   }
 }
+async function runPluginCommand(key) {
+  if (!key) return;
+  const r = await api.pluginRun(key, { project: S.project, ifaceId: S.selId, tableKey: S.tableKey });
+  if (r && r.ok === false) return toast('插件命令失败：' + (r.error || ''), 6000);
+  if (r && r.project) {
+    S.project = r.project;
+    if (!S.project.interfaces.some((i) => i.id === S.selId)) S.selId = (S.project.interfaces[0] || {}).id;
+    if (!S.project.categories.some((c) => c.id === S.cat)) S.cat = (S.project.categories[0] || {}).id || '';
+    render();
+    scheduleSave();
+  }
+  if (r && r.message) toast(r.message, 4500);
+  if (r && r.openUrl) api.openUrl(r.openUrl);
+  if (r && r.html) {
+    modal(`<div class="p-5 max-w-[720px] max-h-[80vh] overflow-auto">${r.html}<div class="flex justify-end mt-4"><button class="btn thin" id="pluginResultClose">关闭</button></div></div>`, (root) => {
+      root.querySelector('#pluginResultClose').onclick = closeModal;
+    });
+  }
+  try { S.pluginInfo = await api.pluginSummary(); renderRibbon(); } catch (_) {}
+}
+
 async function act(name, el) {
   const it = activeIface();
   if (name === 'moreMenu') return showMoreMenu();
@@ -2836,12 +2877,7 @@ async function act(name, el) {
     return;
   }
   if (name === 'seed') {
-    if (!(await confirmBox('重置工程', '会用示例工程覆盖当前内容，先保存的话请点取消。'))) return;
-    S.project = await api.seed();
-    await api.save(S.project);
-    S.cat = S.project.categories[0].id; S.selId = S.project.interfaces[0].id; S.mode = 'grid';
-    render(); toast('已重置为示例工程');
-    return;
+    return activateFreshProject(await api.seed(), (p) => `已新建「${p.name}」，原工程保持原样`);
   }
   if (name === 'open') {
     await save(true);
@@ -3177,7 +3213,7 @@ async function showTemplates() {
         </div>
       </div>`).join('')}
     </div>
-    <div class="text-[11px] text-neutral-500 mt-2">套用会替换当前编辑的工程（先保存的话点取消）。内置模版只读，另存一份后可以随意改。</div>
+    <div class="text-[11px] text-neutral-500 mt-2">套用会先保存当前工程，再用模版新建一个工程；当前内容不会被覆盖。内置模版只读，另存一份后可以随意改。</div>
   </div>`, (root) => {
     root.querySelector('#tplClose').onclick = closeModal;
     root.querySelector('#tplSave').onclick = () => { closeModal(); showSaveTemplate(); };
@@ -3185,15 +3221,8 @@ async function showTemplates() {
       b.onclick = async () => {
         const got = await api.templateGet(b.dataset.tplApply);
         if (!got.ok) return toast('读取失败：' + got.error);
-        if (!(await confirmBox('套用模版', `用「${got.name}」替换当前工程？当前未保存的修改会丢。`))) return;
-        const keepName = S.project.name;
-        S.project = got.project;
-        S.project.name = keepName;
-        S.cat = (S.project.categories[0] || {}).id || '';
-        S.selId = (S.project.interfaces[0] || {}).id || '';
-        S.mode = 'grid'; S.tab = 'tables'; S.problems = [];
-        await api.save(S.project);
-        closeModal(); render(); toast(`已套用模版「${got.name}」，记得生成服务`);
+        const ok = await activateFreshProject(got.project, (p) => `已从模版「${got.name}」新建「${p.name}」`);
+        if (ok) closeModal();
       };
     });
     root.querySelectorAll('[data-tpl-del]').forEach((b) => {
@@ -3308,30 +3337,54 @@ async function showIfaceLibrary() {
 
 /* ---------------- 插件 / Defender ---------------- */
 async function showPlugins() {
-  const r = await api.plugins();
+  const r = await api.pluginSummary();
   if (!r.ok) return toast('读取插件失败');
+  const tpls = (await api.pluginTemplates()).list || [];
+  const list = r.list || [];
+  const cmds = r.commands || [];
+  const enabled = list.filter((p) => p.enabled).length;
+  const cmdButtons = cmds.map((c) => `<button class="btn thin" data-pl-run="${esc(c.id)}" title="${esc(c.description || c.pluginName)}">${esc(c.title)}<span class="text-neutral-500 ml-1">· ${esc(c.pluginName)}</span></button>`).join('') || '<span class="text-[11px] text-neutral-500">启用的插件还没注册命令。可以点「新建插件」生成一个带命令的脚手架。</span>';
+  const hookNames = [...new Set((r.hooks || []).map((h) => (typeof h === 'string' ? h : h.name)))];
   modal(`<div class="p-4">
     <div class="flex items-center gap-2 mb-3"><b class="text-[13px]">插件</b>
-      <span class="pill">${r.list.length} 个</span>
-      <button class="btn thin ml-auto" id="plInstall">安装插件</button>
+      <span class="pill">${list.length} 个 · ${enabled} 启用</span>
+      <span class="pill">命令 ${cmds.length}</span>
+      <span class="pill">模版 ${tpls.length}</span>
+      <span class="text-[11px] text-neutral-500 mono">API v${esc(r.apiVersion || '')}</span>
+      <button class="btn thin ml-auto" id="plReload">重新加载</button>
+      <button class="btn thin" id="plScaffold">新建插件</button>
+      <button class="btn thin" id="plInstall">安装插件</button>
       <button class="btn thin" id="plClose">关闭</button></div>
-    <div class="border border-neutral-300 max-h-[46vh] overflow-auto">
-      ${r.list.map((p) => `<div class="flex items-center gap-3 p-2 border-b border-neutral-200">
+    <div class="border border-neutral-300 max-h-[36vh] overflow-auto">
+      ${list.map((p) => `<div class="flex items-center gap-3 p-2 border-b border-neutral-200">
         <label class="flex items-center gap-2"><input type="checkbox" data-pl="${esc(p.id)}" ${p.enabled ? 'checked' : ''}>
           <b>${esc(p.name)}</b></label>
-        <span class="pill">${esc(p.id)}</span><span class="text-[11px] text-neutral-500 mono">v${esc(p.version)}</span>
+        <span class="pill">${esc(p.id)}</span><span class="text-[11px] text-neutral-500 mono">v${esc(p.version || '')}</span>
         <span class="text-[11px] text-neutral-500">${p.source === 'builtin' ? '内置' : '我的'}</span>
         <div class="text-[12px] text-neutral-600 flex-1 truncate" title="${esc(p.description)}">${esc(p.description)}</div>
+        ${(p.commands || []).length ? `<span class="pill">${p.commands.length} 命令</span>` : ''}
+        ${(p.hooks || []).length ? `<span class="pill">${p.hooks.length} 钩子</span>` : ''}
+        ${p.errors && p.errors.length ? `<span class="pill" title="${esc(p.errors.join('\n'))}">${p.errors.length} 错误</span>` : ''}
         ${p.source === 'user' ? `<button class="btn thin" data-pl-del="${esc(p.id)}">卸载</button>` : ''}
-      </div>`).join('') || '<div class="p-4 text-neutral-500">还没有插件。点“安装插件”选一个带 plugin.json 的文件夹。</div>'}
+      </div>`).join('') || '<div class="p-4 text-neutral-500">还没有插件。点“安装插件”选一个带 plugin.json 的文件夹，或“新建插件”生成脚手架。</div>'}
     </div>
-    <div class="text-[11px] text-neutral-500 mt-2">插件在主进程里执行，等同于本地脚本，只安装你信任的。启用的插件会在生成服务时注入函数/接口/脚本改写。</div>
 
-    <div class="help-h">Windows Defender 信任目录</div>
-    <div class="flex items-center gap-2">
-      <button class="btn thin" id="plTrust">加入排除项</button>
-      <span class="text-[11px] text-neutral-500">工程目录、runtime/node、node_modules，并排除 node.exe / electron.exe</span>
+    <div class="help-h">插件命令</div>
+    <div class="flex flex-wrap gap-2">${cmdButtons}</div>
+
+    <div class="help-h">插件模版</div>
+    <div class="flex flex-wrap gap-2">${tpls.map((t) => `<button class="btn thin" data-pl-tpl="${esc(t.id)}">${esc(t.name)}<span class="text-neutral-500 ml-1">· ${esc(t.pluginId || '插件')}</span></button>`).join('') || '<span class="text-[11px] text-neutral-500">还没有插件注册模版。</span>'}</div>
+
+    <div class="help-h">生命周期钩子</div>
+    <div class="text-[11px] text-neutral-600 mono leading-6">${hookNames.map(esc).join(' · ')}</div>
+    <div class="text-[11px] text-neutral-500 mt-1">插件可以监听保存、生成、导出、服务启停和工程打开；返回 { project } 改工程，返回 false 取消动作。</div>
+
+    <div class="flex items-center gap-2 mt-3">
+      <button class="btn thin" id="plLogs">查看日志</button>
+      <button class="btn thin" id="plDocs">开发者文档</button>
+      <button class="btn thin" id="plTrust">加入 Defender 信任目录</button>
     </div>
+    <div class="text-[11px] text-neutral-500 mt-2">插件在主进程的独立 vm 上下文里执行，默认没有 require / process / 文件系统；权限按 manifest 授予。只安装你信任的插件。</div>
     <div class="mono text-[11px] text-neutral-600 mt-2 flex gap-3">
       <button class="btn thin" id="plOpenRepo">打开内置插件目录</button>
       <button class="btn thin" id="plOpenUser">打开我的插件目录</button>
@@ -3339,11 +3392,32 @@ async function showPlugins() {
     <pre id="plOut" class="monoarea text-[11px] border border-neutral-300 p-2 mt-2 max-h-24 overflow-auto whitespace-pre-wrap hidden"></pre>
   </div>`, (root) => {
     const out = root.querySelector('#plOut');
+    const refreshRibbon = async () => { try { S.pluginInfo = await api.pluginSummary(); renderRibbon(); } catch (_) {} };
     root.querySelector('#plClose').onclick = closeModal;
+    root.querySelector('#plReload').onclick = async () => {
+      const d = await api.pluginReload();
+      if (!d.ok) return toast('重载失败');
+      await refreshRibbon();
+      closeModal(); showPlugins();
+      toast(`已重新加载 ${d.list.length} 个插件`);
+    };
     root.querySelectorAll('[data-pl]').forEach((cb) => {
       cb.onchange = async () => {
         const d = await api.pluginEnable(cb.dataset.pl, cb.checked);
-        if (!d.ok) toast(d.error || '切换失败'); else toast(`${cb.checked ? '已启用' : '已禁用'} ${cb.dataset.pl}`);
+        if (!d.ok) toast(d.error || '切换失败');
+        else toast(`${cb.checked ? '已启用' : '已禁用'} ${cb.dataset.pl}`);
+        await refreshRibbon();
+      };
+    });
+    root.querySelectorAll('[data-pl-run]').forEach((b) => {
+      b.onclick = async () => { closeModal(); await runPluginCommand(b.dataset.plRun); };
+    });
+    root.querySelectorAll('[data-pl-tpl]').forEach((b) => {
+      b.onclick = async () => {
+        const got = await api.pluginTemplateGet(b.dataset.plTpl);
+        if (!got.ok) return toast('读取插件模版失败：' + (got.error || ''));
+        const ok = await activateFreshProject(got.project, (p) => `已从插件模版「${got.name}」新建「${p.name}」`);
+        if (ok) closeModal();
       };
     });
     root.querySelectorAll('[data-pl-del]').forEach((b) => {
@@ -3358,7 +3432,38 @@ async function showPlugins() {
       const d = await api.pluginInstall();
       if (!d) return;
       if (!d.ok) return toast(d.error || '安装失败', 5000);
+      await refreshRibbon();
       closeModal(); showPlugins(); toast('已安装 ' + d.id);
+    };
+    root.querySelector('#plScaffold').onclick = async () => {
+      const name = await ask('新建插件', 'hello-plugin', '生成带 plugin.json、命令、钩子和 README 的脚手架，放在“我的插件目录”');
+      if (!name) return;
+      const d = await api.pluginScaffold(name);
+      if (!d.ok) return toast(d.error || '创建失败', 6000);
+      await refreshRibbon();
+      closeModal(); showPlugins(); toast('已创建 ' + d.id);
+    };
+    root.querySelector('#plLogs').onclick = async () => {
+      const d = await api.pluginLogs();
+      out.classList.remove('hidden');
+      out.textContent = (d.logs || []).slice(-120).join('\n') || '还没有插件日志。';
+    };
+    root.querySelector('#plDocs').onclick = async () => {
+      const d = await api.pluginDocs();
+      if (!d.ok) return toast('读取开发者文档失败');
+      modal(`<div class="p-5 max-w-[760px] max-h-[82vh] overflow-auto">
+        <div class="flex items-center gap-2 mb-3"><b class="text-[13px]">插件 API v${esc(d.apiVersion || '')}</b><button class="btn thin ml-auto" id="plDocsClose">关闭</button></div>
+        <div class="text-[12px] text-neutral-600 mb-3">manifest 至少要 id / name / version / main；权限和 contributes.commands 可选。旧的 apply(project, api) 仍然兼容。</div>
+        <pre class="monoarea text-[11px] border border-neutral-300 p-3 whitespace-pre-wrap">${esc(JSON.stringify(d.manifest, null, 2))}</pre>
+        <div class="help-h">API</div>
+        <div class="text-[12px] leading-6">${(d.api || []).map((a) => `<div><span class="mono">${esc(a.name)}</span> — ${esc(a.desc)}</div>`).join('')}</div>
+        <div class="help-h">钩子</div>
+        <div class="text-[11px] mono leading-6">${(d.hooks || []).map((h) => typeof h === 'string' ? h : h.name).join(' · ')}</div>
+        <div class="help-h">权限</div>
+        <div class="text-[11px] mono leading-6">${(d.permissions || []).map((p) => typeof p === 'string' ? p : p.name).join(' · ')}</div>
+        <div class="help-h">示例</div>
+        <pre class="monoarea text-[11px] border border-neutral-300 p-3 whitespace-pre-wrap">${esc(d.example || '')}</pre>
+      </div>`, (rr) => { rr.querySelector('#plDocsClose').onclick = closeModal; });
     };
     root.querySelector('#plTrust').onclick = async () => {
       root.querySelector('#plTrust').disabled = true;
@@ -3637,6 +3742,11 @@ function defaultFields() {
 
 /* ---------------- 事件绑定 ---------------- */
 document.addEventListener('click', (e) => {
+  const pl = e.target.closest('[data-plugin-run]');
+  if (pl) {
+    e.preventDefault();
+    return runPluginCommand(pl.dataset.pluginRun).catch((err) => toast(String(err && err.message || err), 5000));
+  }
   const el = e.target.closest('[data-action]');
   if (!el) return;
   e.preventDefault();
@@ -4782,6 +4892,32 @@ function uniqueProjectName(base) {
   return next;
 }
 
+// 新建/套用模版的唯一入口：先落盘当前工程，再保存一个新名字的工程并切过去。
+// 任何一步失败都不动当前工程，避免“点了新建反而把当前内容冲掉”。
+async function activateFreshProject(next, doneText) {
+  const saved = await save(true);
+  if (!saved) {
+    toast('当前工程没有保存成功，已取消新建；改动还在当前工程里', 6000);
+    return false;
+  }
+  const p = next;
+  p.name = uniqueProjectName(p.name);
+  const r = await api.save(p);
+  if (r && r.ok === false) {
+    toast('新工程保存失败：' + (r.error || '未知错误'), 6000);
+    return false;
+  }
+  const proj = (r && r.project) || p;
+  S.project = proj;
+  S.cat = (proj.categories[0] || {}).id || '';
+  S.selId = (proj.interfaces[0] || {}).id || '';
+  S.mode = 'grid'; S.tab = 'tables'; S.tableKey = ''; S.routeId = ''; S.problems = (r && r.problems) || [];
+  try { S.list = await api.projects(); } catch (_) {}
+  render();
+  toast(doneText(proj), 4500);
+  return true;
+}
+
 function renderHubSections() {
   const box = $('#hubSections');
   if (!box) return;
@@ -4943,22 +5079,26 @@ async function duplicateHubProject(name) {
 async function hubUseTemplate(id) {
   const got = await api.templateGet(id);
   if (!got || got.ok === false) return toast('读取模版失败：' + ((got && got.error) || '未知错误'), 5000);
-  if (S.project && !(await confirmBox('套用模版', `用「${got.name}」新建工程并进入工作台？当前工程会先保留在历史里。`))) return;
+  if (S.project && !(await confirmBox('从模版新建工程', `用「${got.name}」新建工程并进入工作台？当前工程会先保存，不会被覆盖。`))) return;
+  if (S.project && !(await save(true))) return toast('当前工程保存失败，已取消新建', 5000);
   const p = got.project;
   p.name = uniqueProjectName(got.name || p.name);
-  await api.save(p);
-  await enterWorkspace(p);
+  const w = await api.save(p);
+  if (w && w.ok === false) return toast('新工程保存失败：' + (w.error || ''), 5000);
+  await enterWorkspace((w && w.project) || p);
   toast(`已从模版「${got.name}」新建「${p.name}」`, 4500);
 }
 
 async function hubNewBlank() {
+  if (S.project && !(await save(true))) return toast('当前工程保存失败，已取消新建', 5000);
   const p = await api.seed();
   p.name = uniqueProjectName('新工程');
   p.description = '空白工程';
   p.interfaces = [];
   delete p.frontend;
-  await api.save(p);
-  await enterWorkspace(p);
+  const w = await api.save(p);
+  if (w && w.ok === false) return toast('新工程保存失败：' + (w.error || ''), 5000);
+  await enterWorkspace((w && w.project) || p);
   toast(`已新建「${p.name}」`);
 }
 
@@ -5033,6 +5173,7 @@ window.addEventListener('blur', hideHubMenu);
     S.list = b.list;
     S.services = b.services;
     S.settings = b.settings;
+    try { S.pluginInfo = await api.pluginSummary(); } catch (e) { S.pluginInfo = { list: [], commands: [], hooks: [] }; }
     try { S.runtimes = await api.runtimes(); } catch (e) { S.runtimes = []; }
     try { await applyStartupReport(await api.startupReport()); } catch (e) { /* 启动报告不存在时忽略 */ }
     applyTheme(S.settings.theme || {});

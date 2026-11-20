@@ -98,6 +98,12 @@ if (!gotLock) {
     createClosing();
     sendShutdown('正在停止生成的服务与内置服务器');
     try {
+      // 先让插件收尾（app.shutdown），再停实际服务，避免插件在服务已停后还去访问端口。
+      await require('./app/iface/plugins').shutdown();
+    } catch (e) {
+      console.log('[shutdown] plugin: ' + e.message);
+    }
+    try {
       // 如果用户是在启动途中退出，先等启动编排结束，再统一停服务，避免刚停又被拉起。
       if (startupPromise) await startupPromise;
       const r = await services.shutdown((s) => sendShutdown(s.text));

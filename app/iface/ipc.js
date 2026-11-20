@@ -184,15 +184,22 @@ function registerIpc() {
   });
 
   ipcMain.handle('iface:projects', () => projects.list());
-  ipcMain.handle('iface:load', (e, name) => {
+  ipcMain.handle('iface:load', async (e, name) => {
     const p = projects.load(name);
-    return p ? spec.normalizeProject(p) : null;
+    if (!p) return null;
+    const normalized = spec.normalizeProject(p);
+    const hooked = await plugins.fire('project.open', { project: normalized, name });
+    return spec.normalizeProject(hooked.project || normalized);
   });
-  ipcMain.handle('iface:save', (e, project) => {
-    const p = spec.normalizeProject(project);
+  ipcMain.handle('iface:save', async (e, project) => {
+    let p = spec.normalizeProject(project);
+    const hooked = await plugins.fire('project.beforeSave', { project: p });
+    if (hooked.canceled) return { ok: false, error: '插件取消了保存', problems: [] };
+    if (hooked.project) p = spec.normalizeProject(hooked.project);
     const v = spec.validateProject(p);
     const file = projects.save(p);
-    return { file, problems: v.errors };
+    await plugins.fire('project.afterSave', { project: p, file });
+    return { ok: true, file, problems: v.errors, project: p };
   });
   ipcMain.handle('iface:delete', (e, name) => projects.remove(name));
   ipcMain.handle('iface:projects:duplicate', (e, name) => projects.duplicate(name));
@@ -226,16 +233,19 @@ function registerIpc() {
     try { return { ok: true, ddl: spec.ddlOf(spec.normalizeIface(iface, { categories: [{ id: 'biz' }] }, 0)) }; } catch (err) { return { ok: false, error: err.message }; }
   });
 
-  ipcMain.handle('iface:generate', (e, project, outDir, opts) => {
+  ipcMain.handle('iface:generate', async (e, project, outDir, opts) => {
     const base = spec.normalizeProject(project);
     const plugged = plugins.apply(base);
-    const p = plugged.project;
+    const hooked = await plugins.fire('generate.before', { project: plugged.project, outDir, opts: opts || {} });
+    if (hooked.canceled) return { ok: false, error: '插件取消了生成' };
+    const p = spec.normalizeProject(hooked.project || plugged.project);
     const v = spec.validateProject(p);
     if (!v.ok) return { ok: false, error: v.errors.join('\n'), problems: v.errors };
     const o = opts || {};
     const dirName = String(o.dirName || p.name || '接口服务').replace(/[\\/:*?"<>|]/g, '_');
     const target = outDir || path.join(store.defaultGeneratedRoot(), 'iface', dirName);
     const gen = codegen.writeTo(p, target, { port: services.settings().ports.http, only: o.only, category: o.category, ide: !!o.ide });
+    await plugins.fire('generate.after', { project: p, dir: gen.dir, count: gen.files.length });
     return { ok: true, dir: gen.dir, files: gen.files.map((f) => ({ path: f, size: 0 })), ports: gen.ports, warnings: plugged.warnings, count: gen.project.interfaces.length };
   });
 
@@ -250,10 +260,19 @@ function registerIpc() {
   ipcMain.handle('iface:services:logs', (e, id) => services.logs(id));
   ipcMain.handle('iface:ports:set', (e, patch) => services.setPorts(patch));
 
-  ipcMain.handle('iface:server:start', async (e, dir, opts) => services.startServer(dir, opts || {}));
+  ipcMain.handle('iface:server:start', async (e, dir, opts) => {
+    const hooked = await plugins.fire('server.beforeStart', { dir, opts: opts || {} });
+    if (hooked.canceled) return { ok: false, error: '插件取消了启动' };
+    const r = await services.startServer(dir, opts || {});
+    await plugins.fire('server.afterStart', { dir, result: r });
+    return r;
+  });
   ipcMain.handle('iface:deploy', async (e, project, opts) => deployer.deploy(project, opts || {}));
   ipcMain.handle('iface:runtimes', () => services.runtimes());
-  ipcMain.handle('iface:server:stop', async () => services.stopServer());
+  ipcMain.handle('iface:server:stop', async () => {
+    await plugins.fire('server.beforeStop', {});
+    return services.stopServer();
+  });
   ipcMain.handle('iface:server:logs', () => services.logs('server'));
 
   ipcMain.handle('iface:test', async (e, payload) => {
@@ -279,7 +298,13 @@ function registerIpc() {
       parent = r.filePaths[0];
     }
     try {
-      return projectExport.writeProject(project, parent, { port: services.settings().ports.http, errors: o.errors || null, runtime: o.runtime || 'node', runtimeOnly: !!o.runtimeOnly });
+      let p = spec.normalizeProject(project);
+      const hooked = await plugins.fire('export.before', { project: p, parent });
+      if (hooked.canceled) return { ok: false, error: '插件取消了导出' };
+      if (hooked.project) p = spec.normalizeProject(hooked.project);
+      const r = projectExport.writeProject(p, parent, { port: services.settings().ports.http, errors: o.errors || null, runtime: o.runtime || 'node', runtimeOnly: !!o.runtimeOnly });
+      await plugins.fire('export.after', { project: p, parent, result: r });
+      return r;
     } catch (err) { return { ok: false, error: err.message }; }
   });
 
@@ -416,6 +441,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('iface:plugins:list', () => ({ ok: true, list: plugins.list(), repoDir: plugins.repoPluginsDir(), userDir: plugins.userPluginsDir() }));
+  ipcMain.handle('iface:plugins:summary', () => plugins.summary());
   ipcMain.handle('iface:plugins:enable', (e, id, on) => plugins.setEnabled(id, on));
   ipcMain.handle('iface:plugins:apply', (e, project) => {
     const r = plugins.apply(project);
@@ -434,6 +460,19 @@ function registerIpc() {
     await shell.openPath(dir);
     return dir;
   });
+  ipcMain.handle('iface:plugins:run', async (e, id, payload) => {
+    try { return await plugins.runCommand(id, payload || {}); } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:plugins:templates', () => ({ ok: true, list: plugins.templates() }));
+  ipcMain.handle('iface:plugins:templateGet', (e, id) => {
+    try { return plugins.getTemplate(id); } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:plugins:reload', () => plugins.reload());
+  ipcMain.handle('iface:plugins:scaffold', (e, name) => {
+    try { return plugins.scaffold(name); } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:plugins:docs', () => plugins.docs());
+  ipcMain.handle('iface:plugins:logs', () => ({ ok: true, logs: plugins.logs() }));
 
   ipcMain.handle('iface:defender:list', () => defender.list());
   ipcMain.handle('iface:defender:trust', async (e, extra) => defender.trust(extra || []));
