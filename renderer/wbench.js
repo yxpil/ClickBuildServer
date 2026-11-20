@@ -1368,28 +1368,52 @@ function scriptGutter(text, diagnostics) {
   const lines = String(text == null ? '' : text).split('\n');
   const byLine = new Map();
   for (const d of diagnostics || []) {
-    if (d.severity === 'error') byLine.set(d.line, 'error');
-    else if (!byLine.has(d.line)) byLine.set(d.line, 'warning');
+    const row = byLine.get(d.line) || { severity: 'warning', items: [] };
+    row.items.push(d);
+    if (d.severity === 'error' || row.severity !== 'error') row.severity = d.severity === 'error' ? 'error' : row.severity;
+    byLine.set(d.line, row);
   }
   return lines.map((_, idx) => {
-    const sev = byLine.get(idx + 1);
-    return `<div class="gl${sev ? ' line-' + sev : ''}">${idx + 1}</div>`;
+    const row = byLine.get(idx + 1);
+    const sev = row ? row.severity : '';
+    const tip = row ? row.items.map((d) => `${d.severity === 'error' ? '错误' : '警告'} ${d.code || 'ISSUE'}: ${d.message || ''}`).join('\n') : '';
+    const icon = sev ? `<span class="gl-icon"><span>!</span></span>` : '<span class="gl-mark"></span>';
+    return `<div class="gl${sev ? ' line-' + sev : ''}" data-line="${idx + 1}"${tip ? ` title="${esc(tip)}"` : ''}>${icon}<span class="gl-no">${idx + 1}</span></div>`;
   }).join('');
+}
+
+function scriptMarkers(text, diagnostics) {
+  const lines = String(text == null ? '' : text).split('\n');
+  const rows = [];
+  for (const d of diagnostics || []) {
+    const line = Number(d.line) || 1;
+    const col = Math.max(1, Number(d.column) || 1);
+    const end = Math.max(col + 1, Number(d.endColumn) || col + 1);
+    if (line < 1 || line > lines.length) continue;
+    const sev = d.severity === 'warning' ? 'warning' : 'error';
+    const len = Math.max(1, end - col);
+    const top = (line - 1) * 21 + 23;
+    const tip = `${sev === 'error' ? '错误' : '警告'} ${d.code || 'ISSUE'}：${d.message || ''}${d.hint ? '\n' + d.hint : ''}`;
+    rows.push(`<div class="code-marker ${sev}" data-line="${line}" data-column="${col}" data-end-column="${end}" data-tip="${esc(tip)}" style="left:calc(12px + ${col - 1} * 1ch);top:${top}px;width:calc(${len} * 1ch)"><i></i></div>`);
+  }
+  return rows.join('');
 }
 
 function scriptProblemsHtml(diagnostics, checking) {
   const ds = diagnostics || [];
   const errors = ds.filter((d) => d.severity === 'error').length;
   const warnings = ds.filter((d) => d.severity === 'warning').length;
-  const head = `<div class="code-problems-head"><b>实时检查</b><span>${checking ? '扫描中…' : `${errors} 错误 / ${warnings} 警告`}</span><span class="ml-auto text-neutral-400">自动进行，不需要手动校验</span></div>`;
+  const count = checking
+    ? '<span>扫描中…</span>'
+    : `${errors ? `<span class="bad">${errors} 个错误</span>` : '<span>0 个错误</span>'}${warnings ? ` / <span class="warn">${warnings} 个警告</span>` : ''}`;
+  const head = `<div class="code-problems-head"><b>Problems</b>${count}<span class="ml-auto text-neutral-400">输入时自动分析 · 点问题跳到对应位置</span></div>`;
   if (checking) return `${head}<div class="code-diag"><span class="code-diag-badge">·</span><span>正在分析脚本…</span></div>`;
-  if (!ds.length) return `${head}<div class="code-diag" style="border-left-color:#1f8f3a"><span class="code-diag-badge" style="color:#1f8f3a">✓</span><span>没有发现问题。继续输入会自动重新检查。</span></div>`;
-  const rows = ds.slice(0, 24).map((d) => {
+  if (!ds.length) return `${head}<div class="code-diag" style="border-left-color:#1f8f3a"><span class="code-diag-badge" style="background:#1f8f3a">✓</span><span>没有发现问题。继续输入会自动重新检查。</span></div>`;
+  const rows = ds.slice(0, 24).map((d, idx) => {
     const sev = d.severity === 'warning' ? 'warning' : 'error';
-    const flag = sev === 'error' ? 'E' : 'W';
     const code = d.code || 'ISSUE';
-    return `<div class="code-diag ${sev}" data-diag-line="${d.line}" title="跳到第 ${d.line} 行">
-      <span class="code-diag-badge">${flag}</span>
+    return `<div class="code-diag ${sev}" data-diag-line="${d.line}" data-diag-column="${d.column || 1}" data-diag-end="${d.endColumn || (d.column || 1) + 1}" data-diag-index="${idx}" title="跳到第 ${d.line} 行${d.column ? '，第 ' + d.column + ' 列' : ''}">
+      <span class="code-diag-badge">!</span>
       <span class="code-diag-msg"><b>第 ${d.line} 行${d.column ? ':' + d.column : ''}</b> ${esc(d.message || '')}</span>
       <span class="code-diag-hint">${esc(d.hint || '')}</span>
       <span class="code-diag-code">${esc(code)}</span>
@@ -1412,6 +1436,7 @@ function setupScriptEditor(onChange) {
   if (!ta) return;
   const hi = $('#codeHighlightInner');
   const gut = $('#codeGutterInner');
+  const marks = $('#codeMarkerInner');
   const problems = $('#codeProblems');
   const status = $('#rStatus');
   const cursor = $('#rCursor');
@@ -1419,28 +1444,69 @@ function setupScriptEditor(onChange) {
   let timer = 0;
   let seq = 0;
   let checking = true;
+  let tip = document.getElementById('codeTooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'codeTooltip';
+    tip.className = 'code-tooltip';
+    document.body.appendChild(tip);
+  }
+  const hideTip = () => { if (tip) tip.classList.remove('show'); };
+  const showTip = (marker, x, y) => {
+    if (!tip) return;
+    const text = marker.getAttribute('data-tip') || '';
+    const parts = text.split('\n');
+    tip.className = 'code-tooltip show' + (/^警告/.test(text) ? ' warning' : '');
+    tip.innerHTML = `<b>${esc(parts.shift() || '')}</b>${parts.length ? `<em>${esc(parts.join(' '))}</em>` : ''}`;
+    const pad = 12;
+    const w = Math.min(380, Math.max(220, tip.offsetWidth || 260));
+    const h = tip.offsetHeight || 44;
+    tip.style.left = `${Math.min(window.innerWidth - w - pad, x + 12)}px`;
+    tip.style.top = `${Math.min(window.innerHeight - h - pad, y + 16)}px`;
+  };
 
   const syncScroll = () => {
     if (hi) hi.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
     if (gut) gut.style.transform = `translateY(${-ta.scrollTop}px)`;
+    if (marks) marks.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
   };
   const paint = () => {
     if (hi) hi.innerHTML = scriptHighlight(ta.value, diagnostics);
     if (gut) gut.innerHTML = scriptGutter(ta.value, diagnostics);
+    if (marks) marks.innerHTML = scriptMarkers(ta.value, diagnostics);
     if (problems) problems.innerHTML = scriptProblemsHtml(diagnostics, checking);
+    hideTip();
   };
   const setStatus = (c) => {
     const dot = $('#liveDot');
     const errors = c && c.errorCount || 0;
     const warnings = c && c.warningCount || 0;
-    if (dot) dot.className = `live-dot ${errors ? 'err' : warnings ? 'warn' : 'ok'}`;
+    if (dot) dot.className = `live-dot ${errors ? 'err' : warnings ? 'warn' : checking ? '' : 'ok'}`;
     if (!status) return;
+    status.className = `code-status ${checking ? 'checking' : errors ? 'err' : warnings ? 'warn' : 'ok'}`;
     if (checking) status.textContent = '检查中…';
     else if (errors) status.textContent = `${errors} 个错误${warnings ? ` · ${warnings} 个警告` : ''}`;
     else if (warnings) status.textContent = `${warnings} 个警告`;
     else status.textContent = '实时检查通过';
-    status.style.color = errors ? '#c62828' : warnings ? '#9a6700' : '#1f8f3a';
   };
+  const jumpTo = (lineNo, column, endColumn) => {
+    const lines = ta.value.split('\n');
+    const line = Math.min(Math.max(1, Number(lineNo) || 1), lines.length);
+    let pos = 0;
+    for (let k = 0; k < line - 1 && k < lines.length; k++) pos += lines[k].length + 1;
+    const text = lines[line - 1] || '';
+    const startCol = Math.min(Math.max(1, Number(column) || 1), text.length + 1) - 1;
+    const endCol = Math.min(text.length, Math.max(startCol + 1, (Number(endColumn) || startCol + 2) - 1));
+    ta.focus();
+    ta.setSelectionRange(pos + startCol, pos + endCol);
+    const targetTop = Math.max(0, (line - 1) * 21 - ta.clientHeight / 2);
+    ta.scrollTop = targetTop;
+    ta.scrollLeft = Math.max(0, startCol * 7.5 - ta.clientWidth / 2);
+    syncScroll();
+    if (cursor) cursor.textContent = `第 ${line} 行，第 ${startCol + 1} 列`;
+    hideTip();
+  };
+
   const check = () => {
     const token = ++seq;
     checking = true;
@@ -1455,7 +1521,7 @@ function setupScriptEditor(onChange) {
     }).catch((e) => {
       if (token !== seq) return;
       checking = false;
-      diagnostics = [{ line: 1, column: 1, severity: 'error', code: 'CHECK_FAILED', message: `检查器调用失败：${e.message}`, hint: '确认主进程 IPC 正常后重试' }];
+      diagnostics = [{ line: 1, column: 1, endColumn: 2, severity: 'error', code: 'CHECK_FAILED', message: `检查器调用失败：${e.message}`, hint: '确认主进程 IPC 正常后重试' }];
       paint();
       setStatus({ errorCount: 1, warningCount: 0 });
     });
@@ -1537,16 +1603,38 @@ function setupScriptEditor(onChange) {
     problems.addEventListener('click', (e) => {
       const row = e.target.closest('[data-diag-line]');
       if (!row) return;
-      const line = Number(row.dataset.diagLine);
-      const lines = ta.value.split('\n');
-      let pos = 0;
-      for (let k = 0; k < line - 1 && k < lines.length; k++) pos += lines[k].length + 1;
-      const end = pos + (lines[line - 1] || '').length;
-      ta.focus();
-      ta.setSelectionRange(pos, end);
-      ta.scrollTop = Math.max(0, (line - 1) * 21 - 34);
-      syncScroll();
-      if (cursor) cursor.textContent = `第 ${line} 行，第 1 列`;
+      jumpTo(
+        Number(row.dataset.diagLine),
+        Number(row.dataset.diagColumn || 1),
+        Number(row.dataset.diagEnd || Number(row.dataset.diagColumn || 1) + 1),
+      );
+    });
+  }
+
+  if (gut) {
+    gut.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-line]');
+      if (!row || !row.classList.contains('line-error') && !row.classList.contains('line-warning')) return;
+      const line = Number(row.dataset.line);
+      const d = diagnostics.find((x) => x.line === line) || { line, column: 1, endColumn: 2 };
+      jumpTo(d.line, d.column, d.endColumn);
+    });
+  }
+
+  if (marks) {
+    marks.addEventListener('mouseover', (e) => {
+      const marker = e.target.closest('.code-marker');
+      if (marker) showTip(marker, e.clientX, e.clientY);
+    });
+    marks.addEventListener('mousemove', (e) => {
+      const marker = e.target.closest('.code-marker');
+      if (marker) showTip(marker, e.clientX, e.clientY);
+    });
+    marks.addEventListener('mouseleave', hideTip);
+    marks.addEventListener('click', (e) => {
+      const marker = e.target.closest('.code-marker');
+      if (!marker) return;
+      jumpTo(Number(marker.dataset.line), Number(marker.dataset.column), Number(marker.dataset.endColumn));
     });
   }
 
@@ -1640,6 +1728,7 @@ function tabRoutes(it) {
             <div class="code-gutter"><div class="code-gutter-inner" id="codeGutterInner">${scriptGutter(r.script, [])}</div></div>
             <div class="code-stage">
               <div class="code-highlight"><div class="code-highlight-inner" id="codeHighlightInner">${scriptHighlight(r.script, [])}</div></div>
+              <div class="code-marker-layer"><div class="code-marker-inner" id="codeMarkerInner">${scriptMarkers(r.script, [])}</div></div>
               <textarea id="rScript" class="code-editor" spellcheck="false" autocapitalize="off" autocomplete="off">${esc(r.script)}</textarea>
             </div>
           </div>
@@ -1651,7 +1740,7 @@ function tabRoutes(it) {
         <span class="mono shrink-0">ClickBuild Script</span>
         <span class="text-neutral-400 truncate">Ctrl+/ 注释 · Tab 缩进 · Enter 继承缩进 · 停止输入 0.3 秒后自动检查</span>
         <span class="ml-auto mono shrink-0" id="rCursor">第 1 行，第 1 列</span>
-        <span class="shrink-0 inline-flex items-center gap-1"><i id="liveDot" class="live-dot"></i><span id="rStatus">自动检查中…</span></span>
+        <span class="shrink-0 inline-flex items-center gap-1"><i id="liveDot" class="live-dot"></i><span id="rStatus" class="code-status checking">自动检查中…</span></span>
       </div>
     </div>
   </div>`;

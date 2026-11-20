@@ -279,10 +279,37 @@ function firstColumn(line) {
   const i = String(line || '').search(/\S/);
   return i < 0 ? 1 : i + 1;
 }
-function throwAt(message, line, column) {
+function spanEnd(line, column) {
+  const text = String(line || '');
+  const start = Math.max(0, (column || 1) - 1);
+  const rest = text.slice(start);
+  if (rest.startsWith('{{')) {
+    const end = rest.indexOf('}}');
+    return end < 0 ? text.length + 1 : start + end + 3;
+  }
+  if (rest.startsWith('$')) {
+    const m = /^\$[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*|\s*\[[^\]]*\])*/.exec(rest);
+    return start + (m ? m[0].length : 1) + 1;
+  }
+  if (rest.startsWith('"') || rest.startsWith("'")) {
+    const q = rest[0];
+    let i = 1;
+    while (i < rest.length) {
+      if (rest[i] === '\\') { i += 2; continue; }
+      if (rest[i] === q) return start + i + 2;
+      i++;
+    }
+    return text.length + 1;
+  }
+  const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest);
+  if (m) return start + m[0].length + 1;
+  return Math.min(text.length + 1, start + 2);
+}
+function throwAt(message, line, column, endColumn) {
   const e = new Error(message);
   e.line = line;
   e.column = column;
+  e.endColumn = endColumn;
   return e;
 }
 
@@ -323,7 +350,7 @@ function parseScript(text) {
         const col = e.column || firstColumn(lines[ln - 1]);
         const msg = e.message;
         errors.push(`第 ${ln} 行：${msg}（${String(lines[ln - 1] || '').trim().slice(0, 60)}）`);
-        diagnostics.push({ line: ln, column: col, severity: 'error', code: diagCode(msg), message: msg, hint: diagHint(msg) });
+        diagnostics.push({ line: ln, column: col, endColumn: e.endColumn || undefined, severity: 'error', code: diagCode(msg), message: msg, hint: diagHint(msg) });
         i++;
       }
     }
@@ -368,7 +395,7 @@ function parseScript(text) {
         blk = parseBlock(['END']);
         elseBody = blk.body;
       }
-      if (blk.stop !== 'END') throw throwAt('IF 缺少 END', startLine, 1);
+      if (blk.stop !== 'END') throw throwAt('IF 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
       i++;
       return { k: 'if', branches, elseBody };
     }
@@ -379,7 +406,7 @@ function parseScript(text) {
       if (!m) throw new Error('FOREACH 写法：FOREACH $row IN $rows.rows');
       i++;
       const blk = parseBlock(['END']);
-      if (blk.stop !== 'END') throw throwAt('FOREACH 缺少 END', startLine, 1);
+      if (blk.stop !== 'END') throw throwAt('FOREACH 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
       i++;
       return { k: 'foreach', name: m[1], expr: parseExpr(m[2]), body: blk.body };
     }
@@ -835,6 +862,118 @@ async function runScript(ast, env) {
 
 /* ---------------- 校验 ---------------- */
 
+// 字节级语法扫描：括号、字符串、块注释、占位符。解析器只认识语句结构，
+// 这里补上 IDE 需要精确定位的词法错误，避免整行都标红却不知道错在哪。
+function lintRawSyntax(rawLines, add) {
+  let block = false;
+  let blockStart = null;
+  let quote = '';
+  let quoteStart = null;
+  const stack = [];
+
+  rawLines.forEach((line, idx) => {
+    const lineNo = idx + 1;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      const n = line[i + 1];
+      if (block) {
+        if (c === '*' && n === '/') { block = false; blockStart = null; i++; }
+        continue;
+      }
+      if (quote) {
+        if (c === '\\' && i + 1 < line.length) { i++; continue; }
+        if (c === quote) { quote = ''; quoteStart = null; }
+        continue;
+      }
+      if (c === '/' && n === '/') break;
+      if (c === '#') break;
+      if (c === '/' && n === '*') { block = true; blockStart = { line: lineNo, column: i + 1 }; i++; continue; }
+      if (c === '"' || c === "'") { quote = c; quoteStart = { line: lineNo, column: i + 1 }; continue; }
+      if (c === '{' && n === '{') {
+        const end = line.indexOf('}}', i + 2);
+        if (end < 0) {
+          add({
+            line: lineNo, column: i + 1, endColumn: line.length + 1, severity: 'error', code: 'UNCLOSED_PLACEHOLDER',
+            message: '占位符没有闭合', hint: '写成 {{body.name}} 或 {{query.id}}，补全后面的 }}',
+          }, `第 ${lineNo} 行：占位符没有闭合`);
+          break;
+        }
+        i = end + 1;
+        continue;
+      }
+      if ('([{'.includes(c)) { stack.push({ ch: c, line: lineNo, column: i + 1 }); continue; }
+      if (')]}'.includes(c)) {
+        const open = c === ')' ? '(' : c === ']' ? '[' : '{';
+        const top = stack[stack.length - 1];
+        if (!top || top.ch !== open) {
+          add({
+            line: lineNo, column: i + 1, endColumn: i + 2, severity: 'error', code: 'BRACKET_MISMATCH',
+            message: `括号不匹配：${c} 没有对应的 ${open}`,
+            hint: '检查这一行和上一行的括号；字符串里的括号不参与配对',
+          }, `第 ${lineNo} 行：括号不匹配 ${c}`);
+        } else {
+          stack.pop();
+        }
+      }
+    }
+  });
+
+  if (block && blockStart) {
+    add({
+      line: blockStart.line, column: blockStart.column, endColumn: blockStart.column + 2, severity: 'error', code: 'UNCLOSED_COMMENT',
+      message: '块注释没有闭合', hint: '补上 */；跨行注释不能一直不结束',
+    }, `第 ${blockStart.line} 行：块注释没有闭合`);
+  }
+  if (quote && quoteStart) {
+    add({
+      line: quoteStart.line, column: quoteStart.column, endColumn: Math.min((rawLines[quoteStart.line - 1] || '').length + 1, quoteStart.column + 1), severity: 'error', code: 'UNCLOSED_STRING',
+      message: '字符串引号没有闭合', hint: '检查这一行的单引号 / 双引号，补上结尾引号',
+    }, `第 ${quoteStart.line} 行：字符串引号没有闭合`);
+  }
+  for (const item of stack) {
+    add({
+      line: item.line, column: item.column, endColumn: item.column + 1, severity: 'error', code: 'UNCLOSED_BRACKET',
+      message: `括号没有闭合：${item.ch}`, hint: `给这个 ${item.ch} 补上对应的 ${item.ch === '(' ? ')' : item.ch === '[' ? ']' : '}'}`,
+    }, `第 ${item.line} 行：括号没有闭合 ${item.ch}`);
+  }
+}
+
+function lintSqlStatements(codeLines, add) {
+  const start = /^(LET|SET|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|RETURN|LOG|WAIT|TX|PUBLISH|TOKEN)\b/i;
+  codeLines.forEach((line, idx) => {
+    const lineNo = idx + 1;
+    const m = /^\s*(?:(?:LET|SET)\s+\$[A-Za-z0-9_]+\s*=\s*)?(QUERY|EXEC)\b(.*)$/i.exec(line);
+    if (!m) return;
+    const rest = String(m[2] || '').replace(/;\s*$/, '').trim();
+    if (rest) return;
+    let next = '';
+    for (let k = idx + 1; k < codeLines.length; k++) {
+      if (codeLines[k].trim()) { next = codeLines[k].trim(); break; }
+    }
+    if (next && !start.test(next)) return; // 下一行是 SQL 续行
+    const column = line.toUpperCase().indexOf(m[1].toUpperCase()) + 1;
+    add({
+      line: lineNo, column, endColumn: column + m[1].length, severity: 'error', code: 'EMPTY_SQL',
+      message: `${m[1].toUpperCase()} 后面没有 SQL`, hint: '补上 SELECT … 或 INSERT / UPDATE / DELETE …',
+    }, `第 ${lineNo} 行：${m[1].toUpperCase()} 后面没有 SQL`);
+  });
+}
+
+function normalizeDiagnostics(diagnostics, rawLines) {
+  const out = [];
+  for (const d of diagnostics || []) {
+    const lineNo = Math.min(Math.max(1, Number(d.line) || 1), Math.max(1, rawLines.length));
+    const text = String(rawLines[lineNo - 1] || '');
+    const column = Math.min(Math.max(1, Number(d.column) || 1), text.length + 1);
+    let end = Number(d.endColumn) || 0;
+    if (!end || end <= column) {
+      end = d.code === 'MISSING_END' ? text.trimEnd().length + 1 : spanEnd(text, column);
+    }
+    out.push({ ...d, line: lineNo, column, endColumn: Math.max(column + 1, Math.min(text.length + 1, end)) });
+  }
+  return out;
+}
+
 function checkScript(text) {
   const parsed = parseScript(text);
   const problems = parsed.errors.slice();
@@ -846,10 +985,25 @@ function checkScript(text) {
   const add = (d, legacy) => {
     const key = `${d.code}|${d.line}|${d.column}|${d.message}`;
     if (seen.has(key)) return;
+    const bracketLike = d.code === 'UNCLOSED_BRACKET' || d.code === 'BRACKET_MISMATCH';
+    const placeholderLike = d.code === 'UNCLOSED_PLACEHOLDER';
+    const alreadyIdx = diagnostics.findIndex((x) => x.line === d.line && x.code === 'SYNTAX' && (
+      bracketLike ? /[()\[\]{}]|表达式/.test(x.message || '') : placeholderLike && /占位符/.test(x.message || '')
+    ));
+    if (alreadyIdx >= 0) {
+      // 解析器只知道“表达式错了”，词法扫描知道具体是哪个括号/占位符；
+      // 用精确范围替换泛化错误，IDEA 的波浪线才不会整行糊成一片。
+      diagnostics[alreadyIdx] = d;
+      seen.add(key);
+      return;
+    }
     seen.add(key);
     diagnostics.push(d);
     if (legacy && d.severity === 'error') problems.push(legacy);
   };
+
+  lintRawSyntax(rawLines, add);
+  lintSqlStatements(lines, add);
 
   const re = /\{\{\s*([A-Za-z0-9_.:]+)\s*\}\}/g;
   lines.forEach((line, idx) => {
@@ -864,14 +1018,14 @@ function checkScript(text) {
       if (/^(query|body|path|file|vars|user|token|env|req)\.[A-Za-z0-9_]+/.test(token)) continue;
       if (['user', 'token', 'req', 'env', 'vars'].includes(token)) {
         add({
-          line: lineNo, column, severity: 'error', code: 'OBJECT_PLACEHOLDER',
+          line: lineNo, column, endColumn: column + m[0].length, severity: 'error', code: 'OBJECT_PLACEHOLDER',
           message: `对象占位符 {{${token}}} 不能直接使用，取不到字段`,
           hint: `改成 {{${token}.username}} 这类具体字段；不确定对象结构就先 LOG DEBUG '${token}';`,
         }, `第 ${lineNo} 行：对象占位符 {{${token}}} 不能直接使用`);
         continue;
       }
       add({
-        line: lineNo, column, severity: 'error', code: 'UNKNOWN_PLACEHOLDER',
+        line: lineNo, column, endColumn: column + m[0].length, severity: 'error', code: 'UNKNOWN_PLACEHOLDER',
         message: `未知占位符：{{${token}}}`,
         hint: diagHint('未知占位符'),
       }, `第 ${lineNo} 行：未知占位符 {{${token}}}`);
@@ -907,7 +1061,7 @@ function checkScript(text) {
     const d = declared.get(u.name);
     if (!d) {
       add({
-        line: u.line, column: u.column, severity: 'warning', code: 'UNDEFINED_VARIABLE',
+        line: u.line, column: u.column, endColumn: u.column + u.name.length + 1, severity: 'warning', code: 'UNDEFINED_VARIABLE',
         message: `变量 $${u.name} 没有声明就使用了`,
         hint: diagHint('变量未赋值'),
       });
@@ -918,7 +1072,7 @@ function checkScript(text) {
   for (const [name, d] of declared) {
     if (!d.used) {
       add({
-        line: d.line, column: d.column, severity: 'warning', code: 'UNUSED_VARIABLE',
+        line: d.line, column: d.column, endColumn: d.column + name.length + 1, severity: 'warning', code: 'UNUSED_VARIABLE',
         message: `变量 $${name} 赋值后没有使用`,
         hint: diagHint('已赋值但未使用'),
       });
@@ -926,8 +1080,11 @@ function checkScript(text) {
   }
 
   // 注释/空行上的提示不参与工程校验，但会让面板更干净。
+  const normalized = normalizeDiagnostics(diagnostics, rawLines);
+  diagnostics.length = 0;
+  diagnostics.push(...normalized);
   const severityRank = { error: 0, warning: 1, info: 2 };
-  diagnostics.sort((a, b) => (a.line - b.line) || (a.column - b.column) || (severityRank[a.severity] - severityRank[b.severity] || 0));
+  diagnostics.sort((a, b) => (severityRank[a.severity] - severityRank[b.severity]) || (a.line - b.line) || (a.column - b.column));
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.filter((d) => d.severity === 'warning').length;
   return { ok: problems.length === 0, problems, diagnostics, errorCount, warningCount, lines: rawLines.length };

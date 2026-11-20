@@ -444,6 +444,30 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const guide = await val(`(()=>{act('scriptGuide');const t=document.querySelector('#modal').innerText;closeModal();return t;})()`);
   t('脚本速查覆盖事务/抓取/等待', /TX BEGIN/.test(guide) && /CRAWL/.test(guide) && /WAIT/.test(guide), guide.slice(0, 100));
 
+  // IDEA 风格错误标记：红色感叹号 gutter、精确波浪线、问题面板与点击跳转
+  const marks = await val(`(async()=>{
+    S.mode='editor';S.tab='routes';render();
+    const ta=document.querySelector('#rScript');
+    const old=ta.value;
+    ta.value='LET $x = (1 + 2;\\nRETURN 200 $x;';
+    ta.dispatchEvent(new Event('input',{bubbles:true}));
+    await new Promise(r=>setTimeout(r,900));
+    const m=document.querySelector('.code-marker');
+    const gut=document.querySelector('.gl.line-error .gl-icon');
+    if(m){const b=m.getBoundingClientRect();m.dispatchEvent(new MouseEvent('mouseover',{bubbles:true,clientX:b.x+b.width/2,clientY:b.y+3}));}
+    const tip=document.querySelector('#codeTooltip').textContent;
+    const row=document.querySelector('.code-diag[data-diag-line]');
+    if(row)row.click();
+    const selected=ta.value.slice(ta.selectionStart,ta.selectionEnd);
+    const out={markers:document.querySelectorAll('.code-marker').length,gutter:!!gut,problems:document.querySelectorAll('.code-diag[data-diag-line]').length,column:m?Number(m.dataset.column):0,status:document.querySelector('#rStatus').textContent,selected,tip};
+    ta.value=old;ta.dispatchEvent(new Event('input',{bubbles:true}));
+    await new Promise(r=>setTimeout(r,800));
+    return JSON.stringify(out);
+  })()`, true);
+  const mk = JSON.parse(marks);
+  t('错误脚本标红感叹、波浪线与问题面板', mk.markers === 1 && mk.gutter && mk.problems === 1 && mk.column === 10 && /1 个错误/.test(mk.status) && /括号没有闭合/.test(mk.tip), marks.slice(0, 140));
+  t('点问题精确选中错误括号', mk.selected === '(', marks.slice(0, 140));
+
   // 底部多控制台
   const dock = await val(`(()=>{
     act('logs');openConsoleDock('mysql');

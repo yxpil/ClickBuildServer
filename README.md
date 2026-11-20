@@ -84,12 +84,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.41.exe
+dist\ClickBuildServer-Setup-1.1.42.exe
 ```
 
-安装包 226,033,241 B（约 216 MB），构建时间 2026-11-20 21:24:45，SHA256 `F080CEC14E66ECB37779FB1CF848BBEDA8074C64B7C365B365F43BC4EC75F764`。
+安装包 226,036,714 B（约 216 MB），构建时间 2026-11-20 21:45:00，SHA256 `8DE6F6D29DB828CDFBA892489B0DE5B18731C1F3BCF3BA9490699901B395D24C`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.42 把路由脚本编辑器补成 IDEA 风格：错误和警告直接标在具体列上，不再整行糊成一片。错误用红色波浪线，gutter 显示红色圆形感叹号；警告用琥珀色波浪线，gutter 显示三角感叹号；鼠标悬停显示错误码、消息和修复建议，点问题面板或 gutter 会精确选中出错的 token。底部状态改成带感叹号徽标的“1 个错误 · 2 个警告”，Problems 面板按严重级别排序并显示行:列。语法分析补齐括号不匹配 / 未闭合、块注释未闭合、字符串引号未闭合、占位符未闭合、空 QUERY / EXEC，并保留未声明变量、赋值未使用等警告；全部 17 个工程 390 条路由实测 0 误报。脚本检查器回归 18/18，UI 冒烟 129/129。
 
 1.1.41 把启动和退出真正收尾干净：启动时先枚举本安装包 `resources/services` 下的 `mariadbd.exe`、`redis-server.exe`、`rustfs-windows-x86_64.exe`，把上次异常退出留下的进程停掉，再分配端口、启动三台服务；退出时弹出关闭提示页，按“生成的服务 → Redis → RustFS → MariaDB”逐个停止，等本次自己启动的端口真正释放后才退出。只处理本安装包路径下的进程，系统安装的 MariaDB 不会被误杀；启动页会写明“上次遗留进程 N 个”，关闭页会显示当前停到哪一台。
 
