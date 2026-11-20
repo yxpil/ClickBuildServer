@@ -30,7 +30,9 @@
     "test:kernel": "node tools/test-kernel.js",
     "test:kernel:mysql": "node tools/test-kernel-mysql.js",
     "test:kernel:sqlgen": "node tools/test-kernel-sqlgen.js",
-    "test:kernel:sqlgen:mysql": "node tools/test-kernel-sqlgen-mysql.js"
+    "test:kernel:sqlgen:mysql": "node tools/test-kernel-sqlgen-mysql.js",
+    "test:rust": "node tools/test-rust-render.js",
+    "test:rust:runtime": "node tools/test-rust-runtime.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",

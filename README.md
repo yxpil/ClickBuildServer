@@ -11,7 +11,7 @@
 >
 > 工作中间版本，接口与数据结构仍可能调整。
 >
-> 内核通用化（Phase 1）的元模型、方言、迁移和反向工程现状见 [docs/KERNEL.md](docs/KERNEL.md)。
+> 内核通用化（Phase 1）的元模型、方言、迁移和反向工程现状见 [docs/KERNEL.md](docs/KERNEL.md)。Rust 全栈产物已通过 `cargo check`，并在真实 MariaDB 上完成启动、登录和列表查询；完整导出不再生成转发 Node 的 Java/Go 启动器。
 >
 > 实时游戏服务（Phase 4）的长连接、协议、房间同步与生成器改造底稿见 [docs/REALTIME.md](docs/REALTIME.md)。
 

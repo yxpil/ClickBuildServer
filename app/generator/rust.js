@@ -76,7 +76,7 @@ function listFn(t, ir) {
         let like = format!("%{}%", keyword);
         count_qb.push(" AND (");
         list_qb.push(" AND (");
-${search.map((f, i) => `        ${i === 0 ? '' : 'count_qb.push(" OR "); list_qb.push(" OR ");\n        '}count_qb.push("${f} LIKE ").push_bind(&like); list_qb.push("${f} LIKE ").push_bind(&like);`).join('\n')}
+${search.map((f, i) => `        ${i === 0 ? '' : 'count_qb.push(" OR "); list_qb.push(" OR ");\n        '}count_qb.push("${f} LIKE ").push_bind(like.clone()); list_qb.push("${f} LIKE ").push_bind(like.clone());`).join('\n')}
         count_qb.push(")");
         list_qb.push(")");
     }
@@ -141,7 +141,7 @@ function createFn(t, ir) {
   const idt = idType(p);
   const cols = t.columns.filter((c) => c.name !== 'id');
   const textExpr = t.search.length
-    ? t.search.map((f) => `input.${f}.clone().unwrap_or_default()`).join(' + " " + ')
+    ? `format!("${t.search.map(() => '{}').join(' ')}", ${t.search.map((f) => `input.${f}.clone().unwrap_or_default()`).join(', ')})`
     : 'String::new()';
   const bindLines = cols.map((c) => {
     if (['created_at', 'updated_at', 'deleted', 'version', 'tenant_id'].includes(c.name)) return '';
@@ -197,7 +197,7 @@ ${userCols.map((c) => `    if let Some(v) = &input.${c.name} { qb.push(", ${c.na
     qb.build().execute(&app.db.write).await?;
 ${t.cache ? `    let key = format!("{}:${t.name}:{}", app.cfg.key_prefix, id);
     if let Some(c) = &app.cache { let _ = c.del(&key).await; }
-` : ''}${t.search.length ? `    let text = format!("{}", ${t.search.map((f) => `input.${f}.clone().unwrap_or_default()`).join(' + " " + ')});
+` : ''}${t.search.length ? `    let text = format!("${t.search.map(() => '{}').join(' ')}", ${t.search.map((f) => `input.${f}.clone().unwrap_or_default()`).join(', ')});
     if let Some(c) = &app.cache { search::index(&app.cfg, c, "${t.name}", &id.to_string(), &text).await; }
 ` : ''}    Ok(Json(ApiResult::ok(())))
 }

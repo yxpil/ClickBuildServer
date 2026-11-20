@@ -92,8 +92,8 @@ npm start
 
 - Node：\`node server.js\`；热部署：\`node dev.js\`（监听 src/public/sql/interfaces.json 自动重启）。
 - Bun：\`bun server.js\`；热部署：\`bun dev.js\`。
-- Java 启动器（JDK 11+）：\`java launcher/Server.java\`；热部署传 \`dev.js\`。
-- Go 启动器：\`go run launcher/main.go\`；热部署传 \`dev.js\`；\`export/go/\` 路由骨架可 \`go build ./export/go\` 编译检查。
+- Java 原生（JDK 17+）：\`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main\`。
+- Go 原生（Go 1.21+）：\`cd native/go && go mod tidy && go run .\`；\`export/go/\` 路由骨架可 \`go build ./export/go\` 编译检查。
 
 ## 错误页
 

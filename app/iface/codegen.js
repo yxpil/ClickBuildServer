@@ -684,42 +684,6 @@ start();
 watch();
 `);
 
-  add('launcher/Server.java', `public class Server {
-  // Java 启动器：调用 Node 内核。Java 11+ 可直接：java launcher/Server.java [server.js|dev.js]
-  public static void main(String[] args) throws Exception {
-    String node = System.getenv("NODE_BIN");
-    if (node == null || node.isBlank()) node = "node";
-    String entry = args.length > 0 ? args[0] : "server.js";
-    ProcessBuilder pb = new ProcessBuilder(node, entry);
-    pb.inheritIO();
-    Process p = pb.start();
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> { try { p.destroy(); } catch (Exception ignored) {} }));
-    System.exit(p.waitFor());
-  }
-}
-`);
-
-  add('launcher/main.go', `package main
-
-// Go 启动器：调用 Node 内核。go run launcher/main.go [server.js|dev.js]
-import (
-  "os"
-  "os/exec"
-)
-
-func main() {
-  node := os.Getenv("NODE_BIN")
-  if node == "" { node = "node" }
-  entry := "server.js"
-  if len(os.Args) > 1 { entry = os.Args[1] }
-  cmd := exec.Command(node, entry)
-  cmd.Stdout = os.Stdout
-  cmd.Stderr = os.Stderr
-  cmd.Stdin = os.Stdin
-  if err := cmd.Run(); err != nil { os.Exit(1) }
-}
-`);
-
   add('go.mod', `module clickbuild.export
 
 go 1.21
@@ -821,7 +785,6 @@ Write-Host "已创建登录自启任务：$TaskName"
     '- Bun：`bun server.js`，热部署 `bun dev.js`',
     '- Java 原生（需 JDK 17+）：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
     '- Go 原生（需 Go 1.21+）：`cd native/go && go mod tidy && go run .`；`export/go/` 下的 Go 路由骨架已带 `go.mod`，可 `go build ./export/go` 做编译检查',
-    '- 旧启动器（仅兼容保留）：`java launcher/Server.java`、`go run launcher/main.go`，内核仍转发给 Node',
     '',
     '## 守护进程',
     '',

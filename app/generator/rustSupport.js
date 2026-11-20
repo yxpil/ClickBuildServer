@@ -209,6 +209,22 @@ impl From<anyhow::Error> for AppError {
     fn from(e: anyhow::Error) -> Self { AppError::Internal(e.to_string()) }
 }
 
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppError::BadRequest(m) => write!(f, "bad request: {}", m),
+            AppError::Unauthorized(m) => write!(f, "unauthorized: {}", m),
+            AppError::Forbidden(m) => write!(f, "forbidden: {}", m),
+            AppError::NotFound(m) => write!(f, "not found: {}", m),
+            AppError::Internal(m) => write!(f, "internal: {}", m),
+            AppError::Sqlx(e) => write!(f, "sqlx: {}", e),
+            AppError::Redis(e) => write!(f, "redis: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
+
 #[derive(Serialize)]
 pub struct ApiResult<T> {
     pub code: i32,
@@ -678,7 +694,7 @@ fn signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8>
     let k_service = mac.finalize().into_bytes();
     let mut mac = HmacSha256::new_from_slice(&k_service).unwrap();
     mac.update(b"aws4_request");
-    mac.finalize().into_bytes()
+    mac.finalize().into_bytes().to_vec()
 }
 
 /// S3 / MinIO 预签名 URL（SigV4，path-style）。
@@ -1057,6 +1073,7 @@ async fn seed_admin(cfg: &Config, db: &Db) -> Result<(), sqlx::Error> {
     .execute(&db.write)
     .await?;
     tracing::info!("initial admin created: {}", cfg.init_admin);
+    Ok(())
 }
 `;
 }

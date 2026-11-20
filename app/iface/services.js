@@ -508,8 +508,7 @@ async function startServer(dir, opts) {
       args = ['-cp', 'bin;lib/*', 'icb.Main'];
       cwd = nativeDir;
     } else {
-      if (!fs.existsSync(path.join(dir, 'launcher', 'Server.java'))) return { ok: false, error: '生成目录缺少 launcher/Server.java，请重新生成服务' };
-      args = ['launcher/Server.java', hot ? 'dev.js' : 'server.js'];
+      return { ok: false, error: '生成目录缺少 native/java，请重新生成服务' };
     }
   } else if (runtime === 'go') {
     exe = which('go.exe') || which('go.cmd') || which('go');

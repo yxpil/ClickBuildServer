@@ -129,6 +129,8 @@ node tools/kernel-cli.js diff old.json new.json ./db/migrations --dialect sqlite
 - `node tools/test-kernel.js`：15 项通过。26 套内置案例全部能转成 registry、0 个元模型错误、全部能在 SQLite 初始化。
 - `node tools/test-kernel-sqlgen.js`：4 项通过。旧 IR 能出三种方言 SQL，SQLite 产物能真正执行。
 - `node tools/test-kernel-mysql.js`：真实 MariaDB 上初始化、加字段、改字段、加索引、反向工程通过。
+- `node tools/test-rust-render.js`：Rust 全栈产物结构检查 + `cargo check` 通过。
+- `node tools/test-rust-runtime.js`：真实 MariaDB 建表、`cargo run` 启动、admin 登录、`/api/auth/me` 返回通过。
 - PostgreSQL 只做了 DDL/ALTER 字符串断言，本机没有 PostgreSQL 服务，未做真实执行。
 - 同名物理表在多个接口里重复出现时，适配器按表名合并并写入 `importWarnings`；26 套案例里实际存在这种情况。
 
@@ -140,5 +142,6 @@ node tools/kernel-cli.js diff old.json new.json ./db/migrations --dialect sqlite
 2. UI 还没有“迁移计划 / 反向工程”入口；`projectFromRegistry` 只是桥，不写用户工程目录。
 3. 字段改名识别还没做（表改名已按稳定实体 id 识别）；复合主键已支持，复合外键还没做。
 4. PostgreSQL 反向工程 reader、真实 PostgreSQL 执行回归没做。
-5. 真语言渲染器：Go/Rust 生成器已经存在且是原生代码，但完整导出里的 `launcher/Server.java`、`launcher/main.go` 仍以 Node `server.js` 为主入口；下一步是把启动器切到原生入口，或从完整导出中移除 Java/Go launcher。
-6. 外键约束默认不生成（`registry.options.foreignKeys` 为真时才尝试），避免建表顺序和 SQLite 限制把初始化卡死。
+5. 真语言渲染器：Rust 全栈已补齐并通过 `cargo check` 与真实 MariaDB 运行；Go 生成器是原生代码，但本机没有 Go 工具链，未做编译/运行回归。完整导出已移除 `launcher/Server.java`、`launcher/main.go`，Java / Go 只走 `native/`。
+6. Rust 生成的搜索文本、`QueryBuilder` 绑定、`AppError`、S3 签名和 bootstrap 返回值已修到可编译；接下来要补业务列表/事务/上传的运行时回归。
+7. 外键约束默认不生成（`registry.options.foreignKeys` 为真时才尝试），避免建表顺序和 SQLite 限制把初始化卡死。
