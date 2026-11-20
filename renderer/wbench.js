@@ -33,6 +33,24 @@ const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
 
+// API 的 spec.TYPES 会在 help 里返回；这里只做未加载时的兜底，避免向导在首屏拿不到类型。
+const BASE_FIELD_TYPE_KEYS = [
+  'bigint', 'int', 'smallint', 'tinyint', 'bool', 'decimal', 'float', 'double',
+  'varchar', 'char', 'text', 'longtext', 'datetime', 'date', 'json',
+  'token', 'url', 'file', 'image', 'video', 'audio', 'pdf', 'doc', 'excel', 'archive',
+];
+const FIELD_TYPE_GROUPS = { number: '数值', text: '文本', time: '时间', semantic: '语义类型', file: '文件 / 文档' };
+function fieldTypeList() {
+  return (S.help && Array.isArray(S.help.types) && S.help.types.length) ? S.help.types : [];
+}
+function fieldTypeKeys() {
+  const list = fieldTypeList();
+  return list.length ? list.map((t) => t.key) : BASE_FIELD_TYPE_KEYS;
+}
+function fieldTypeMeta(type) {
+  return fieldTypeList().find((t) => t.key === type) || null;
+}
+
 /* ---------------- SVG 图标 ---------------- */
 const I = {
   new: '<path d="M8 3v10M3 8h10"/>',
@@ -146,7 +164,7 @@ function guideFields(text) {
   const errors = [];
   const seen = new Set();
   const reserved = new Set(['id', 'created_at', 'updated_at']);
-  const types = ['bigint', 'int', 'smallint', 'tinyint', 'bool', 'decimal', 'float', 'double', 'varchar', 'char', 'text', 'longtext', 'datetime', 'date', 'json'];
+  const types = fieldTypeKeys();
   String(text || '').split(/\r?\n/).forEach((line, i) => {
     const raw = line.trim();
     if (!raw) return;
@@ -959,8 +977,19 @@ function tabTables(it) {
   const t = tableOfIface(it, S.tableKey);
   if (!t) return '<div class="p-4">没有表。</div>';
   const st = storeOf(t);
-  const typeOptions = (cur) => ['bigint', 'int', 'smallint', 'tinyint', 'bool', 'decimal', 'float', 'double', 'varchar', 'char', 'text', 'longtext', 'datetime', 'date', 'json']
-    .map((k) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}</option>`).join('');
+  const typeOptions = (cur) => {
+    const list = fieldTypeList();
+    if (!list.length) {
+      return BASE_FIELD_TYPE_KEYS.map((k) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}</option>`).join('');
+    }
+    const groups = ['number', 'text', 'time', 'semantic', 'file'];
+    const body = groups.map((g) => {
+      const items = list.filter((t) => (t.group || 'text') === g);
+      if (!items.length) return '';
+      return `<optgroup label="${esc(FIELD_TYPE_GROUPS[g] || g)}">${items.map((t) => `<option value="${esc(t.key)}" ${t.key === cur ? 'selected' : ''}>${esc(t.label || t.key)}</option>`).join('')}</optgroup>`;
+    }).join('');
+    return list.some((t) => t.key === cur) ? body : `<option value="${esc(cur)}" selected>${esc(cur)}</option>` + body;
+  };
   return `
   <div class="h-full flex flex-col">
     <div class="shrink-0 border-b border-neutral-200">
@@ -995,7 +1024,7 @@ function tabTables(it) {
           <tr data-field-row="${i}">
             <td class="rownum">${i + 1}</td>
             <td><input class="cell-in mono" data-fi="${i}" data-fk="name" value="${esc(f.name)}"></td>
-            <td><select class="cell-in mono" data-fi="${i}" data-fk="type">${typeOptions(f.type)}</select></td>
+            <td><select class="cell-in mono" data-fi="${i}" data-fk="type" title="${esc((fieldTypeMeta(f.type) || {}).hint || '字段类型')}">${typeOptions(f.type)}</select></td>
             <td><input type="checkbox" data-fi="${i}" data-fk="pk" ${f.pk ? 'checked' : ''}></td>
             <td><input type="checkbox" data-fi="${i}" data-fk="autoIncrement" ${f.autoIncrement ? 'checked' : ''}></td>
             <td><input type="checkbox" data-fi="${i}" data-fk="nullable" ${f.nullable ? 'checked' : ''}></td>
@@ -1100,7 +1129,23 @@ function bindTables(it) {
     if (!f) return;
     if (el.type === 'checkbox') el.onchange = () => { f[k] = el.checked; scheduleSave(); };
     else {
-      el.oninput = () => { f[k] = el.value; scheduleSave(); if (k === 'name') renderSide(); };
+      el.oninput = () => {
+        f[k] = el.value;
+        if (k === 'type') {
+          const meta = fieldTypeMeta(el.value);
+          if (meta && meta.secret) {
+            f.hidden = true;
+            f.query = false;
+            f.search = false;
+          }
+          scheduleSave();
+          renderWorkspace();
+          toast(`已切换为 ${meta ? meta.label : el.value}`);
+          return;
+        }
+        scheduleSave();
+        if (k === 'name') renderSide();
+      };
       if (el.tagName === 'SELECT') el.onchange = el.oninput;
     }
   });

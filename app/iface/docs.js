@@ -33,6 +33,16 @@ function uuid() {
 function sampleForName(name, field) {
   const n = String(name || '').toLowerCase();
   const type = typeOf(field);
+  if (type === 'token') return '<token>';
+  if (type === 'url') return 'https://example.com/resource';
+  if (type === 'file') return 'uploads/example.pdf';
+  if (type === 'image') return 'https://example.com/a.png';
+  if (type === 'video') return 'https://example.com/demo.mp4';
+  if (type === 'audio') return 'https://example.com/demo.mp3';
+  if (type === 'pdf') return 'uploads/manual.pdf';
+  if (type === 'doc') return 'uploads/contract.docx';
+  if (type === 'excel') return 'uploads/report.xlsx';
+  if (type === 'archive') return 'uploads/package.zip';
   if (/only_id|onlyid/.test(n)) return 'u_10001';
   if (/group_id/.test(n)) return 'g_10001';
   if (/moment_id/.test(n)) return 'm_10001';
@@ -311,7 +321,7 @@ function paramsFrom(iface, route) {
     params.push({
       in: inType, name, required,
       schema: field ? schemaOf(field) : { type: 'string' },
-      description: (field && field.comment) || descOfName(name),
+      description: (field && field.comment) || descOfName(name, field),
       example: sampleForName(name, field),
     });
   };
@@ -353,9 +363,23 @@ function schemaOf(field) {
   if (/^(decimal|float|double)$/.test(t)) return { type: 'number' };
   if (t === 'bool') return { type: 'boolean' };
   if (t === 'json') return { type: 'object' };
+  if (t === 'token') return { type: 'string', format: 'password' };
+  if (t === 'url') return { type: 'string', format: 'uri' };
+  if (['file', 'image', 'video', 'audio', 'pdf', 'doc', 'excel', 'archive'].includes(t)) return { type: 'string', 'x-file-kind': t };
   return { type: 'string' };
 }
-function descOfName(name) {
+function descOfName(name, field) {
+  const t = typeOf(field);
+  if (t === 'token') return '访问令牌';
+  if (t === 'url') return '链接地址';
+  if (t === 'file') return '文件对象键';
+  if (t === 'image') return '图片对象键';
+  if (t === 'video') return '视频对象键';
+  if (t === 'audio') return '音频对象键';
+  if (t === 'pdf') return 'PDF 文件键';
+  if (t === 'doc') return 'Word 文档键';
+  if (t === 'excel') return 'Excel 表格键';
+  if (t === 'archive') return '压缩包键';
   const n = String(name || '').toLowerCase();
   if (/password|passwd/.test(n)) return '密码';
   if (/username|login/.test(n)) return '登录名';

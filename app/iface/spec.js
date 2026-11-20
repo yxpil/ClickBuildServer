@@ -8,21 +8,32 @@ const script = require('./script');
 const docs = require('./docs');
 
 const TYPES = [
-  { key: 'bigint', sql: 'BIGINT', label: 'BIGINT 长整', input: 'int' },
-  { key: 'int', sql: 'INT', label: 'INT 整型', input: 'int' },
-  { key: 'smallint', sql: 'SMALLINT', label: 'SMALLINT 短整', input: 'int' },
-  { key: 'tinyint', sql: 'TINYINT', label: 'TINYINT 微整', input: 'int' },
-  { key: 'bool', sql: 'TINYINT(1)', label: 'BOOL 布尔', input: 'bool' },
-  { key: 'decimal', sql: 'DECIMAL(18,2)', label: 'DECIMAL 金额', input: 'number' },
-  { key: 'float', sql: 'FLOAT', label: 'FLOAT 单精度', input: 'number' },
-  { key: 'double', sql: 'DOUBLE', label: 'DOUBLE 双精度', input: 'number' },
-  { key: 'varchar', sql: 'VARCHAR(255)', label: 'VARCHAR 短文本', input: 'text' },
-  { key: 'char', sql: 'CHAR(32)', label: 'CHAR 定长', input: 'text' },
-  { key: 'text', sql: 'TEXT', label: 'TEXT 长文本', input: 'textarea' },
-  { key: 'longtext', sql: 'LONGTEXT', label: 'LONGTEXT 超长文本', input: 'textarea' },
-  { key: 'datetime', sql: 'DATETIME', label: 'DATETIME 时间', input: 'datetime' },
-  { key: 'date', sql: 'DATE', label: 'DATE 日期', input: 'date' },
-  { key: 'json', sql: 'JSON', label: 'JSON 结构', input: 'json' },
+  { key: 'bigint', sql: 'BIGINT', label: 'BIGINT 长整', input: 'int', group: 'number' },
+  { key: 'int', sql: 'INT', label: 'INT 整型', input: 'int', group: 'number' },
+  { key: 'smallint', sql: 'SMALLINT', label: 'SMALLINT 短整', input: 'int', group: 'number' },
+  { key: 'tinyint', sql: 'TINYINT', label: 'TINYINT 微整', input: 'int', group: 'number' },
+  { key: 'bool', sql: 'TINYINT(1)', label: 'BOOL 布尔', input: 'bool', group: 'number' },
+  { key: 'decimal', sql: 'DECIMAL(18,2)', label: 'DECIMAL 金额', input: 'number', group: 'number' },
+  { key: 'float', sql: 'FLOAT', label: 'FLOAT 单精度', input: 'number', group: 'number' },
+  { key: 'double', sql: 'DOUBLE', label: 'DOUBLE 双精度', input: 'number', group: 'number' },
+  { key: 'varchar', sql: 'VARCHAR(255)', label: 'VARCHAR 短文本', input: 'text', group: 'text' },
+  { key: 'char', sql: 'CHAR(32)', label: 'CHAR 定长', input: 'text', group: 'text' },
+  { key: 'text', sql: 'TEXT', label: 'TEXT 长文本', input: 'textarea', group: 'text' },
+  { key: 'longtext', sql: 'LONGTEXT', label: 'LONGTEXT 超长文本', input: 'textarea', group: 'text' },
+  { key: 'datetime', sql: 'DATETIME', label: 'DATETIME 时间', input: 'datetime', group: 'time' },
+  { key: 'date', sql: 'DATE', label: 'DATE 日期', input: 'date', group: 'time' },
+  { key: 'json', sql: 'JSON', label: 'JSON 结构', input: 'json', group: 'text' },
+  // 语义类型：SQL 里仍是可索引的文本键，编辑器知道它是什么，文档和表单可以给出正确示例与约束。
+  { key: 'token', sql: 'VARCHAR(1024)', label: 'TOKEN 令牌', input: 'password', group: 'semantic', semantic: 'token', secret: true, hint: 'JWT / API token；默认隐藏且不参与查询' },
+  { key: 'url', sql: 'VARCHAR(1024)', label: 'URL 链接', input: 'url', group: 'semantic', semantic: 'url', hint: '完整 URL，文档示例按链接生成' },
+  { key: 'file', sql: 'VARCHAR(512)', label: 'FILE 文件键', input: 'file', group: 'file', semantic: 'file', accept: '*/*', hint: 'S3 objectKey，不把文件本体塞进数据库' },
+  { key: 'image', sql: 'VARCHAR(512)', label: 'IMAGE 图片键', input: 'file', group: 'file', semantic: 'image', accept: 'image/*', hint: '图片对象键或 URL' },
+  { key: 'video', sql: 'VARCHAR(512)', label: 'VIDEO 视频键', input: 'file', group: 'file', semantic: 'video', accept: 'video/*', hint: '视频对象键或 URL' },
+  { key: 'audio', sql: 'VARCHAR(512)', label: 'AUDIO 音频键', input: 'file', group: 'file', semantic: 'audio', accept: 'audio/*', hint: '音频对象键或 URL' },
+  { key: 'pdf', sql: 'VARCHAR(512)', label: 'PDF PDF 键', input: 'file', group: 'file', semantic: 'pdf', accept: '.pdf,application/pdf', hint: 'PDF 对象键或 URL' },
+  { key: 'doc', sql: 'VARCHAR(512)', label: 'DOC 文档键', input: 'file', group: 'file', semantic: 'doc', accept: '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document', hint: 'Word 文档对象键或 URL' },
+  { key: 'excel', sql: 'VARCHAR(512)', label: 'EXCEL 表格键', input: 'file', group: 'file', semantic: 'excel', accept: '.xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv', hint: 'Excel / CSV 对象键或 URL' },
+  { key: 'archive', sql: 'VARCHAR(512)', label: 'ARCHIVE 压缩包键', input: 'file', group: 'file', semantic: 'archive', accept: '.zip,.rar,.7z,.tar,.gz,.bz2', hint: '压缩包对象键或 URL' },
 ];
 
 const TYPE_KEYS = TYPES.map((t) => t.key);
@@ -206,6 +217,7 @@ const ROUTE_TEMPLATES = {
 
 function newField(name, type) {
   const t = TYPE_KEYS.includes(type) ? type : 'varchar';
+  const meta = TYPES.find((x) => x.key === t) || {};
   return {
     name: name || 'field',
     type: t,
@@ -213,9 +225,9 @@ function newField(name, type) {
     pk: false,
     autoIncrement: false,
     nullable: true,
-    search: /char|text/i.test(t),
-    hidden: false,
-    query: true,
+    search: !!(meta.group === 'text' && /char|text/.test(t)),
+    hidden: !!meta.secret,
+    query: !meta.secret,
     writable: true,
     default: '',
   };
@@ -517,19 +529,23 @@ function seedProject() {
 }
 
 function normalizeTable(t, idx, used) {
-  const fields = (Array.isArray(t.fields) && t.fields.length ? t.fields : defaultFields()).map((f, i) => ({
-    name: f.name || `field_${i + 1}`,
-    type: TYPE_KEYS.includes(f.type) ? f.type : 'varchar',
-    comment: f.comment || '',
-    pk: !!f.pk,
-    autoIncrement: !!f.autoIncrement,
-    nullable: f.nullable !== false,
-    search: f.search !== false && /char|text/i.test(f.type || 'varchar'),
-    hidden: !!f.hidden,
-    query: f.query !== false,
-    writable: f.writable !== false,
-    default: f.default == null ? '' : String(f.default),
-  }));
+  const fields = (Array.isArray(t.fields) && t.fields.length ? t.fields : defaultFields()).map((f, i) => {
+    const type = TYPE_KEYS.includes(f.type) ? f.type : 'varchar';
+    const meta = TYPES.find((x) => x.key === type) || {};
+    return {
+      name: f.name || `field_${i + 1}`,
+      type,
+      comment: f.comment || '',
+      pk: !!f.pk,
+      autoIncrement: !!f.autoIncrement,
+      nullable: f.nullable !== false,
+      search: f.search !== false && /char|text/i.test(type),
+      hidden: f.hidden == null ? !!meta.secret : !!f.hidden,
+      query: f.query == null ? !meta.secret : f.query !== false,
+      writable: f.writable !== false,
+      default: f.default == null ? '' : String(f.default),
+    };
+  });
   return {
     key: t.key || keyOf(t.name || `table_${idx + 1}`, used),
     name: t.name || `table_${idx + 1}`,
