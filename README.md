@@ -1,7 +1,11 @@
 # ClickBuildServer · 接口工作台
 
+> An interface-first backend service generator for Windows: multi-DB tables, scripted SQL, transactions, caching, RBAC, and one-click runnable services — an Electron desktop app with a built-in frontend studio and 26 built-in templates.
+
 [![CI](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml)
 [![Release](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml)
+
+![ClickBuildServer 工作台界面](docs/screenshots/ui-final.png)
 
 > 黑白 Excel 风的“服务器制造台”：**一个接口一条线，接口里挂多张表、多个库，每条路由写一段自己的 SQL 脚本**，点一下生成可运行的服务。
 >
