@@ -820,7 +820,12 @@ async function closeOtherTabs() {
 function tabCtxMenu(name, x, y) {
   const count = TABS.items.length;
   openCtx(x, y, [
-    { label: '在新窗口打开', hint: '独立窗口', run: () => api.newWindow(name) },
+    { label: '在新窗口打开', hint: '独立窗口', run: async () => {
+      if (name === TABS.active && S.project && !(await flushAndSave('新窗口'))) {
+        return toast('当前工程保存失败，已取消打开新窗口', 5000);
+      }
+      await api.newWindow(name);
+    } },
     { label: '关闭这个标签', run: () => closeTab(name) },
     { label: '关闭其他标签', hint: `${count - 1} 个`, disabled: count <= 1, run: closeOtherTabs },
   ]);
@@ -1022,7 +1027,7 @@ function showMoreMenu() {
         ${item('ai', 'AI 生成', '用对话框生成接口工程')}
         ${item('settings', '设置', 'AI、模型参数与服务端口')}
         ${item('assoc', '关联 .yxpn', '设为默认打开方式')}
-        ${item('newWindow', '新窗口', '再开一个工程窗口')}
+        ${item('newWindow', '新窗口', '同款无边框窗口，当前工程先保存')}
         ${item('grid', '表格视图', '回到接口总表')}
         ${item('help', '帮助', '语法、函数与快捷键')}
       </div>
@@ -3362,7 +3367,12 @@ async function act(name, el) {
   if (name === 'monitor') return showMonitor();
   if (name === 'settings') return showSettings();
   if (name === 'theme') return showTheme();
-  if (name === 'newWindow') { await api.newWindow(S.project.name); toast('已打开新窗口，可直接编辑同一工程'); return; }
+  if (name === 'newWindow') {
+    if (!(await flushAndSave('新窗口'))) return;
+    await api.newWindow(S.project.name);
+    toast('已打开同款无边框新窗口，当前工程已先保存');
+    return;
+  }
   if (name === 'assoc') {
     const r = await api.assocYxpn();
     toast(r.ok ? '已把 .yxpn / .yxpp 关联到本软件，双击即可用这里打开' : '关联失败：' + (r.error || r.out || ''), 5000);

@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ipcMain, dialog, shell, BrowserWindow, app } = require('electron');
+const { ipcMain, dialog, shell, BrowserWindow, app, screen } = require('electron');
 
 const spec = require('./spec');
 const render = require('./render');
@@ -486,15 +486,44 @@ function registerIpc() {
 
   ipcMain.handle('window:new', async (e, projectName) => {
     const parent = BrowserWindow.fromWebContents(e.sender);
+    const parentBox = parent && !parent.isDestroyed() ? parent.getBounds() : { x: 80, y: 80, width: 1480, height: 940 };
+    const area = screen.getDisplayMatching(parentBox).workArea;
+    const width = Math.min(1480, Math.max(1080, area.width - 80));
+    const height = Math.min(940, Math.max(700, area.height - 80));
+    const x = Math.min(parentBox.x + 36, area.x + area.width - width - 16);
+    const y = Math.min(parentBox.y + 36, area.y + area.height - height - 16);
+    // 和主窗口共用一套无边框自绘标题栏；新窗口仍然是一个完整的多项目工作区。
     const win = new BrowserWindow({
-      width: 1480, height: 940, minWidth: 1180, minHeight: 720, show: true,
+      width, height, x: Math.max(area.x, x), y: Math.max(area.y, y),
+      minWidth: 1080, minHeight: 700, show: false,
       backgroundColor: '#ffffff',
-      title: `ClickBuildServer · ${projectName || '接口工作台'}`,
+      title: `ClickBuildServer · ${projectName || '项目工作台'}`,
       icon: path.join(__dirname, '..', '..', 'assets', 'logo.png'),
-      webPreferences: { preload: path.join(__dirname, '..', '..', 'preload.js'), contextIsolation: true, nodeIntegration: false },
+      frame: false, thickFrame: true, autoHideMenuBar: true,
+      webPreferences: {
+        preload: path.join(__dirname, '..', '..', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        spellcheck: false,
+      },
     });
     const file = path.join(__dirname, '..', '..', 'renderer', 'wbench.html');
     win.loadFile(file, { query: projectName ? { project: projectName } : {} });
+    win.once('ready-to-show', () => { if (!win.isDestroyed()) win.show(); });
+    win.setMenuBarVisibility(false);
+    // 子窗口最大化后也要把状态回给自绘标题栏，否则按钮图标会停在“最大化”。
+    const pushState = () => {
+      if (win.isDestroyed()) return;
+      win.webContents.send('win:state', { maximized: win.isMaximized(), minimized: win.isMinimized(), fullScreen: win.isFullScreen() });
+    };
+    win.on('maximize', pushState);
+    win.on('unmaximize', pushState);
+    win.on('enter-full-screen', pushState);
+    win.on('leave-full-screen', pushState);
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/.test(url)) shell.openExternal(url);
+      return { action: 'deny' };
+    });
     return { ok: true, id: win.id };
   });
 
