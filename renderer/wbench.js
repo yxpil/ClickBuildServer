@@ -3716,17 +3716,42 @@ async function ensureStudio() {
   }
 }
 
+function studioRouteBody(script) {
+  const out = [];
+  String(script || '').replace(/\{\{\s*body\.([A-Za-z0-9_]+)/g, (m, name) => {
+    if (out.indexOf(name) < 0) out.push(name);
+    return m;
+  });
+  return out;
+}
+function studioIfaces() {
+  return ((S.project && S.project.interfaces) || []).map((i) => ({
+    name: i.name,
+    basePath: i.basePath || '',
+    routes: (i.routes || []).map((r) => ({
+      key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary,
+      body: Array.isArray(r.body) ? r.body : studioRouteBody(r.script),
+    })),
+    tables: (i.tables || []).map((t) => ({
+      key: t.key, name: t.name, schema: t.schema || '', conn: t.conn || 'main', comment: t.comment || '',
+      fields: (t.fields || []).map((f) => ({
+        name: f.name, type: f.type, length: f.length, comment: f.comment,
+        pk: !!f.pk, autoIncrement: !!f.autoIncrement, nullable: f.nullable !== false,
+        default: f.default, hidden: !!f.hidden, writable: f.writable !== false, search: !!f.search,
+      })),
+    })),
+    fields: (((i.tables || []).find((t) => t.key === 'main') || {}).fields || []).map((f) => ({
+      name: f.name, type: f.type, length: f.length, comment: f.comment,
+      pk: !!f.pk, autoIncrement: !!f.autoIncrement, nullable: f.nullable !== false,
+      default: f.default, hidden: !!f.hidden, writable: f.writable !== false, search: !!f.search,
+    })),
+  }));
+}
 function studioLoadProject(project, binding) {
   if (!project) return;
   const language = String((S.settings && S.settings.language) || 'zh-CN').toLowerCase();
   const lang = language.startsWith('en') ? 'en' : 'zh';
-  const ifaces = ((S.project && S.project.interfaces) || []).map((i) => ({
-    name: i.name,
-    routes: (i.routes || []).map((r) => ({ key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary })),
-    fields: (((i.tables || []).find((t) => t.key === 'main') || {}).fields || []).map((f) => ({
-      name: f.name, type: f.type, comment: f.comment, hidden: !!f.hidden, writable: !!f.writable, pk: !!f.pk,
-    })),
-  }));
+  const ifaces = studioIfaces();
   postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, ifaces, at: studioLastAt });
 }
 

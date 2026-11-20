@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.1.31",
+  "version": "1.1.32",
   "description": "以接口为最小单位的后端服务生成器：多库多表、脚本 SQL、事务、缓存、RBAC 与一键生成可运行服务；Electron 桌面端，内置前端工坊与 26 套模版",
   "main": "main.js",
   "author": "yxpil",

@@ -11490,9 +11490,6 @@ function buildActionsField(n) {
 function appNodeJson(n) {
   var a = {};
   try { a = JSON.parse((n.props && n.props.appJson) || '{}') || {}; } catch (e) { a = {}; }
-  if (!Object.keys(a).length && typeof S !== 'undefined' && S.proj && S.proj.app) {
-    try { a = JSON.parse(JSON.stringify(S.proj.app)); } catch (e2) { a = {}; }
-  }
   return a;
 }
 function projectIfaces() {
@@ -11564,7 +11561,10 @@ function ensureAppSkeleton(app, n, iface, ifaces) {
   app.writeLabel = app.writeLabel || ('新建' + iface.name);
   app.actions = app.actions || [{ label: app.writeLabel, view: 'create' }];
   app.auth = app.auth || null;
-  app.fields = (app.fields && Object.keys(app.fields).length) ? app.fields : inferAppFields(iface);
+  app.formStyle = app.formStyle || 'stack';
+  var fkeys = app.fields ? Object.keys(app.fields) : [];
+  var hasMapped = fkeys.some(function (k) { return !!app.fields[k]; });
+  app.fields = hasMapped ? app.fields : inferAppFields(iface);
   app.enums = app.enums || {};
   app.interfaces = ifaces;
   app.counts = app.counts || {};
@@ -11584,8 +11584,10 @@ function buildIfaceField(n) {
     ifaces = app.interfaces.map(function (i) {
       return {
         name: i.name,
-        routes: (i.routes || []).map(function (r) { return { key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary }; }),
-        fields: (i.fields || []).map(function (f) { return { name: f.name, type: f.type, comment: f.comment, hidden: !!f.hidden, writable: !!f.writable, pk: !!f.pk }; })
+        basePath: i.basePath || '',
+        routes: (i.routes || []).map(function (r) { return { key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary, body: r.body || [] }; }),
+        tables: (i.tables || []).map(function (t) { return t; }),
+        fields: (i.fields || []).map(function (f) { return { name: f.name, type: f.type, comment: f.comment, hidden: !!f.hidden, writable: !!f.writable, pk: !!f.pk, nullable: f.nullable !== false, default: f.default }; })
       };
     });
   }
@@ -11684,6 +11686,35 @@ function buildIfaceField(n) {
       row.appendChild(lab); row.appendChild(rs); grid.appendChild(row);
     });
     wrap.appendChild(grid);
+
+    var styleRow = document.createElement('div');
+    styleRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:8px';
+    var styleLab = document.createElement('span');
+    styleLab.style.cssText = 'width:52px;flex:none;font-size:9px;color:var(--ink-3)';
+    styleLab.textContent = '表单样式';
+    var styleSel = document.createElement('select');
+    styleSel.className = 'inp';
+    styleSel.style.cssText = 'flex:1 1 0;width:auto;min-width:0;font-size:10.5px;height:26px;color:var(--ink);background:#fff;padding:0 6px';
+    [['stack', '单列 · 宽松'], ['grid', '双列 · 卡片'], ['section', '分组 · 分区'], ['compact', '紧凑 · 双列']].forEach(function (it) {
+      var so = document.createElement('option');
+      so.value = it[0];
+      so.textContent = it[1];
+      if ((app.formStyle || 'stack') === it[0]) so.selected = true;
+      styleSel.appendChild(so);
+    });
+    styleSel.addEventListener('change', function () {
+      app = appNodeJson(n);
+      app.formStyle = styleSel.value;
+      n.props.appJson = JSON.stringify(app);
+      syncNode(n); scheduleSave(); renderInspector(); commit();
+      toast('表单样式已切换为「' + styleSel.options[styleSel.selectedIndex].textContent + '」');
+    });
+    styleRow.appendChild(styleLab); styleRow.appendChild(styleSel); wrap.appendChild(styleRow);
+    var styleHint = document.createElement('div');
+    styleHint.className = 'hint';
+    styleHint.style.cssText = 'font-size:9px;line-height:1.5;color:var(--ink-3);margin-top:3px';
+    styleHint.textContent = '表单字段按 POST/PUT 路由里的 body 参数生成；没有 body 时读取表字段。必填按 nullable/default 判断，类型决定输入控件。';
+    wrap.appendChild(styleHint);
   }
 
   sel.addEventListener('change', function () {

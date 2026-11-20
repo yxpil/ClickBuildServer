@@ -231,6 +231,20 @@ function enumFor(name, ifaceName) {
   return by[name] || (UX.enums && UX.enums[name]) || null;
 }
 
+/* 从字段注释里的 “0 下架 1 上架 / 9 取消” 解析真实枚举，避免状态字段退化成数字输入框。 */
+function enumFromComment(meta) {
+  const type = String((meta && meta.type) || '').toLowerCase();
+  if (!/^(tiny|small|medium|big)?int/.test(type)) return null;
+  const toks = String((meta && meta.comment) || '').trim().split(/[\s,，、/;；|]+/).filter(Boolean);
+  const out = {};
+  for (let i = 0; i < toks.length; i++) {
+    if (!/^\d+$/.test(toks[i])) continue;
+    const label = toks[i + 1];
+    if (label && !/^\d+$/.test(label)) { out[toks[i]] = label; i++; }
+  }
+  return Object.keys(out).length >= 2 ? out : null;
+}
+
 function statusClass(v) {
   const s = String(v == null ? '' : v).toLowerCase();
   if (['1', 'approved', 'published', 'paid', 'completed', 'done', 'open', 'active', 'online', '1'].includes(s)) return 'ok';
@@ -431,52 +445,89 @@ function requireAuth(message) {
 App.requireAuth = requireAuth;
 
 /* ---------------- 表单 / 弹窗 ---------------- */
+function isBoolField(meta, name) {
+  const t = String(meta.type || '').toLowerCase();
+  return /bool/.test(t) || (t === 'tinyint' && Number(meta.length) === 1) || /^(active|enabled|checked|passed|read_flag|chargeable|published|paid|approved|done)$/.test(name);
+}
+
 function fieldInput(ifaceName, name, value) {
-  const meta = fieldMeta(ifaceName, name);
+  const meta = fieldMeta(ifaceName, name) || { name, type: 'varchar', comment: name };
   const label = labelOf(ifaceName, name);
-  const hint = /(^|\s)\d+\s+\S/.test(String(meta.comment || '')) ? '' : (meta.comment || '');
-  const en = enumFor(name, ifaceName);
+  const comment = String(meta.comment || '');
+  const hint = comment && comment !== label && !/(^|\s)\d+\s+\S/.test(comment) ? comment : '';
+  const en = enumFor(name, ifaceName) || enumFromComment(meta);
+  const required = meta.nullable === false && !meta.autoIncrement && !meta.pk && (meta.default === undefined || meta.default === null || meta.default === '');
+  const type = String(meta.type || 'varchar').toLowerCase();
+  const maxLength = (type.match(/\((\d+)/) || [])[1];
   const full = isLongField(meta, name) || /(payload|items|answers|questions|tags|images)$/.test(name) ? ' full' : '';
+  const ph = hint ? hint.replace(/[|｜].*$/, '').trim() : '请输入' + label;
+  const labelHtml = '<label>' + esc(label) + (required ? '<span class="req-dot">*</span>' : '') + '</label>';
   let input = '';
   if (en) {
     const opts = Object.keys(en).map((k) => '<option value="' + esc(k) + '"' + (String(value) === k ? ' selected' : '') + '>' + esc(en[k]) + '</option>').join('');
-    input = '<select data-field="' + esc(name) + '"><option value="">请选择</option>' + opts + '</select>';
-  } else if (isLongField(meta, name)) {
-    input = '<textarea data-field="' + esc(name) + '" placeholder="' + esc(hint) + '">' + esc(value == null ? '' : value) + '</textarea>';
+    input = '<select data-field="' + esc(name) + '" data-label="' + esc(label) + '"' + (required ? ' data-required="1"' : '') + '><option value="">请选择</option>' + opts + '</select>';
+  } else if (isBoolField(meta, name)) {
+    const cur = value == null || value === '' ? '' : String(value);
+    input = '<select data-field="' + esc(name) + '" data-label="' + esc(label) + '" data-bool="1">' +
+      '<option value="">请选择</option><option value="1"' + (cur === '1' ? ' selected' : '') + '>是 / 启用</option><option value="0"' + (cur === '0' ? ' selected' : '') + '>否 / 停用</option></select>';
   } else if (name === 'password' || name === 'secret') {
-    input = '<input data-field="' + esc(name) + '" type="password" value="' + esc(value == null ? '' : value) + '">';
-  } else if (isNumberField(meta, name)) {
-    input = '<input data-field="' + esc(name) + '" type="number" step="any" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
+    input = '<input data-field="' + esc(name) + '" data-label="' + esc(label) + '" type="password" autocomplete="new-password" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(ph) + '"' + (required ? ' data-required="1"' : '') + '>';
+  } else if (/json/.test(type) || isLongField(meta, name)) {
+    input = '<textarea data-field="' + esc(name) + '" data-label="' + esc(label) + '" placeholder="' + esc(ph) + '"' + (required ? ' data-required="1"' : '') + (maxLength ? ' maxlength="' + maxLength + '"' : '') + '>' + esc(value == null ? '' : value) + '</textarea>';
   } else if (isDateField(meta, name)) {
     const v = String(value || '').replace(' ', 'T').slice(0, 16);
-    input = '<input data-field="' + esc(name) + '" type="datetime-local" value="' + esc(v) + '">';
+    const dt = /date/.test(type) && !/time/.test(type);
+    input = '<input data-field="' + esc(name) + '" data-label="' + esc(label) + '" type="' + (dt ? 'date' : 'datetime-local') + '" value="' + esc(dt ? v.slice(0, 10) : v) + '"' + (required ? ' data-required="1"' : '') + '>';
+  } else if (/^time/.test(type)) {
+    input = '<input data-field="' + esc(name) + '" data-label="' + esc(label) + '" type="time" value="' + esc(String(value || '').slice(0, 5)) + '"' + (required ? ' data-required="1"' : '') + '>';
+  } else if (isNumberField(meta, name)) {
+    const step = /decimal|float|double|numeric/.test(type) ? '0.01' : '1';
+    input = '<input data-field="' + esc(name) + '" data-label="' + esc(label) + '" type="number" step="' + step + '" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(ph) + '"' + (required ? ' data-required="1"' : '') + '>';
   } else {
-    input = '<input data-field="' + esc(name) + '" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(hint) + '">';
+    input = '<input data-field="' + esc(name) + '" data-label="' + esc(label) + '" value="' + esc(value == null ? '' : value) + '" placeholder="' + esc(ph) + '"' + (required ? ' data-required="1"' : '') + (maxLength ? ' maxlength="' + maxLength + '"' : '') + '>';
   }
-  return '<div class="field' + full + '"><label>' + esc(label) + '</label>' + input + '</div>';
+  return '<div class="field' + (required ? ' is-required' : '') + full + '">' + labelHtml + input +
+    (hint ? '<div class="hint">' + esc(hint) + (required ? ' · 必填' : '') + '</div>' : (required ? '<div class="hint">必填</div>' : '')) + '</div>';
 }
-
+function formGroupOf(meta, name) {
+  if (isLongField(meta, name) || /(image|img|photo|cover|file|avatar|attachment)/.test(name)) return '说明与附件';
+  if (isNumberField(meta, name) || isDateField(meta, name) || isBoolField(meta, name) || enumFor(name) || /(category|type|status|stage|priority|level|spec|unit)/.test(name)) return '业务数据';
+  return '基本信息';
+}
 function formHTML(ifaceName, path, values, fieldsOverride) {
   const r = routeOf(ifaceName, path, 'POST') || routeOf(ifaceName, path, 'PUT') || routeOf(ifaceName, path);
-  let names = fieldsOverride && fieldsOverride.length ? fieldsOverride.slice() : ((r && r.body) || []).slice();
+  let names = [];
+  if (fieldsOverride && Array.isArray(fieldsOverride)) names = fieldsOverride.slice();
+  else if (fieldsOverride && typeof fieldsOverride === 'object') names = Object.keys(fieldsOverride);
+  if (!names.length && r && Array.isArray(r.body) && r.body.length) names = r.body.slice();
   const block = ['id', 'created_at', 'updated_at', 'password_hash', 'only_id', 'user_only_id', 'owner_only_id'];
   const sensitive = (n) => /(password|secret|token|hash|only_id|api_key|private_key|cover_key|file_key|avatar|(^|_)key)$/.test(n);
   const i = ifaceOf(ifaceName);
   const ti = (i && i.tables && (i.tables.find((t) => t.key === (r && r.table)) || i.tables[0])) || {};
   const tableFields = ti.fields || [];
-  names = names.filter((n) => block.indexOf(n) < 0 && !sensitive(n));
   const authPath = /(login|register|logout)/.test(path || '');
+  names = names.filter((n) => block.indexOf(n) < 0 && (authPath || !sensitive(n)));
+  if (!names.length && i && i.tables && i.tables[0]) {
+    names = tableFields.filter((f) => !f.pk && f.writable !== false && block.indexOf(f.name) < 0 && !sensitive(f.name)).map((f) => f.name);
+  }
   if (!authPath) {
     const extra = tableFields.filter((f) => !f.pk && f.hidden && f.writable !== false && block.indexOf(f.name) < 0 && !sensitive(f.name) && names.indexOf(f.name) < 0).map((f) => f.name);
     names = names.concat(extra);
   }
-  if (!names.length) {
-    if (i && i.tables && i.tables[0]) {
-      names = tableFields.filter((f) => !f.pk && f.writable !== false && block.indexOf(f.name) < 0 && !sensitive(f.name)).map((f) => f.name);
-    }
+  const style = String(UX.formStyle || 'stack');
+  const nodes = names.map((n) => fieldInput(ifaceName, n, values ? values[n] : ''));
+  let body = '';
+  if (style === 'section' && nodes.length) {
+    const groups = { '基本信息': [], '业务数据': [], '说明与附件': [] };
+    names.forEach((n, idx) => { groups[formGroupOf(fieldMeta(ifaceName, n), n)].push(nodes[idx]); });
+    body = Object.keys(groups).filter((g) => groups[g].length).map((g) =>
+      '<section class="form-section"><div class="form-section-head"><h4>' + g + '</h4><span>' + groups[g].length + ' 项</span></div><div class="form-grid">' + groups[g].join('') + '</div></section>'
+    ).join('');
+  } else {
+    body = nodes.join('');
   }
-  return '<div class="form">' + names.map((n) => fieldInput(ifaceName, n, values ? values[n] : '')).join('') +
-    '<div class="form-note">提交后会直接写入真实数据表，并刷新当前页面。</div></div>';
+  return '<div class="form form--' + style + '">' + body +
+    '<div class="form-note">共 ' + names.length + ' 个字段 · 来自 ' + (r ? r.method + ' ' + r.path : '当前接口') + ' 的请求体和数据表定义；提交后直接写入真实数据表。</div></div>';
 }
 App.formHTML = formHTML;
 
@@ -484,9 +535,10 @@ function readForm(root) {
   const out = {};
   $$('[data-field]', root || document).forEach((el) => {
     const name = el.getAttribute('data-field');
+    if (el.type === 'checkbox') { out[name] = el.checked ? 1 : 0; return; }
     let v = el.value;
     if (v === '' || v == null) return;
-    if (el.type === 'number') v = Number(v);
+    if (el.type === 'number' || el.getAttribute('data-bool')) v = Number(v);
     out[name] = v;
   });
   return out;
@@ -533,10 +585,12 @@ function confirmBox(message) {
 App.confirm = confirmBox;
 
 function openForm(opts) {
+  const style = String(UX.formStyle || 'stack');
+  const width = opts.width || (style === 'section' ? 820 : style === 'grid' ? 760 : style === 'compact' ? 700 : 620);
   modal({
     title: opts.title,
     desc: opts.desc || '填写后提交，数据会写入真实业务表。',
-    width: 620,
+    width,
     body: '<div id="form-root">' + formHTML(opts.iface, opts.path, opts.values, opts.fields) + '</div>',
     foot: '<button class="btn" onclick="App.closeModal()">取消</button>' +
       '<button class="btn primary" onclick="App.submitModal()">' + esc(opts.submitLabel || '保存') + '</button>',
@@ -549,6 +603,16 @@ async function submitModal() {
   const root = $('#form-root');
   const fn = App._pendingSubmit;
   if (!root || !fn) return;
+  const missing = $$('[data-required]', root).filter((el) => {
+    if (el.type === 'checkbox') return false;
+    return String(el.value == null ? '' : el.value).trim() === '';
+  });
+  if (missing.length) {
+    const labels = missing.map((el) => el.getAttribute('data-label') || el.getAttribute('data-field')).join('、');
+    toast('请填写必填字段：' + labels, 'err');
+    missing[0].focus();
+    return;
+  }
   const data = readForm(root);
   try {
     await fn(data);
@@ -590,6 +654,13 @@ function renderChrome() {
 App.renderChrome = renderChrome;
 
 function go(view, params) {
+  if (view === 'create') {
+    const p = UX.primary || {};
+    if (p.iface && p.create) {
+      createRecord({ iface: p.iface, create: p.create, title: '新建' + (UX.itemLabel || UX.label || '记录') });
+      return;
+    }
+  }
   state.view = view;
   state.params = params || {};
   renderChrome();
@@ -650,7 +721,6 @@ App.openDetail = function (ifaceName, row) {
 /* 通用新建器：params 里的 create 配置。 */
 function createRecord(cfg) {
   if (!cfg) return;
-  if (!requireAuth()) return;
   openForm({
     title: cfg.title || '新建' + (cfg.label || '记录'),
     iface: cfg.iface,
