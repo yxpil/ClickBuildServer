@@ -70,6 +70,14 @@
 
 ![测试页自动生成](docs/screenshots/ui-testgen.png)
 
+## 顶栏 logo 恢复为原图（1.1.58）
+
+- 左上角的 `logo.png` 恢复成 1.1.34 的水彩猫原图（1282×1291，1,950,722 B），不再使用 1.1.49 换上的蓝底白猫应用图标。
+- 恢复只动 `assets/logo.png` 这一张界面品牌图；Windows 安装包、桌面快捷方式和任务栏仍使用 `build/icon-256.png` 的蓝底猫图标，安装包不换图标。
+- 工作台、工程历史、启动页和关闭页中引用 `../assets/logo.png` 的位置会一起回到原图，尺寸和 `object-cover` 写法保持不变。
+
+![左上角恢复原 logo.png](docs/screenshots/logo-header.png)
+
 ## 首页按钮只改本地首页，不拉网站登录（1.1.57）
 
 - 页面栏的小房子以前会先查网站账号，没登录就 `window.open` 到 yxpil.com 的登录页，看起来像“点设为主页却跳去了我的网站”。现在 `homePage` 是工程本地字段，点一下直接把当前页设为首页，导出和分享从这一页开始，不登录也能用。
@@ -141,10 +149,10 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.57.exe
+dist\ClickBuildServer-Setup-1.1.58.exe
 ```
 
-安装包 222,021,197 B（约 212 MB），构建时间 2026-11-21 06:31:58，SHA256 `39C8CEB3DF1F6C966F8D1DC7E9E332E742384C3BE800E69D3A1538977FFF60AC`。
+安装包 225,871,559 B（约 215 MB），构建时间 2026-11-21 06:40:10，SHA256 `B94385922B3E59820CC52D618366EF66AD756E67CAB23D8EF2E1D0B991F04EF5`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
@@ -445,7 +453,7 @@ npm run dist       # 发布安装包
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言 / 安装期语言） | **24/24** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **138/138**（源码版 / 1.1.57 安装版） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **138/138**（源码版 / 1.1.58 安装版） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
