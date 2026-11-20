@@ -1124,6 +1124,8 @@ function renderSide() {
 
 /* ---------------- 表格视图 ---------------- */
 function renderWorkspace() {
+  const side = document.querySelector('#workbenchMain > aside');
+  if (side) side.classList.toggle('hidden', S.mode === 'help');
   if (S.mode === 'editor' && activeIface()) renderEditor();
   else if (S.mode === 'help') renderHelp();
   else renderGrid();
@@ -2065,12 +2067,15 @@ function bindRoutes(it) {
     setupScriptEditor((value) => { r.script = value; scheduleSave(); });
   }
   const tryBtn = $('[data-action="tryRoute"]');  if (tryBtn) tryBtn.onclick = () => {
-    const sampleBody = (r.docs && r.docs.requestExample) || (['POST', 'PUT', 'PATCH'].includes(r.method) ? '{\n  \n}' : '');
+    const pathKeys = Array.from(String(r.path || '').matchAll(/:([A-Za-z0-9_]+)/g)).map((m) => m[1]);
+    const sampleQuery = pathKeys.length ? JSON.stringify(Object.fromEntries(pathKeys.map((k) => [k, '1'])), null, 2) : '{}';
+    const docBody = String((r.docs && r.docs.requestExample) || '').trim();
+    const sampleBody = /^[{\[]/.test(docBody) ? docBody : (['POST', 'PUT', 'PATCH'].includes(String(r.method).toUpperCase()) ? '{\n  \n}' : '');
     modal(`<div class="p-4 text-[12px]">
       <div class="font-semibold mb-1">试运行 ${esc(r.method)} ${esc(r.path)}</div>
-      <div class="text-neutral-500 mb-3">请求会发到当前启动服务的 /api 前缀；路径参数 :id 会取下方路径参数里的 id。</div>
+      <div class="text-neutral-500 mb-3">请求会发到当前启动服务的 /api 前缀；路径参数 :id 会取下方路径参数里的 id，其余键作为查询参数。</div>
       <div class="flex gap-3">
-        <div class="flex-1">路径/查询参数 JSON<textarea id="tryQuery" rows="7" class="cell-in monoarea w-full">{"id":"1"}</textarea></div>
+        <div class="flex-1">路径/查询参数 JSON<textarea id="tryQuery" rows="7" class="cell-in monoarea w-full">${esc(sampleQuery)}</textarea></div>
         <div class="flex-1">请求体 JSON<textarea id="tryBody" rows="7" class="cell-in monoarea w-full">${esc(sampleBody)}</textarea></div>
       </div>
       <div class="mt-3 flex items-center gap-2"><button class="btn thin" id="tryGo">发送</button><span id="tryMeta" class="text-neutral-500"></span></div>
@@ -2796,83 +2801,653 @@ function bindExport(it) {
   });
 }
 
-/* ---------------- 帮助 ---------------- */
-function renderHelp() {
-  $('#workspace').innerHTML = `
-  <div class="h-9 shrink-0 flex items-center gap-2 px-3 border-b border-neutral-300">
-    <button class="btn thin" data-action="grid">← 表格</button>
-    <b>帮助 · 脚本语法</b>
-    <span class="text-neutral-500 text-[11px]">生成的服务器里跑的就是这一套解释器</span>
-    <span class="ml-auto flex gap-1">
-      <button class="btn thin" data-action="openHelpUrl">打开服务 /help</button>
-      <button class="btn thin" data-action="openDocsUrl">打开 /docs</button>
-    </span>
-  </div>
-  <div class="flex-1 overflow-auto p-4 text-[12px] leading-6">
-    <div class="help-h">0. 在这里能做什么</div>
-    <div class="grid grid-cols-2 gap-3 mb-4">
-      <div class="border border-neutral-300 p-3"><b>1. 建表</b><div class="text-neutral-600">在接口里加一张或多张表，字段名、类型、主键、自增、可空、可查直接在表格里改。</div></div>
-      <div class="border border-neutral-300 p-3"><b>2. 生成接口</b><div class="text-neutral-600">列表、详情、新建、更新、删除、附件、上游转发、对象表、抓取都可以一键加路由。</div></div>
-      <div class="border border-neutral-300 p-3"><b>3. 写脚本</b><div class="text-neutral-600">每条路由一段脚本：查库、判断、事务、返回 JSON；右侧脚本助手会给出常用写法和字段。</div></div>
-      <div class="border border-neutral-300 p-3"><b>4. 联调</b><div class="text-neutral-600">在“路由”页点“试运行”发请求；底部控制台看服务输出、数据库和 Redis 日志。</div></div>
-      <div class="border border-neutral-300 p-3"><b>5. 导出</b><div class="text-neutral-600">生成 Node / Python / Go / Java 工程，根目录 config.json 改端口、数据库等参数，不用改源码。</div></div>
-    </div>
+/* ---------------- 帮助中心 ---------------- */
+const HELP_ROUTE_DOCS = [
+  { key: 'list', name: '列表', desc: '分页查询，默认带 {{where}}、{{orderBy}}、{{limit}}、{{offset}}，支持筛选、排序、关键词与 Redis 缓存。' },
+  { key: 'detail', name: '详情', desc: '按主键查一条；找不到返回 404。默认路径里的 :id 由请求路径提供。' },
+  { key: 'create', name: '新建', desc: '按请求体插入记录；默认脚本带事务。返回 201 与 insertId。' },
+  { key: 'update', name: '更新', desc: '按主键更新；只写请求体里出现的字段，先查存在再更新。' },
+  { key: 'delete', name: '删除', desc: '按主键删除；先查存在，再删，返回 affectedRows。' },
+  { key: 'upload', name: '附件', desc: 'multipart 上传；服务先写 S3，脚本里直接拿 {{objectKey}} 入库。默认路径结尾是 /file。' },
+  { key: 'proxy', name: '上游转发', desc: '把请求透传到“上游”页配置的服务；可改目标路径、超时、是否转发请求头。' },
+  { key: 'objects', name: '对象表', desc: '直接列对象存储桶里的文件，不走 SQL；适合做文件库、素材库。' },
+  { key: 'crawl', name: '抓取', desc: '抓取 http(s) 网页，返回 title、text、links；默认禁止内网地址。' },
+  { key: 'custom', name: '自定义', desc: '一段完全自写的脚本；新建时会生成 /custom-N，路径可以随时改。' },
+];
 
-    <div class="help-h">1. 一条路由 = 一段脚本</div>
-<pre class="monoarea border border-neutral-300 p-3 bg-neutral-50">LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;
+const HELP_FUNCS = [
+  ['HASH', 'HASH(algo, v)', '按算法算十六进制摘要；algo 支持 md5、sha1、sha256、sm3 等 Node 支持的名称。', "HASH('sha256', {{body.password}})"],
+  ['MD5', 'MD5(v)', 'MD5 摘要，兼容老系统。', 'MD5({{body.text}})'],
+  ['SHA1', 'SHA1(v)', 'SHA-1 摘要。', 'SHA1({{body.text}})'],
+  ['SHA256', 'SHA256(v)', 'SHA-256 摘要，常用密码哈希。', 'SHA256({{body.password}})'],
+  ['SM3', 'SM3(v)', '国密 SM3 摘要。', 'SM3({{body.id_card}})'],
+  ['SM4_ENC', 'SM4_ENC(v, key)', '国密 SM4 加密，返回 Base64；key 满 16 字节直接用，否则 SHA-256 截前 16 字节。', "SM4_ENC({{body.phone}}, 'clickbuild-key')"],
+  ['SM4_DEC', 'SM4_DEC(v, key)', 'SM4 解密；key 必须与加密时一致。', "SM4_DEC($row.secret, 'clickbuild-key')"],
+  ['SUBSTR', 'SUBSTR(v, start, len)', '截取字符串；start 从 0 开始，len 可省略。', 'SUBSTR({{body.phone}}, 7, 4)'],
+  ['LEFT', 'LEFT(v, n)', '取左边 n 个字符。', "LEFT('13800138000', 3)"],
+  ['RIGHT', 'RIGHT(v, n)', '取右边 n 个字符。', "RIGHT('13800138000', 4)"],
+  ['LEN', 'LEN(v)', '字符串或数组长度。', 'LEN($rows.rows)'],
+  ['UPPER', 'UPPER(v)', '转大写。', 'UPPER({{body.code}})'],
+  ['LOWER', 'LOWER(v)', '转小写。', 'LOWER({{body.email}})'],
+  ['TRIM', 'TRIM(v)', '去掉首尾空白。', 'TRIM({{body.name}})'],
+  ['CONCAT', 'CONCAT(...)', '拼接任意多个值。', "CONCAT('NO-', {{body.id}})"],
+  ['REPLACE', 'REPLACE(v, from, to)', '把 from 全部替换成 to。', "REPLACE({{body.phone}}, '-', '')"],
+  ['SPLIT', 'SPLIT(v, sep)', '按分隔符切成数组；sep 省略时按逗号。', "SPLIT({{body.tags}}, ',')"],
+  ['JOIN', 'JOIN(arr, sep)', '把数组拼成字符串。', "JOIN($roles, '|')"],
+  ['NOW', 'NOW()', '当前时间，格式 YYYY-MM-DD HH:MM:SS。', 'NOW()'],
+  ['TODAY', 'TODAY()', '今天，格式 YYYY-MM-DD。', 'TODAY()'],
+  ['UUID', 'UUID()', '标准 UUID v4。', 'UUID()'],
+  ['BASE64_ENC', 'BASE64_ENC(v)', 'UTF-8 字符串转 Base64。', "BASE64_ENC('hello')"],
+  ['BASE64_DEC', 'BASE64_DEC(v)', 'Base64 还原成 UTF-8 字符串。', 'BASE64_DEC({{body.data}})'],
+  ['URL_ENC', 'URL_ENC(v)', 'URL 编码。', 'URL_ENC({{body.keyword}})'],
+  ['URL_DEC', 'URL_DEC(v)', 'URL 解码。', 'URL_DEC({{query.q}})'],
+  ['INT', 'INT(v)', '转整数，失败为 0。', "INT('12px')"],
+  ['FLOAT', 'FLOAT(v)', '转浮点数，失败为 0。', "FLOAT('3.14')"],
+  ['STR', 'STR(v)', '转字符串；对象会转 JSON。', 'STR($ins.insertId)'],
+  ['ROUND', 'ROUND(v, n)', '四舍五入到 n 位小数。', 'ROUND({{body.amount}}, 2)'],
+  ['ABS', 'ABS(v)', '绝对值。', 'ABS({{body.delta}})'],
+  ['COALESCE', 'COALESCE(...)', '返回第一个非 null、非 undefined、非空字符串的值。', "COALESCE({{body.nickname}}, '匿名')"],
+  ['MASK', 'MASK(v, start, len, ch)', '从 start 开始遮住 len 个字符，ch 默认星号。', "MASK({{body.phone}}, 3, 4, '*')"],
+  ['JSON_GET', 'JSON_GET(obj, path)', '按点路径取 JSON 字段；数组用数字下标。', "JSON_GET({{body.meta}}, 'user.name')"],
+  ['JSON_STR', 'JSON_STR(v)', '把值序列化成 JSON 字符串。', 'JSON_STR($rows.rows)'],
+  ['RAND_INT', 'RAND_INT(a, b)', '闭区间随机整数。', 'RAND_INT(1000, 9999)'],
+  ['IF', 'IF(cond, a, b)', '三元表达式；条件为真返回 a，否则 b。', "IF({{body.vip}}, 'VIP', '普通')"],
+  ['IN', 'IN(v, arr)', '判断值是否在数组里，返回 true/false。', "IN({{body.status}}, ['paid', 'shipped'])"],
+  ['CONTAINS', 'CONTAINS(v, sub)', '字符串是否包含子串。', "CONTAINS('order-1001', 'order')"],
+  ['START_WITH', 'START_WITH(v, sub)', '是否以子串开头；函数名就是 START_WITH。', "START_WITH('order-1001', 'order')"],
+  ['END_WITH', 'END_WITH(v, sub)', '是否以子串结尾。', "END_WITH('file.pdf', '.pdf')"],
+];
+
+const HELP_SECTIONS = [
+  {
+    id: 'quick', group: '开始', nav: '5 分钟跑通', num: '01', title: '5 分钟跑通第一个接口', lead: '从空白工程到能返回 200 的列表接口，只走真实按钮，不写配置文件。',
+    body: `
+      <div class="hb-grid">
+        <div class="hb-card"><b>你会得到</b><p>一个「订单」接口、一张 orders 表、五条基础路由，以及能在浏览器和 curl 里访问的列表 / 新建接口。</p></div>
+        <div class="hb-card"><b>开始前</b><p>不需要先装 MariaDB、Redis、S3。点“启动”时应用会拉起内置三台服务，实际端口以工作台右侧的“运行环境”为准。</p></div>
+      </div>
+      <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>新建一个任务</b><p>在工程历史页点右上角“新建任务”，任务类型选“只后端”（只做 API）或“混合任务”（API + 前端）。新建出来的是空白工程，没有接口是正常的。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>新建接口</b><p>进入工作台后点 Ribbon 的“新建接口”，或按 <span class="hb-kbd">Ctrl+N</span>。创建引导一共四步：基础信息 → 主表 → 路由 → 确认。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">3</span><div class="hb-step-body"><b>填主表字段</b><p>第二步每行一个字段，格式是“字段名 类型 注释”。可以直接粘贴：</p>
+        <div class="hb-code"><div class="hb-code-head">初始业务字段</div><pre>name varchar 名称
+price decimal 价格
+status tinyint 状态 0 下架 1 上架</pre></div>
+        <p>系统会自动补 id 主键、created_at、updated_at。点“下一步”。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">4</span><div class="hb-step-body"><b>保留五条基础路由</b><p>第三步默认勾选列表、详情、新建、更新、删除；鉴权先选“公开”。到第四步检查预览，点“确认创建”。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">5</span><div class="hb-step-body"><b>启动并访问</b><p>点 Ribbon 的“启动”。它会保存、生成服务、拉起依赖、启动网页服务并自动打开主页。状态区显示三台依赖都在运行后，再试接口。</p></div></div>
+      <div class="hb-code"><div class="hb-code-head">命令行验收（PowerShell 用 curl.exe）</div><pre>curl.exe "http://127.0.0.1:18100/api/orders?page=1&amp;pageSize=5"
+curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: application/json" -d '{"name":"首单","price":99.5}'</pre></div>
+      <div class="hb-check"><b>跑通标准</b><div>① 主页能打开；② 列表返回 200 且 rows 是数组；③ 新建返回 201 和 id；④ 再查列表能看到刚插入的那条；⑤ 服务 /help 与 /docs 都能打开。</div></div>
+      <div class="hb-tip"><b>提示</b><div>地址由三部分组成：<span class="hb-inline">/api</span> + 接口里的“路径前缀” + 路由路径。没填前缀时就是 <span class="hb-inline">/api/orders</span>。端口在“设置 → 本地服务端口”里改，默认 18100。</div></div>
+    `,
+  },
+  {
+    id: 'concept', group: '开始', nav: '六个概念', num: '02', title: '先弄懂六个概念', lead: '后面所有操作都围绕这六个对象，先分清“接口”和“路由”就不会迷路。',
+    body: `
+      <div class="hb-grid">
+        <div class="hb-card"><b>工程 Project</b><p>一个可保存、可切换的工作单元。工程名显示在标题栏，自动保存成工程 JSON，也能打包成 .yxpn。</p></div>
+        <div class="hb-card"><b>接口 Interface</b><p>一组业务能力的集合，比如“订单”。一个接口可以有多张表和多条路由；表键 main 是主表。</p></div>
+        <div class="hb-card"><b>表 Table</b><p>真正建到 MariaDB 的表。表名全局唯一；表键 main、item 用于脚本占位符，不参与 SQL 表名。</p></div>
+        <div class="hb-card"><b>路由 Route</b><p>一条真实的 HTTP 入口：方法 + 路径 + 一段脚本。列表、详情、新建都是路由，不是表。</p></div>
+        <div class="hb-card"><b>脚本 Script</b><p>每条路由自己的执行逻辑。生成的服务器里跑的是同一套解释器，不是只给你看的示例。</p></div>
+        <div class="hb-card"><b>任务类型 Task</b><p>只前端 / 只后端 / 混合。只控制哪些入口出现，不会删除已有数据，随时能切回来。</p></div>
+      </div>
+      <div class="hb-code"><div class="hb-code-head">对象关系</div><pre>工程
+└─ 接口（订单）               路径前缀 /v1/orders
+   ├─ 表 main  → biz_order     主表，字段、主键、索引语义
+   ├─ 表 item  → biz_order_item 明细表，脚本里用 {{t:item}}
+   └─ 路由 GET /api/v1/orders   → 一段脚本 → SQL / Redis / S3</pre></div>
+      <div class="hb-p"><b>一句话判断：</b>想“存什么”改表；想“怎么访问、返回什么”改路由和脚本；想“这组功能属于谁”改接口；想“整个项目怎么交付”改工程和任务类型。</div>
+      <div class="hb-warn"><b>注意</b><div>“表键”和“表名”不是一回事。表键是脚本里的引用名（main、item），表名才是数据库里的真实表名。改表名不会自动改脚本里的表键。</div></div>
+    `,
+  },
+  {
+    id: 'project', group: '开始', nav: '工程与任务类型', num: '03', title: '新建、打开与任务类型', lead: '工程历史页负责选择工作对象；工作台只显示当前任务真正需要的入口。',
+    body: `
+      <div class="hb-h3">先认清工作台的四个区域</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>顶部：项目标签 + Ribbon</b><p>项目标签显示当前打开的工程；下面一排 Ribbon 按“工程 / 接口 / 表结构 / 脚本 / 运行 / 插件 / 导出与更多”分组，新建接口、启动、测试都在这里。</p></div>
+        <div class="hb-card"><b>左侧：接口内部导航</b><p>“业务表格、平台表格、删除接口、表结构、路由脚本、接口类型、接口文档、缓存与存储、上游、权限、对象表、测试、生成导出”。它只切换当前接口的页，不等于切换工程。</p></div>
+        <div class="hb-card"><b>中间：当前页画布</b><p>字段表格、脚本编辑器、文档预览、试运行结果都落在这里。宽度变化时表格和编辑器会自适应，左导航不会消失。</p></div>
+        <div class="hb-card"><b>右侧：运行环境</b><p>显示 MariaDB、Redis、RustFS、生成服务的真实端口和运行状态；服务没起来时，这里就是第一现场。帮助模式会临时收起这一栏给正文让位。</p></div>
+      </div>
+      <div class="hb-tip"><b>找不到按钮时</b><div>先看 Ribbon 的分组名，再看左侧导航。底部状态栏会写当前工程、接口数、表数和“已保存”；右上角“搜索接口 / 表 / 字段 / 路由 / SQL”是跨当前工程搜索，不是帮助搜索。</div></div>
+      <div class="hb-h3">工程历史页</div>
+      <div class="hb-p">启动应用先进入“工程历史”。左键工程卡片直接打开；右键有“打开 / 复制工程 / 删除工程”；卡片右上角红叉也是删除。顶部搜索会同时过滤工程名、描述、路径和模版标签。</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>新建任务</b><p>生成空白工程并进入工作台。三种任务类型：只前端、只后端、混合。</p></div>
+        <div class="hb-card"><b>从模版开始</b><p>下方模版卡片会带完整业务结构；点一张就按模版新建工程，适合先看成品再改。</p></div>
+        <div class="hb-card"><b>导入 .yxpn</b><p>“更多…”里的“导入 .yxpn”，会把工程包还原成可编辑工程；导出时连前端和文档一起带走。</p></div>
+        <div class="hb-card"><b>多项目标签</b><p>打开另一个工程会开新标签；<span class="hb-kbd">Ctrl+Tab</span> 切换，标签上中键或右键可关闭。</p></div>
+      </div>
+      <div class="hb-h3">三种任务类型看到什么</div>
+      <table class="hb-table"><thead><tr><th>类型</th><th>入口</th><th>适合</th></tr></thead><tbody>
+        <tr><td><b>只后端</b></td><td>接口工作台、表结构、路由、测试、导出；不显示前端工坊，也不显示“更新部署”。</td><td>只交付 API、脚本、数据库结构。</td></tr>
+        <tr><td><b>只前端</b></td><td>直接进入前端工坊；隐藏接口搜索和“生成服务”，不显示接口工作台。</td><td>只做页面，不碰接口。</td></tr>
+        <tr><td><b>混合</b></td><td>顶部出现“接口 / 前端”切换，两个工作台都能用，适合从接口到页面一起交付。</td><td>完整业务应用。</td></tr>
+      </tbody></table>
+      <div class="hb-tip"><b>自动保存</b><div>改工程名、字段、脚本、路由都会自动保存；<span class="hb-kbd">Ctrl+S</span> 只是立即落盘。新建任务或打开另一个工程前，应用会先等当前保存完成，避免丢改动。</div></div>
+      <div class="hb-warn"><b>删除不可撤销</b><div>工程历史里删除会把工程 JSON 从磁盘删掉，不是只从列表移除。重要工程先“导出 .yxpn”留一份。</div></div>
+    `,
+  },
+  {
+    id: 'schema', group: '核心', nav: '建表与字段', num: '04', title: '建表、字段与导入表格', lead: '接口里的表结构直接决定 SQL、文档、表单和对象存储绑定。',
+    body: `
+      <div class="hb-h3">主表从创建引导来，更多表在“表结构”页加</div>
+      <div class="hb-p">创建引导会生成一张主表（表键固定 main）。进入接口后，点“表结构”页的“＋ 表”可以加明细表、日志表、配置表；点表头标签或“快速切表”切换。表键自动生成，脚本里用 <span class="hb-inline">{{t:main}}</span>、<span class="hb-inline">{{t:item}}</span> 引用。</div>
+      <div class="hb-h3">字段表格 A–J 列</div>
+      <table class="hb-table"><thead><tr><th>列</th><th>作用</th><th>怎么选</th></tr></thead><tbody>
+        <tr><td>A 字段</td><td>数据库列名，脚本和请求体都用它。</td><td>小写字母、数字、下划线；不要和 id / created_at / updated_at 重名。</td></tr>
+        <tr><td>B 类型</td><td>决定 SQL 类型、表单控件、文档示例。</td><td>金额用 decimal，状态用 tinyint，长文用 text。</td></tr>
+        <tr><td>C 主键</td><td>每张表一个主键；没有时会退回第一个字段。</td><td>业务表通常 id + 自增。</td></tr>
+        <tr><td>D 自增</td><td>插入时不从请求体取值，由数据库生成。</td><td>和主键一起勾。</td></tr>
+        <tr><td>E 可空</td><td>允许 NULL；不勾表示必填。</td><td>可选备注、可选外键可以勾。</td></tr>
+        <tr><td>F 搜索</td><td>把字段加入 {{where}} 的 keyword 搜索范围。</td><td>订单号、客户、标题、SKU 等要搜的文本字段。</td></tr>
+        <tr><td>G 隐藏</td><td>不出现在列表字段、文档、响应；也不参与 query 条件。</td><td>密码哈希、内部标记、token。</td></tr>
+        <tr><td>H 默认</td><td>请求体没给值时使用；也写进建表语句。</td><td>CURRENT_TIMESTAMP、0、空字符串。</td></tr>
+        <tr><td>I 注释</td><td>写进数据库注释和文档说明。</td><td>用一句业务话解释，不要写“字段1”。</td></tr>
+        <tr><td>J 删除</td><td>移除这一行字段。</td><td>主键、业务正在用的列删除前先改脚本。</td></tr>
+      </tbody></table>
+      <div class="hb-h3">25 种字段类型</div>
+      <table class="hb-table"><thead><tr><th>组</th><th>类型</th><th>用途与注意</th></tr></thead><tbody>
+        <tr><td>数字 8 种</td><td class="mono">bigint / int / smallint / tinyint / bool / decimal / float / double</td><td>bool 落库是 TINYINT(1)；decimal 默认 DECIMAL(18,2)，金额不要用 float。</td></tr>
+        <tr><td>文本 4 种</td><td class="mono">varchar / char / text / longtext</td><td>varchar 默认 VARCHAR(255)，char 默认 CHAR(32)；长文用 text / longtext。</td></tr>
+        <tr><td>时间 2 种</td><td class="mono">datetime / date</td><td>datetime 存日期时间，date 只存日期。</td></tr>
+        <tr><td>语义 3 种</td><td class="mono">json / token / url</td><td>json 落库仍是 JSON；token 默认隐藏且不参与查询；url 按链接生成文档示例。</td></tr>
+        <tr><td>文件 8 种</td><td class="mono">file / image / video / audio / pdf / doc / excel / archive</td><td>SQL 里只存 S3 对象键，不把文件本体塞进数据库；上传路由会按类型限制文件。</td></tr>
+      </tbody></table>
+      <div class="hb-tip"><b>文件字段的正确用法</b><div>把字段类型设成 image / file 等，再给路由分配“文件上传”或“图片上传”类型。上传成功后脚本里用 <span class="hb-inline">{{objectKey}}</span> 入库，列表接口返回对象键，前端再换成可访问 URL。</div></div>
+      <div class="hb-h3">从 CSV / TSV 导入字段</div>
+      <div class="hb-p">表结构页底部点“导入表格”，选择 .csv / .tsv / .txt。第一行当表头，后面样例数据用来猜类型；已有主键、自增标记会保留。导入会替换当前表字段，操作前先确认表名。</div>
+      <div class="hb-check"><b>验收标准</b><div>表头 25 种类型都能选；勾“搜索”的文本字段能被 <span class="hb-inline">?keyword=</span> 命中；隐藏字段不出现在 <span class="hb-inline">{{columns}}</span> 和列表响应里；文件字段只看到对象键。</div></div>
+    `,
+  },
+  {
+    id: 'routes', group: '核心', nav: '10 种路由', num: '05', title: '10 种路由与真实地址', lead: '路由决定访问方式和默认脚本；所有路径最终都由 /api + 接口前缀 + 路由路径拼成。',
+    body: `
+      <table class="hb-table"><thead><tr><th>路由</th><th>方法</th><th>默认路径</th><th>它做什么</th></tr></thead><tbody>@@ROUTE_ROWS@@</tbody></table>
+      <div class="hb-p"><b>路径里的 <span class="hb-inline">:table</span> 是占位符。</b>创建路由时它会换成主表名，例如主表 orders 的详情路由实际是 <span class="hb-inline">/orders/:id</span>；<span class="hb-inline">:id</span> 是请求路径参数。</div>
+      <div class="hb-h3">怎么加、怎么改</div>
+      <div class="hb-p">“路由脚本”页左侧是路由列表，底部下拉选类型，点“＋ 加路由”。右侧可以改名字、接口类型、方法、路径、Redis 缓存开关，再直接编辑脚本。默认五条基础路由创建后仍可逐条修改或删除。</div>
+      <div class="hb-code"><div class="hb-code-head">地址拼装</div><pre>最终地址 = /api + 接口“路径前缀” + 路由路径
+
+接口前缀 /v1 + 列表路径 /orders
+→ GET http://127.0.0.1:18100/api/v1/orders
+
+接口前缀为空 + 详情路径 /orders/:id
+→ GET http://127.0.0.1:18100/api/orders/12</pre></div>
+      <div class="hb-tip"><b>上传路由</b><div>默认路径是 <span class="hb-inline">/:table/:id/file</span>，所以要先有记录 id 再上传。服务器先把文件写进 S3，再执行脚本；脚本里可直接用 <span class="hb-inline">{{objectKey}}</span>、<span class="hb-inline">{{objectUrl}}</span>、<span class="hb-inline">{{filename}}</span>、<span class="hb-inline">{{size}}</span>。</div></div>
+      <div class="hb-h3">三类特殊路由</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>上游转发 proxy</b><p>先在接口“上游”页配置 baseUrl，再在路由里选上游、目标路径、超时。适合把已有服务挂到当前域名下。</p></div>
+        <div class="hb-card"><b>对象表 objects</b><p>直接列桶内对象，不走 SQL。适合素材库、附件列表；返回的是对象元信息。</p></div>
+        <div class="hb-card"><b>网页抓取 crawl</b><p>抓 http(s) 网页；默认禁止内网地址，返回 title、text、links、bytes。可在“接口类型”里分配抓取类型。</p></div>
+        <div class="hb-card"><b>自定义 custom</b><p>完全自写脚本；新建时路径是 /custom-N，不会覆盖已有路由，改路径即可变成正式接口。</p></div>
+      </div>
+      <div class="hb-warn"><b>默认行为</b><div>列表和详情默认开 60 秒 Redis 缓存；新建、更新、删除默认启用事务。改脚本时如果不想要缓存，先在路由顶部取消“Redis 缓存”。</div></div>
+    `,
+  },
+  {
+    id: 'script', group: '核心', nav: '脚本语法', num: '06', title: '脚本语法：一条路由一段逻辑', lead: '脚本只有语句和表达式两层。先掌握 LET / QUERY / EXEC / IF / RETURN，就能写出大部分接口。',
+    body: `
+      <div class="hb-code"><div class="hb-code-head">一个完整的注册路由</div><pre><span class="cm"># 先查重，再插入，最后签发 token</span>
+LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;
 IF LEN($exists.rows) &gt; 0
   RETURN 409 { "ok": false, "error": "USER_EXISTS" };
+END
+EXEC INSERT INTO {{t:main}} (username, password_hash, nickname)
+VALUES ({{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}});
+LET $t = TOKEN NEW { "username": {{body.username}} };
+RETURN 201 { "ok": true, "token": $t.token };</pre></div>
+      <div class="hb-h3">基础语句</div>
+      <table class="hb-table"><thead><tr><th>写法</th><th>结果</th></tr></thead><tbody>
+        <tr><td class="mono">LET $x = QUERY SQL;</td><td>执行查询，结果在 <span class="hb-inline">$x.rows</span>，还有 <span class="hb-inline">$x.sql</span> / <span class="hb-inline">$x.params</span>。</td></tr>
+        <tr><td class="mono">LET $x = EXEC SQL;</td><td>执行增删改，结果含 <span class="hb-inline">affectedRows</span>、<span class="hb-inline">insertId</span>。</td></tr>
+        <tr><td class="mono">LET $x = 表达式;</td><td>算值，比如 <span class="hb-inline">HASH('sha256', {{body.password}})</span>。</td></tr>
+        <tr><td class="mono">QUERY SQL;</td><td>不取名也能执行；结果留在 <span class="hb-inline">{{last.x}}</span>，下一条 SQL 里可引用，但不会自动变成 <span class="hb-inline">$变量</span>。</td></tr>
+        <tr><td class="mono">RETURN 200 { ... };</td><td>立即结束并返回；不写状态码时默认 200。</td></tr>
+        <tr><td class="mono">LOG INFO '文本';</td><td>写服务日志；级别可写 TRACE / DEBUG / INFO / WARN / ERROR。</td></tr>
+      </tbody></table>
+      <div class="hb-h3">分支与循环</div>
+      <div class="hb-p">IF 不需要括号和花括号，用 <span class="hb-inline">IF 条件</span> 开始，<span class="hb-inline">ELSEIF</span>、<span class="hb-inline">ELSE</span> 可选，最后必须有 <span class="hb-inline">END</span>。FOREACH 用 <span class="hb-inline">FOREACH $row IN $rows.rows</span> 开始，也要 <span class="hb-inline">END</span> 结束，每次最多遍历 500 条。</div>
+      <div class="hb-code"><div class="hb-code-head">条件与循环</div><pre>IF {{body.status}} == 1 &amp;&amp; {{body.amount}} &gt; 0
+  RETURN 200 { "ok": true };
+ELSEIF {{body.status}} == 2
+  RETURN 403 { "ok": false, "error": "LOCKED" };
 ELSE
-  LET $ins = EXEC INSERT INTO {{t:main}} (username, password_hash) VALUES ({{body.username}}, HASH('sha256', {{body.password}}));
-  RETURN 201 { "ok": true, "id": $ins.insertId };
-END</pre>
+  LOG WARN '未知状态';
+  RETURN 400 { "ok": false, "error": "BAD_STATUS" };
+END
 
-    <div class="help-h">2. 语句</div>
-    <table class="help-grid">
-      <thead><tr><th style="width:240px">写法</th><th>作用</th></tr></thead>
-      <tbody>
-        <tr><td class="mono">LET $x = QUERY SQL;</td><td>查询，结果放 $x.rows</td></tr>
-        <tr><td class="mono">LET $x = EXEC SQL;</td><td>增删改，结果放 $x.affectedRows / $x.insertId</td></tr>
-        <tr><td class="mono">LET $x = 表达式;</td><td>算一个值，比如 LET $h = HASH('sm3', {{body.name}});</td></tr>
-        <tr><td class="mono">IF 条件 … ELSEIF … ELSE … END</td><td>分支</td></tr>
-        <tr><td class="mono">FOREACH $row IN $rows.rows … END</td><td>循环（最多 500 条）</td></tr>
-        <tr><td class="mono">RETURN 200 { … };</td><td>直接返回，第二段是 JSON 表达式</td></tr>
-        <tr><td class="mono">LOG 表达式;</td><td>写日志到响应里</td></tr>
-      </tbody>
-    </table>
+LET $order = EXEC INSERT INTO {{t:main}} (order_no, customer)
+VALUES ({{body.order_no}}, {{body.customer}});
 
-    <div class="help-h">3. SQL 占位符</div>
-    <table class="help-grid">
-      <thead><tr><th style="width:260px">占位符</th><th>含义</th></tr></thead>
-      <tbody>
-        <tr><td class="mono">{{t:main}} / {{t:item}}</td><td>表名（:后面是表键）</td></tr>
-        <tr><td class="mono">{{columns:main}}</td><td>全部可见字段列表</td></tr>
-        <tr><td class="mono">{{insertColumns:main}} / {{insertValues:main}}</td><td>INSERT 的列与 ? 值</td></tr>
-        <tr><td class="mono">{{updateSet:main}}</td><td>UPDATE SET，只取请求体里出现的字段</td></tr>
-        <tr><td class="mono">{{where:main}}</td><td>按 query 拼条件，支持 field__gte / __like / __in / __between，还有 keyword</td></tr>
-        <tr><td class="mono">{{orderBy:main}}</td><td>?sort=amount:desc 或默认主键倒序</td></tr>
-        <tr><td class="mono">{{limit}} {{offset}} {{page}} {{pageSize}}</td><td>分页</td></tr>
-        <tr><td class="mono">{{idColumn:main}}</td><td>主键列名</td></tr>
-        <tr><td class="mono">{{body.x}} {{query.x}} {{path.x}}</td><td>请求参数（自动 ? 参数化）</td></tr>
-        <tr><td class="mono">{{id}} {{now}} {{uuid}} {{queryHash}}</td><td>常用值</td></tr>
-        <tr><td class="mono">{{objectKey}} {{objectUrl}} {{filename}} {{size}}</td><td>上传文件信息</td></tr>
-      </tbody>
-    </table>
+FOREACH $item IN {{body.items}}
+  EXEC INSERT INTO {{t:item}} (order_id, sku, qty)
+  VALUES ($order.insertId, {{item.sku}}, {{item.qty}});
+END</pre></div>
+      <div class="hb-h3">表达式</div>
+      <div class="hb-p">支持 <span class="hb-inline">== != &gt; &lt; &gt;= &lt;=</span>、<span class="hb-inline">&amp;&amp; || !</span>、<span class="hb-inline">+ - * / %</span>；支持数组 <span class="hb-inline">['a','b']</span> 和对象 <span class="hb-inline">{ "k": 1 }</span>。字符串用单引号或双引号。变量用 <span class="hb-inline">$name</span>，取值用 <span class="hb-inline">$x.rows[0].id</span> 或 <span class="hb-inline">$x.rows.0.id</span>。</div>
+      <div class="hb-h3">进阶语句</div>
+      <table class="hb-table"><thead><tr><th>语句</th><th>说明</th></tr></thead><tbody>
+        <tr><td class="mono">WAIT 500;</td><td>等待毫秒，最多 60000。脚本总步数上限 5000。</td></tr>
+        <tr><td class="mono">TX BEGIN; / TX COMMIT; / TX ROLLBACK;</td><td>手动事务。默认写路由已经自动开事务；自定义跨表写入可自己控制。</td></tr>
+        <tr><td class="mono">LET $r = HTTP GET 'http://127.0.0.1:18101/api/x';</td><td>服务间调用，支持 GET/POST/PUT/DELETE，返回 <span class="hb-inline">{ status, ok, body }</span>。POST 可在末尾写 JSON。</td></tr>
+        <tr><td class="mono">LET $p = CRAWL 'https://example.com' { "maxText": 5000 };</td><td>抓网页，返回 title、text、links、bytes；默认禁止内网地址。</td></tr>
+        <tr><td class="mono">LET $t = TOKEN NEW { "uid": 1 };</td><td>签发会话 token；返回 <span class="hb-inline">$t.token</span>、<span class="hb-inline">$t.onlyId</span>、<span class="hb-inline">$t.ttl</span>。</td></tr>
+        <tr><td class="mono">LET $u = TOKEN GET $token;</td><td>按 token 取会话内容；无效返回空。也可以 <span class="hb-inline">TOKEN DEL $token;</span> 注销。</td></tr>
+        <tr><td class="mono">PUBLISH 'orders:new' { "id": 1 };</td><td>向 Redis 频道发布消息，微服务之间可用。</td></tr>
+      </tbody></table>
+      <div class="hb-warn"><b>写好习惯</b><div>每条语句建议以分号结尾；注释用 <span class="hb-inline">#</span> 最稳，也支持 <span class="hb-inline">//</span> 和 <span class="hb-inline">/* ... */</span>。停止输入 0.3 秒后编辑器会自动检查，红色波浪线就是语法或变量问题。</div></div>
+    `,
+  },
+  {
+    id: 'sqlref', group: '核心', nav: 'SQL 与查询', num: '07', title: 'SQL 占位符、筛选、分页与排序', lead: '占位符不是字符串替换：表名和列名走白名单，请求值全部参数化成问号。',
+    body: `
+      <div class="hb-h3">最常用的五段 SQL</div>
+      <div class="hb-code"><div class="hb-code-head">列表 / 详情 / 新建 / 更新 / 删除</div><pre>SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};
+SELECT {{columns:main}} FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;
+INSERT INTO {{t:main}} ({{insertColumns:main}}) VALUES ({{insertValues:main}});
+UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};
+DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};</pre></div>
+      <div class="hb-h3">占位符清单</div>
+      <table class="hb-table"><thead><tr><th>占位符</th><th>展开成什么</th></tr></thead><tbody>
+        <tr><td class="mono">{{t:main}} / {{t:item}}</td><td>按表键取真实表名，可带库前缀；不是用户输入。</td></tr>
+        <tr><td class="mono">{{columns:main}} / {{allColumns:main}}</td><td>可见字段列表 / 全部字段（含隐藏）。</td></tr>
+        <tr><td class="mono">{{insertColumns:main}} / {{insertValues:main}}</td><td>可写字段列表与对应的 ? 参数；自动跳过主键、自增、不可写字段。</td></tr>
+        <tr><td class="mono">{{updateSet:main}}</td><td>只把请求体里出现过的可写字段拼成“列 = ?”。</td></tr>
+        <tr><td class="mono">{{where:main}}</td><td>根据 query 拼条件；没有条件时是 1 = 1，可直接接在 WHERE 后。</td></tr>
+        <tr><td class="mono">{{orderBy:main}}</td><td>读 ?sort=字段:asc/desc，最多三个；不合法时回退主键倒序。</td></tr>
+        <tr><td class="mono">{{limit}} {{offset}} {{page}} {{pageSize}}</td><td>page 默认 1，pageSize 默认 20，最大 500；offset 自动算。</td></tr>
+        <tr><td class="mono">{{idColumn:main}}</td><td>主键列名；没有主键时退回第一个字段。</td></tr>
+        <tr><td class="mono">{{id}} {{now}} {{uuid}} {{queryHash}}</td><td>路径 id、当前时间、随机 UUID、查询哈希。</td></tr>
+        <tr><td class="mono">{{body.x}} {{query.x}} {{path.x}} {{user.x}}</td><td>请求体、查询串、路径参数、已登录用户；自动参数化。</td></tr>
+        <tr><td class="mono">{{objectKey}} {{objectUrl}} {{filename}} {{size}}</td><td>上传后的对象键、访问地址、原始文件名、字节数。</td></tr>
+        <tr><td class="mono">{{vars.x}} {{last.x}}</td><td>脚本变量与上一条 QUERY/EXEC 的结果，可带点路径。</td></tr>
+      </tbody></table>
+      <div class="hb-h3">{{where:main}} 支持的 query 运算符</div>
+      <table class="hb-table"><thead><tr><th>写法</th><th>SQL</th><th>例子</th></tr></thead><tbody>
+        <tr><td class="mono">status=1</td><td>等于</td><td>?status=1</td></tr>
+        <tr><td class="mono">status__ne=1</td><td>&lt;&gt;</td><td>?status__ne=1</td></tr>
+        <tr><td class="mono">amount__gte=10 / __gt / __lte / __lt</td><td>&gt;= / &gt; / &lt;= / &lt;</td><td>?amount__gte=100</td></tr>
+        <tr><td class="mono">name__like=张</td><td>LIKE %张%</td><td>?name__like=张</td></tr>
+        <tr><td class="mono">name__contains / __startswith / __endswith</td><td>包含 / 开头 / 结尾</td><td>?name__startswith=订</td></tr>
+        <tr><td class="mono">status__in=1,2,3</td><td>IN，最多 50 个</td><td>?status__in=0,1</td></tr>
+        <tr><td class="mono">amount__between=1,99</td><td>BETWEEN，需两个值</td><td>?amount__between=10,50</td></tr>
+        <tr><td class="mono">name__regex / __iregex / __notregex</td><td>REGEXP</td><td>?order_no__regex=^A</td></tr>
+        <tr><td class="mono">deleted_at__isnull=1</td><td>IS NULL；传 0 变 IS NOT NULL</td><td>?file_key__isnull=1</td></tr>
+        <tr><td class="mono">keyword=关键字</td><td>在勾了“搜索”的文本字段里 LIKE</td><td>?keyword=首单</td></tr>
+        <tr><td class="mono">sort=amount:desc,id:asc</td><td>最多三个字段</td><td>?sort=amount:desc</td></tr>
+      </tbody></table>
+      <div class="hb-p">多表查询直接在 SQL 里 JOIN：<span class="hb-inline">FROM {{t:main}} o LEFT JOIN {{t:item}} i ON i.order_id = o.id</span>。列名要自己写别名，避免两张表都有 id 时混淆；WHERE 仍可接 <span class="hb-inline">{{where:main}}</span>。</div>
+      <div class="hb-tip"><b>安全边界</b><div>表名、列名只接受已存在的标识符；所有 <span class="hb-inline">{{body.x}}</span>、<span class="hb-inline">{{query.x}}</span> 都会变成参数占位符，不用自己拼引号，也不容易 SQL 注入。</div></div>
+    `,
+  },
+  {
+    id: 'functions', group: '核心', nav: '函数手册', num: '08', title: '40 个内置函数与自定义函数', lead: '函数既能在 LET 表达式里用，也能在部分 SQL 位置展开成本地计算结果。',
+    body: `
+      <div class="hb-p">下面 40 个函数是运行时真实清单。表达式里可以任意调用；SQL 里会本地展开的是 <span class="hb-inline">HASH / SM3 / SM4_ENC / SM4_DEC / MASK / URL_ENC / URL_DEC / RAND_INT</span> 以及自定义函数，其余同名函数交给 MariaDB 原生实现。</div>
+      <table class="hb-table"><thead><tr><th style="width:115px">函数</th><th style="width:165px">签名</th><th>作用</th><th style="width:210px">例子</th></tr></thead><tbody>@@FUNC_ROWS@@</tbody></table>
+      <div class="hb-h3">SQL 里用函数</div>
+      <div class="hb-code"><div class="hb-code-head">密码哈希与手机号脱敏</div><pre>EXEC INSERT INTO {{t:main}} (username, password_hash, phone_mask)
+VALUES ({{body.username}}, HASH('sha256', {{body.password}}), MASK({{body.phone}}, 3, 4, '*'));</pre></div>
+      <div class="hb-p">SQL 函数参数只接受 <span class="hb-inline">?</span>、字符串、数字、NULL。写 <span class="hb-inline">HASH('sha256', {{body.password}})</span> 时，占位符会先变成 <span class="hb-inline">?</span>，再在本地算好摘要，最后把结果作为参数发给数据库。</div>
+      <div class="hb-h3">自定义函数</div>
+      <div class="hb-p">在“生成导出”页底部“自定义函数”表里新增一行：名字、参数列表、表达式。例如名字 <span class="hb-inline">MASK_PHONE</span>，参数 <span class="hb-inline">v</span>，表达式 <span class="hb-inline">CONCAT(SUBSTR(v, 0, 3), "****", SUBSTR(v, 7, 4))</span>。之后脚本里直接 <span class="hb-inline">MASK_PHONE({{body.phone}})</span>。</div>
+      <div class="hb-warn"><b>命名</b><div>自定义函数名会统一转大写；不要和 40 个内置函数重名。参数名直接按顺序绑定，函数体里用参数名，不要加 $。</div></div>
+    `,
+  },
+  {
+    id: 'debug', group: '运行', nav: '启动与联调', num: '09', title: '启动、试运行、控制台与更新部署', lead: '先把服务跑起来，再用真实请求验证。所有测试都走生成后的 /api 地址，不是前端假数据。',
+    body: `
+      <div class="hb-h3">先认清统一响应结构</div>
+      <div class="hb-code"><div class="hb-code-head">真实接口返回的样子</div><pre>{
+  "ok": true,
+  "data": { "rows": [ { "id": 1, "order_no": "SO-1001" } ], "total": 1 },
+  "cached": false,
+  "ms": 2,
+  "traceId": "16accffcee60b5db"
+}
 
-    <div class="help-h">4. 内置函数</div>
-    <div class="grid grid-cols-2 gap-x-6 gap-y-1 mono text-[11px]">
-      ${(S.help ? S.help.builtins : ['HASH', 'MD5', 'SHA1', 'SHA256', 'SM3', 'SM4_ENC', 'SM4_DEC', 'SUBSTR', 'LEFT', 'RIGHT', 'LEN', 'UPPER', 'LOWER', 'TRIM', 'CONCAT', 'REPLACE', 'SPLIT', 'JOIN', 'NOW', 'TODAY', 'UUID', 'BASE64_ENC', 'BASE64_DEC', 'URL_ENC', 'URL_DEC', 'INT', 'FLOAT', 'STR', 'ROUND', 'ABS', 'COALESCE', 'MASK', 'JSON_GET', 'JSON_STR', 'RAND_INT', 'IF', 'IN', 'CONTAINS', 'START_WITH', 'END_WITH']).map((n) => `<div>${esc(n)}</div>`).join('')}
+{ "ok": false, "error": "NOT_FOUND", "message": "记录不存在", "traceId": "..." }</pre></div>
+      <div class="hb-p">脚本里 <span class="hb-inline">RETURN 200 { "rows": ... }</span> 的对象会放进 <span class="hb-inline">data</span>，HTTP 状态码仍然是脚本写的 200 / 201 / 404。列表分页在 <span class="hb-inline">data.rows</span> 与 <span class="hb-inline">data.total</span>；新建在 <span class="hb-inline">data.id</span>；更新是 <span class="hb-inline">data.changed</span>；删除是 <span class="hb-inline">data.deleted</span>。<span class="hb-inline">cached: true</span> 表示这次命中响应缓存。</p>
+      <div class="hb-tip"><b>两个序列化细节</b><div>datetime / date 默认按 ISO 字符串返回，例如 <span class="hb-inline">2026-11-20T17:13:07.000Z</span>，前端按 UTC 解析；decimal 可能返回字符串 <span class="hb-inline">"99.50"</span>，要计算先 <span class="hb-inline">Number()</span>，避免金额相加变成拼接。</div></div>
+      <div class="hb-h3">启动链路</div>
+      <div class="hb-p">Ribbon 的“启动”会依次做四件事：保存当前工程 → 生成服务文件 → 启动未运行的 MariaDB / Redis / RustFS → 启动网页服务并打开主页。第一次启动会比较慢，状态区会显示依赖启动进度。</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>启动 / 停止</b><p>同一个按钮切换。停止只停网页服务，不删数据库。</p></div>
+        <div class="hb-card"><b>打开主页</b><p>服务运行中才能打开；没启动会提示先启动。</p></div>
+        <div class="hb-card"><b>更新部署</b><p>先保存并校验脚本，再启动依赖、重新生成、热重启服务；脚本有错会直接拦下。</p></div>
+        <div class="hb-card"><b>监控</b><p>看请求日志、状态码、耗时和健康状态；排查 4xx / 5xx 先看这里。</p></div>
+      </div>
+      <div class="hb-h3">三种测试方式</div>
+      <table class="hb-table"><thead><tr><th>入口</th><th>怎么用</th><th>适合</th></tr></thead><tbody>
+        <tr><td>路由页“试运行”</td><td>填路径/查询参数 JSON 和请求体 JSON，点发送；结果里的 status、ms、url 和响应体都会显示。</td><td>临时验证某条路由。</td></tr>
+        <tr><td>“测试”页</td><td>选路由、运行环境、Query（a=1&amp;b=2）、Body JSON，点“发送”。</td><td>连续调试同一条接口。</td></tr>
+        <tr><td>浏览器 / curl</td><td>直接访问 /api 地址，或打开 /docs 复制示例。</td><td>验收真实调用、联调外部系统。</td></tr>
+      </tbody></table>
+      <div class="hb-code"><div class="hb-code-head">常用验收命令</div><pre>curl.exe "http://127.0.0.1:18100/api/orders?page=1&amp;pageSize=5&amp;keyword=首单"
+curl.exe -X PUT "http://127.0.0.1:18100/api/orders/1" -H "Content-Type: application/json" -d '{"status":1}'
+curl.exe -X DELETE "http://127.0.0.1:18100/api/orders/1"</pre></div>
+      <div class="hb-tip"><b>控制台</b><div>底部“控制台”打开日志面板；<span class="hb-kbd">Ctrl+\`</span> 或 <span class="hb-kbd">Alt+F12</span> 可快速开合。脚本里的 LOG、SQL 错误、服务启动失败都会写在这里。</div></div>
+      <div class="hb-warn"><b>端口被占</b><div>应用会自动避让端口，并在工作台右侧“运行环境”提示“端口已自动避让”。以那里显示的实际端口为准，不要死记默认值。改端口后先停止对应服务再启动。</div></div>
+      <div class="hb-check"><b>验收标准</b><div>列表 200；详情不存在的 id 返回 404；新建 201；更新返回 changed；删除返回 deleted；控制台无红色错误；/help 与 /docs 可访问。</div></div>
+    `,
+  },
+  {
+    id: 'frontend', group: '运行', nav: '前端工坊', num: '10', title: '前端工坊与 .yxpp', lead: '混合或只前端任务里，页面在 PageStudio 里编辑；接口和页面通过工程自动同步。',
+    body: `
+      <div class="hb-p">顶部“接口 / 前端”切换只在混合任务出现。前端工坊本身是一个真实页面编辑器，工程源文件是 <span class="hb-inline">.yxpp</span>，导出的静态页面在生成工程的 <span class="hb-inline">public/index.html</span>。</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>导入 .yxpp</b><p>把已有前端工程装进当前工程；导入后立即成为页面源文件。</p></div>
+        <div class="hb-card"><b>导出 .yxpp</b><p>把当前页面工程单独存成 .yxpp，便于备份、迁移或交给别人。</p></div>
+        <div class="hb-card"><b>立即同步</b><p>把编辑器里的改动刷进当前工程；顶部状态会显示已保存 / 有未同步改动。</p></div>
+        <div class="hb-card"><b>更新部署</b><p>先等前端同步，再校验接口脚本，最后重新生成并重启服务。</p></div>
+      </div>
+      <div class="hb-h3">推荐顺序</div>
+      <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>先把接口跑通</b><p>在接口工作台建表、写路由，用“试运行”确认返回结构。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>再打开前端</b><p>切到“前端”，在 PageStudio 里搭页面、绑定接口。混合任务两边共享同一个工程。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">3</span><div class="hb-step-body"><b>同步并部署</b><p>点“立即同步”，再点“更新部署”。部署成功后打开主页检查真实页面。</p></div></div>
+      <div class="hb-tip"><b>只前端任务</b><div>只前端任务直接进入前端工坊，接口工作台不显示。仍然可以导出 .yxpp，或后续把任务类型切回混合再补接口。</div></div>
+      <div class="hb-warn"><b>不要绕过同步</b><div>编辑器里有未同步改动时直接“更新部署”，应用会先强制同步；同步失败会拦住部署。看到“还没同步到当前工程”的提示，先点“立即同步”。</div></div>
+    `,
+  },
+  {
+    id: 'export', group: '交付', nav: '生成与导出', num: '11', title: '生成、导出与独立运行', lead: '生成服务是给自己调试；导出工程是交付给别人或部署到服务器。',
+    body: `
+      <div class="hb-h3">两个按钮的区别</div>
+      <table class="hb-table"><thead><tr><th>按钮</th><th>产出</th><th>用途</th></tr></thead><tbody>
+        <tr><td>生成服务</td><td>生成到应用管理的 generated 目录，并启动服务。</td><td>当前机器上调试验收。</td></tr>
+        <tr><td>导出工程</td><td>新建独立目录，带 .idea、RUN.md、config.json、public/、sql/、docs/ 和所选运行时。</td><td>交付、部署、二次开发。</td></tr>
+      </tbody></table>
+      <div class="hb-h3">选运行时</div>
+      <table class="hb-table"><thead><tr><th>类型</th><th>启动命令</th><th>注意</th></tr></thead><tbody>
+        <tr><td>Node.js</td><td class="mono">npm install<br>node server.js</td><td>默认；热部署用 <span class="hb-inline">node dev.js</span>。</td></tr>
+        <tr><td>Bun</td><td class="mono">bun install<br>bun server.js</td><td>接口与 Node 版一致，启动更快。</td></tr>
+        <tr><td>Go 原生</td><td class="mono">cd native/go<br>go mod tidy<br>go run .</td><td>不依赖 Node；只支持直连 MySQL 存储模式。</td></tr>
+        <tr><td>Java 原生</td><td class="mono">cd native/java<br>javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java<br>java -cp "bin;lib/*" icb.Main</td><td>JDK 17+，不依赖 Node；只支持直连 MySQL。</td></tr>
+        <tr><td>Python Flask</td><td class="mono">cd native/python<br>pip install -r requirements.txt<br>python app.py</td><td>先创建并激活 venv；不依赖 Node，导出目录只带这一套。</td></tr>
+      </tbody></table>
+      <div class="hb-p">导出弹窗里还能选“生成 404 / 500 错误页”和“500 页面显示错误详情”。错误页只影响浏览器，API 客户端仍收到 JSON；关闭详情后页面只显示状态码和 traceId，堆栈写日志。</div>
+      <div class="hb-h3">导出目录里看什么</div>
+      <div class="hb-code"><div class="hb-code-head">先读 RUN.md，再改 config.json</div><pre>server.js                入口
+src/modules/             每个接口一个模块
+src/script.js            脚本解释器
+src/render.js            占位符 / 参数化 SQL
+src/funcs.js             40 个内置函数
+interfaces.json          接口、表、脚本完整描述
+sql/*.sql                建表语句
+docs/                    OpenAPI 文档
+public/index.html        前端页面
+config.json              端口、数据库、Redis、S3
+RUN.md                   启动说明</pre></div>
+      <div class="hb-tip"><b>配置优先级</b><div>端口、MariaDB、Redis、S3 先改根目录 <span class="hb-inline">config.json</span>；系统环境变量优先，<span class="hb-inline">.env</span> 只作为可选覆盖。改完重启服务生效。</div></div>
+      <div class="hb-h3">其它交付方式</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>导出 .yxpn</b><p>带前端、接口、文档的完整工程包，适合备份和迁移；也可以设成默认打开方式。</p></div>
+        <div class="hb-card"><b>导出微服务</b><p>按接口或分类拆成独立服务，每个服务有自己的端口和配置，适合拆分部署。</p></div>
+        <div class="hb-card"><b>接口文档</b><p>自动生成 OpenAPI 3.0.3；可预览 JSON，也可在浏览器 /docs 查看可读版。</p></div>
+        <div class="hb-card"><b>用 IDEA 打开</b><p>导出目录带 .idea 和启动配置；点“用 IDEA 打开”，没装 IDEA 会退回打开目录。</p></div>
+      </div>
+      <div class="hb-warn"><b>原生运行时限制</b><div>Go / Java 原生只支持“直连 MySQL”，遇到 Redis 表、LRU、定期落盘等加速模式会拒绝启动，避免静默读写不一致。需要这些模式就导出 Node / Bun。</div></div>
+    `,
+  },
+  {
+    id: 'advanced', group: '交付', nav: '进阶能力', num: '12', title: '接口类型、鉴权、缓存、对象与 AI', lead: '这些能力都在界面里有真实配置项；先理解默认值，再按业务打开。',
+    body: `
+      <div class="hb-h3">8 种默认接口类型</div>
+      <table class="hb-table"><thead><tr><th>类型</th><th>存储 / 行为</th></tr></thead><tbody>
+        <tr><td>普通 JSON</td><td>查表/写入后直接返回 JSON，不落额外存储。默认类型。</td></tr>
+        <tr><td>Cookie 会话</td><td>脚本 TOKEN NEW 签发，会话写 Redis；响应自动 Set-Cookie，默认 cookie 名 icb_token，TTL 7200。</td></tr>
+        <tr><td>文件上传</td><td>multipart 文件写 S3，SQL 只存 objectKey；默认上限 20MB，自动绑定 file_key 字段。</td></tr>
+        <tr><td>图片上传</td><td>同文件上传，只收图片；默认上限 8MB。</td></tr>
+        <tr><td>对象列表</td><td>直接列桶内对象，不走 SQL。</td></tr>
+        <tr><td>上游代理</td><td>把请求透传到“上游”里配置的服务，可转发请求头、改超时。</td></tr>
+        <tr><td>网页抓取</td><td>抓网页后在脚本里加工，返回标题、正文、链接。</td></tr>
+        <tr><td>Redis 缓存结果</td><td>把结果写 Redis，键按路由模板生成，默认前缀 icb:、TTL 60。</td></tr>
+      </tbody></table>
+      <div class="hb-p">“接口类型”页可以新增自定义类型，再把路由分配过去。文件类固定走 S3，Cookie 类固定走 Redis 或进程内存；切换类型会改存储、补入库字段，但不会清空已有脚本。</div>
+      <div class="hb-h3">鉴权</div>
+      <div class="hb-p">创建引导第三步可选“公开 / 写操作需要 token / 全部需要 token”。路由页的“权限”页还能配角色。开启鉴权后，请求要带 <span class="hb-inline">Authorization: Bearer &lt;token&gt;</span>，或带登录时种下的 Cookie；否则返回 401 <span class="hb-inline">UNAUTHORIZED</span>。</div>
+      <div class="hb-code"><div class="hb-code-head">登录签发，受保护路由读取</div><pre>LET $t = TOKEN NEW { "uid": $u.rows[0].id, "name": {{body.username}} };
+RETURN 200 { "ok": true, "token": $t.token };
+
+<span class="cm"># 需要 token 的路由里，当前用户已在 $user</span>
+RETURN 200 { "user": $user };</pre></div>
+      <div class="hb-h3">缓存与存储加速</div>
+      <div class="hb-p">路由顶部“Redis 缓存”控制整条响应缓存，列表/详情默认开 60 秒。表结构页的“加速”下拉控制表数据怎么读写：直连 MySQL、MySQL + Redis 查询缓存、Redis 表、Redis 热读 + MySQL 权威、LRU 内存表、LRU + Redis 持久、内存表 + 定期写 Redis。TTL、上限、刷盘间隔就在表头改。</div>
+      <div class="hb-h3">对象存储</div>
+      <div class="hb-p">文件不进数据库，只存对象键。上传路由成功后可用 <span class="hb-inline">{{objectKey}}</span> 入库；对象表路由直接列桶；下载/预览地址用 <span class="hb-inline">{{objectUrl}}</span> 或前端自己拼。默认桶 clickbuild，可在设置和导出配置里改。</div>
+      <div class="hb-h3">AI 与插件</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>AI 生成</b><p>“更多 → AI 生成”用自然语言生成接口工程。设置里选 Ollama、OpenAI 兼容或本地模拟；先“测试连接”再保存。失败可勾“退回本地模拟”。</p></div>
+        <div class="hb-card"><b>插件</b><p>“更多 → 插件”启停插件、看命令与日志、管理信任目录。插件命令最多三个显示在 Ribbon，其余在插件面板。</p></div>
+        <div class="hb-card"><b>上游</b><p>接口“上游”页配置 baseUrl 和鉴权，proxy 路由才能选；适合挂已有 REST 服务。</p></div>
+        <div class="hb-card"><b>模版 / 接口库</b><p>“更多”里可套用模版、插入现成接口，或把当前工程/接口存进库，方便复用。</p></div>
+      </div>
+      <div class="hb-warn"><b>AI 产物要验收</b><div>AI 只负责生成结构，不保证业务正确。生成后逐条看表字段、路由脚本、鉴权，再启动试运行；不要直接把未验收的工程部署到生产。</div></div>
+    `,
+  },
+  {
+    id: 'recipes', group: '交付', nav: '实战配方', num: '13', title: '五个可直接照抄的配方', lead: '下面都是真实脚本结构，复制到自定义路由后按表键和字段名微调即可。',
+    body: `
+      <div class="hb-h3">配方 1 · 注册 + 登录 + 当前用户</div>
+      <div class="hb-code"><div class="hb-code-head">注册</div><pre>LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;
+IF LEN($exists.rows) &gt; 0
+  RETURN 409 { "ok": false, "error": "USER_EXISTS" };
+END
+EXEC INSERT INTO {{t:main}} (only_id, username, password_hash, nickname)
+VALUES ({{onlyId}}, {{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}});
+LET $t = TOKEN NEW { "onlyId": {{onlyId}}, "username": {{body.username}} };
+RETURN 201 { "ok": true, "onlyId": {{onlyId}}, "token": $t.token };</pre></div>
+      <div class="hb-code"><div class="hb-code-head">登录</div><pre>LET $u = QUERY SELECT id, only_id, password_hash FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;
+IF LEN($u.rows) == 0
+  RETURN 401 { "ok": false, "error": "NO_USER" };
+END
+IF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}
+  RETURN 401 { "ok": false, "error": "BAD_PASSWORD" };
+END
+LET $t = TOKEN NEW { "onlyId": $u.rows[0].only_id, "username": {{body.username}} };
+RETURN 200 { "ok": true, "token": $t.token };</pre></div>
+      <div class="hb-p">把“当前用户”路由设成需要 token，脚本只要 <span class="hb-inline">RETURN 200 { "user": $user };</span>。密码字段记得设成 token 或隐藏字段，别在列表里暴露。</div>
+      <div class="hb-h3">配方 2 · 主表 + 明细，一次事务写入</div>
+      <div class="hb-code"><div class="hb-code-head">订单写入</div><pre>LET $order = EXEC INSERT INTO {{t:main}} (order_no, customer, amount, status)
+VALUES ({{body.order_no}}, {{body.customer}}, {{body.amount}}, 0);
+FOREACH $item IN {{body.items}}
+  EXEC INSERT INTO {{t:item}} (order_id, sku, qty, price)
+  VALUES ($order.insertId, {{item.sku}}, {{item.qty}}, {{item.price}});
+END
+RETURN 201 { "ok": true, "orderId": $order.insertId, "items": LEN({{body.items}}) };</pre></div>
+      <div class="hb-p">自定义路由的“权限”页打开事务开关，或脚本里显式 <span class="hb-inline">TX BEGIN;</span> / <span class="hb-inline">TX COMMIT;</span>。出错时 <span class="hb-inline">TX ROLLBACK;</span>，主表和明细一起回滚。</div>
+      <div class="hb-h3">配方 3 · 文件上传并绑定字段</div>
+      <div class="hb-code"><div class="hb-code-head">上传后入库（路由类型选文件上传）</div><pre>LET $hit = QUERY SELECT COUNT(*) AS n FROM {{t:main}} WHERE {{idColumn:main}} = {{id}} LIMIT 1;
+IF $hit.rows[0].n == 0
+  RETURN 404 { "ok": false, "error": "NOT_FOUND" };
+END
+EXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};
+RETURN 200 { "ok": true, "key": {{objectKey}}, "url": {{objectUrl}}, "size": {{size}} };</pre></div>
+      <div class="hb-p">上传请求是 multipart：字段名用 <span class="hb-inline">file</span>，地址是 <span class="hb-inline">POST /api/.../{{id}}/file</span>。类型上限、文件种类、入库字段都能在“接口类型”页改。</div>
+      <div class="hb-h3">配方 4 · 列表筛选、分页与联查</div>
+      <div class="hb-code"><div class="hb-code-head">订单 + 明细联查</div><pre>LET $rows = QUERY
+SELECT o.id, o.order_no, o.customer, o.amount, o.status, i.sku, i.qty, i.price
+FROM {{t:main}} o LEFT JOIN {{t:item}} i ON i.order_id = o.id
+WHERE {{where:main}} ORDER BY o.id DESC LIMIT {{limit}} OFFSET {{offset}};
+RETURN 200 { "rows": $rows.rows };</pre></div>
+      <div class="hb-p">请求示例：<span class="hb-inline">?page=2&amp;pageSize=10&amp;status__in=1,2&amp;amount__gte=100&amp;keyword=首单&amp;sort=amount:desc</span>。要总数时再查一次 <span class="hb-inline">COUNT(*)</span>。</div>
+      <div class="hb-h3">配方 5 · 抓取网页 + Redis 缓存</div>
+      <div class="hb-code"><div class="hb-code-head">抓取标题与正文</div><pre>LET $page = CRAWL 'https://example.com/news' { "maxText": 20000, "links": false };
+IF $page.ok == false
+  RETURN 502 { "ok": false, "error": "UPSTREAM_FAILED", "status": $page.status };
+END
+RETURN 200 { "title": $page.title, "text": $page.text, "bytes": $page.bytes };</pre></div>
+      <div class="hb-p">路由顶部勾“Redis 缓存”，整条响应按 queryHash 缓存，适合价格页、资讯页这类读多写少的数据。需要最新数据时缩短 TTL 或关闭缓存。</div>
+    `,
+  },
+  {
+    id: 'shortcuts', group: '参考', nav: '快捷键', num: '14', title: '快捷键与高效操作', lead: '常用操作都有键盘入口；鼠标右键和双击也有固定含义。',
+    body: `
+      <table class="hb-table"><thead><tr><th style="width:190px">按键</th><th>作用</th></tr></thead><tbody>
+        <tr><td><span class="hb-kbd">Ctrl+K</span></td><td>聚焦顶部全局搜索；可搜接口、表、字段、路由、SQL。</td></tr>
+        <tr><td><span class="hb-kbd">Ctrl+S</span></td><td>立即保存当前工程；平时也会自动保存。</td></tr>
+        <tr><td><span class="hb-kbd">Ctrl+T</span></td><td>新建任务（会先保存当前工程）。</td></tr>
+        <tr><td><span class="hb-kbd">Ctrl+N</span></td><td>新建接口；<span class="hb-kbd">Ctrl+Shift+N</span> 新建分类。</td></tr>
+        <tr><td><span class="hb-kbd">Ctrl+Tab</span></td><td>切换项目标签；加 Shift 反向切换。</td></tr>
+        <tr><td><span class="hb-kbd">Ctrl+Enter</span></td><td>生成服务（不在输入框里时）。</td></tr>
+        <tr><td><span class="hb-kbd">Ctrl+\`</span> / <span class="hb-kbd">Alt+F12</span></td><td>开合底部控制台。</td></tr>
+        <tr><td><span class="hb-kbd">F2</span></td><td>重命名当前选中的接口。</td></tr>
+        <tr><td><span class="hb-kbd">Delete</span></td><td>在接口总表里删除当前选中的接口（会确认）。</td></tr>
+        <tr><td><span class="hb-kbd">Esc</span></td><td>关弹窗 / 关搜索面板 / 从编辑器退回总表。</td></tr>
+        <tr><td><span class="hb-kbd">Tab</span> / <span class="hb-kbd">Ctrl+/</span></td><td>脚本编辑器缩进 / 注释当前行；停止输入 0.3 秒自动检查。</td></tr>
+      </tbody></table>
+      <div class="hb-h3">鼠标操作</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>接口总表</b><p>单击选中看右侧详情，双击进入编辑器；行内筛选只过滤当前分类。</p></div>
+        <div class="hb-card"><b>工程历史</b><p>左键打开；右键打开 / 复制 / 删除；卡片红叉也是删除。</p></div>
+        <div class="hb-card"><b>项目标签</b><p>中键关闭；右键打开标签菜单；加号新建任务。</p></div>
+        <div class="hb-card"><b>表结构</b><p>点“＋”行加字段；在字段名里按 Enter 继续加；表标签可横向滚动。</p></div>
+      </div>
+      <div class="hb-tip"><b>搜索面板</b><div>全局搜索按类型排序：接口 → 路由 → 表 → 字段。点结果会直接跳到对应接口、路由或字段，不需要自己找分类。</div></div>
+    `,
+  },
+  {
+    id: 'trouble', group: '参考', nav: '排错手册', num: '15', title: '常见问题与排错顺序', lead: '先判断是“没启动”“脚本错”还是“请求不对”，再按对应链路查。',
+    body: `
+      <div class="hb-h3">先按这个顺序查</div>
+      <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>服务有没有起来</b><p>看 Ribbon 的运行状态和工作台右侧“运行环境”。没起来就点“启动”，再打开控制台看启动失败原因。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>脚本有没有错</b><p>路由页底部状态应是“检查通过”；红色标记处逐条修。也可以点 Ribbon 的“检查”查看全工程问题。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">3</span><div class="hb-step-body"><b>地址和方法对不对</b><p>用“试运行”或 /docs 里的示例地址，不要凭记忆拼。路径参数 :id 要换成真实 id。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">4</span><div class="hb-step-body"><b>数据在不在</b><p>表建了没有、字段名对不对、记录是否存在；数据库日志和请求日志能区分 SQL 错与业务 404。</p></div></div>
+      <table class="hb-table"><thead><tr><th style="width:170px">现象</th><th>常见原因</th><th>处理</th></tr></thead><tbody>
+        <tr><td>点启动没反应</td><td>端口被别的程序占用；内置依赖没起来；脚本校验失败。</td><td>看右侧“运行环境”和控制台；改端口后先停再启；先修红标。</td></tr>
+        <tr><td>提示“先生成并启动服务”</td><td>网页服务没运行，/help 和 /docs 不可用。</td><td>点“启动”，等状态变绿。</td></tr>
+        <tr><td>404 NOT_FOUND</td><td>id 不存在；路径拼错；服务还是旧版本。</td><td>先查列表确认 id；核对前缀；点“更新部署”。</td></tr>
+        <tr><td>404 页面而不是 JSON</td><td>访问了不存在的路由，浏览器拿到错误页。</td><td>用 /docs 复制正确地址；API 客户端仍会收到 JSON。</td></tr>
+        <tr><td>401 UNAUTHORIZED</td><td>路由开了鉴权，但没带 token / cookie；token 过期。</td><td>先登录拿 token，带 Authorization: Bearer；或检查 Cookie。</td></tr>
+        <tr><td>405</td><td>方法不对，例如用 GET 调 POST 路由。</td><td>按路由页显示的方法调用。</td></tr>
+        <tr><td>409 / 400</td><td>业务校验拦下：重复、缺参数、状态不合法。</td><td>看响应里的 error 字段；按脚本里的条件修请求。</td></tr>
+        <tr><td>未知表键</td><td>脚本写了 {{t:xxx}}，但接口里没有这个表键。</td><td>到表结构页确认表键；main/item 不要混用表名。</td></tr>
+        <tr><td>更新语句没有可写字段</td><td>请求体为空，或字段全是主键/自增/隐藏/不可写。</td><td>在 Body 里带至少一个可写字段。</td></tr>
+        <tr><td>上传失败 / 413</td><td>超过类型上限；字段名不是 file；记录 id 不存在。</td><td>改“接口类型”上限；用 multipart 字段 file；先建记录。</td></tr>
+        <tr><td>500</td><td>SQL 语法、类型转换、脚本运行错误、上游不可用。</td><td>看控制台堆栈与 traceId；先在“试运行”复现。</td></tr>
+        <tr><td>表不存在</td><td>服务连到了别的库；建表 SQL 没执行；表名被改过。</td><td>核对 config.json 的库；重新生成/部署；看 sql/ 目录。</td></tr>
+        <tr><td>AI 一直失败</td><td>地址、模型名、Key 不对；本机 Ollama 没启动。</td><td>设置里“测试连接”；先勾“退回本地模拟”验证链路。</td></tr>
+        <tr><td>重启后数据没了</td><td>用了 LRU 内存表或进程内存 Cookie 会话。</td><td>改 MySQL / Redis 持久模式；重要会话用 Redis。</td></tr>
+        <tr><td>Go / Java 启动被拒</td><td>表用了 Redis / LRU / 定期落盘等加速模式。</td><td>改回直连 MySQL，或导出 Node / Bun。</td></tr>
+      </tbody></table>
+      <div class="hb-warn"><b>不要靠猜</b><div>控制台里的第一条红色错误通常才是根因，后面的 500 往往只是连锁反应。先修第一条，再重试。</div></div>
+      <div class="hb-check"><b>修完后的回归</b><div>重新点“检查”→ 更新部署 → 列表 / 详情 / 新建 / 更新 / 删除各跑一次 → 看 /docs 示例是否同步 → 再交付。</div></div>
+    `,
+  },
+];
+
+function renderHelp() {
+  const routeMeta = (S.help && S.help.routes) || {};
+  const routeRows = HELP_ROUTE_DOCS.map((r) => {
+    const m = routeMeta[r.key] || { method: '—', path: '—' };
+    return `<tr><td><b>${esc(r.name)}</b></td><td class="mono">${esc(m.method)}</td><td class="mono">${esc(m.path)}</td><td>${r.desc}</td></tr>`;
+  }).join('');
+  const funcRows = HELP_FUNCS.map(([name, sig, desc, example]) =>
+    `<tr><td class="mono"><b>${esc(name)}</b></td><td class="mono">${esc(sig)}</td><td>${esc(desc)}</td><td class="mono">${esc(example)}</td></tr>`
+  ).join('');
+  const groups = [];
+  HELP_SECTIONS.forEach((s) => { if (!groups.includes(s.group)) groups.push(s.group); });
+  const navHtml = groups.map((g) => {
+    const items = HELP_SECTIONS.filter((s) => s.group === g);
+    return `<div class="hb-nav-group">${esc(g)}</div>${items.map((s) =>
+      `<button class="hb-nav-item" data-help-go="${s.id}" title="${esc(s.title)}"><span class="hb-nav-num">${s.num}</span><span>${esc(s.nav)}</span></button>`
+    ).join('')}`;
+  }).join('');
+  const sectionHtml = HELP_SECTIONS.map((s) => `
+    <section class="hb-sec" id="hb-sec-${s.id}" data-help-id="${s.id}">
+      <div class="hb-sec-head">
+        <span class="hb-sec-num">${s.num}</span>
+        <div><h2>${esc(s.title)}</h2><p>${esc(s.lead)}</p></div>
+      </div>
+      ${s.body.replace('@@ROUTE_ROWS@@', routeRows).replace('@@FUNC_ROWS@@', funcRows)}
+    </section>`).join('');
+
+  $('#workspace').innerHTML = `
+  <div class="h-11 shrink-0 flex items-center gap-2 px-3 border-b border-neutral-300 bg-white">
+    <button class="btn thin" data-action="grid">← 表格</button>
+    <b class="text-[12px]">使用手册</b>
+    <span class="text-neutral-500 text-[10px] hidden sm:inline">可搜索 · 每一步都能照着做</span>
+    <div class="hb-search-wrap ml-auto"><input id="helpSearch" placeholder="搜索章节 / 语法 / 函数 / 错误…" autocomplete="off"><span class="hb-search-count" id="helpCount">${HELP_SECTIONS.length}/${HELP_SECTIONS.length}</span></div>
+    <button class="btn thin" data-action="openHelpUrl" title="打开生成服务的 /help">服务帮助</button>
+    <button class="btn thin" data-action="openDocsUrl" title="打开生成的 OpenAPI 文档">API 文档</button>
+  </div>
+  <div class="hb-shell">
+    <aside class="hb-aside">
+      <div class="hb-aside-head"><b>目录</b><span>15 章 · 40 函数 · 10 路由</span></div>
+      ${navHtml}
+    </aside>
+    <div class="hb-scroll" id="helpScroll">
+      <div class="hb-main">
+        <div class="hb-hero">
+          <div class="hb-kicker">CLICKBUILD · USER GUIDE</div>
+          <h1>从第一个接口，到能交付的服务</h1>
+          <p>这不是语法速查表，而是一本按真实按钮写成的使用手册。先走“5 分钟跑通”，再按章节查建表、路由、脚本、联调、导出和排错。</p>
+          <div class="hb-meta"><span>15 章</span><span>40 个内置函数</span><span>10 类路由</span><span>25 种字段</span><span>8 种接口类型</span></div>
+          <div class="hb-hero-actions">
+            <button class="btn solid" data-help-go="quick">从 5 分钟开始</button>
+            <button class="btn thin" data-help-go="functions">查函数签名</button>
+            <button class="btn thin" data-help-go="recipes">看实战配方</button>
+            <button class="btn thin" data-help-go="trouble">接口报错怎么办</button>
+          </div>
+        </div>
+        <div class="hb-empty" id="helpEmpty">没有匹配的章节。<br>试试“脚本”“上传”“404”“事务”或函数名。</div>
+        ${sectionHtml}
+        <div class="hb-p" style="margin-top:26px;color:#8a93a1;font-size:10.5px">本手册随应用内真实能力生成。函数清单、路由元数据和字段类型以当前运行时为准；服务页 /help、/docs 需要在网页服务启动后才能打开。</div>
+      </div>
     </div>
-
-    <div class="help-h">5. 自定义函数</div>
-    <div>在“生成导出”页加一行，比如 <span class="mono">MASK_PHONE(v) → CONCAT(SUBSTR(v,0,3),"****",SUBSTR(v,7,4))</span>，之后脚本里直接 MASK_PHONE({{body.phone}})。</div>
-
-    <div class="help-h">6. 导出成别语言</div>
-    <div>生成目录里的 <span class="mono">export/js|java|go</span>：JS 是逐句翻译的完整实现，Java/Go 是路由 + SQL 骨架，接上各自的数据库驱动即可。</div>
-
-    <div class="help-h">7. 键盘</div>
-    <div><span class="kbd">Ctrl+K</span> 全局搜索 · <span class="kbd">Ctrl+S</span> 保存 · 表格里双击行进入接口</div>
   </div>`;
+  bindHelp();
+}
+
+function bindHelp() {
+  const root = $('#workspace');
+  const scroll = root.querySelector('#helpScroll');
+  const search = root.querySelector('#helpSearch');
+  const count = root.querySelector('#helpCount');
+  const empty = root.querySelector('#helpEmpty');
+  const nav = Array.from(root.querySelectorAll('.hb-nav-item'));
+  const sections = Array.from(root.querySelectorAll('.hb-sec'));
+
+  const go = (id) => {
+    const sec = root.querySelector('#hb-sec-' + id);
+    if (sec) sec.scrollIntoView({ block: 'start' });
+  };
+  root.querySelectorAll('[data-help-go]').forEach((b) => { b.onclick = () => go(b.dataset.helpGo); });
+
+  let raf = 0;
+  const spy = () => {
+    raf = 0;
+    let current = sections[0] ? sections[0].dataset.helpId : '';
+    const top = scroll.getBoundingClientRect().top + 18;
+    sections.forEach((s) => { if (s.getBoundingClientRect().top <= top) current = s.dataset.helpId; });
+    nav.forEach((b) => b.classList.toggle('on', b.dataset.helpGo === current));
+  };
+  scroll.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(spy); });
+  spy();
+
+  const filter = () => {
+    const q = String(search.value || '').trim().toLowerCase();
+    let shown = 0;
+    sections.forEach((s) => {
+      const hit = !q || s.textContent.toLowerCase().includes(q);
+      s.style.display = hit ? '' : 'none';
+      if (hit) shown += 1;
+    });
+    nav.forEach((b) => {
+      const sec = root.querySelector('#hb-sec-' + b.dataset.helpGo);
+      b.style.display = (!q || (sec && sec.style.display !== 'none')) ? '' : 'none';
+    });
+    count.textContent = shown + '/' + sections.length;
+    empty.style.display = shown ? 'none' : 'block';
+  };
+  search.addEventListener('input', filter);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { search.value = ''; filter(); search.blur(); }
+  });
 }
 
 /* ---------------- 搜索 ---------------- */

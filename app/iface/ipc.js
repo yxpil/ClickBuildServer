@@ -155,10 +155,15 @@ async function tryRoute(project, ifaceId, routeId, bodyText, query) {
   const route = (it.routes || []).find((x) => x.id === routeId) || it.routes[0];
   if (!route) throw new Error('路由不存在');
   let path = `${it.basePath || ''}${route.path || ''}`;
-  path = path.replace(/:([A-Za-z0-9_]+)/g, (m, k) => encodeURIComponent((query && query[k]) || (query && query.id) || '1'));
+  const pathKeys = new Set();
+  path = path.replace(/:([A-Za-z0-9_]+)/g, (m, k) => {
+    pathKeys.add(k);
+    return encodeURIComponent((query && query[k]) || (query && query.id) || '1');
+  });
   const ports = services.settings().ports;
   const target = new URL(`http://127.0.0.1:${ports.http}/api${path.startsWith('/') ? '' : '/'}${path}`);
   for (const [k, v] of Object.entries(query || {})) {
+    if (pathKeys.has(k)) continue;
     if (v !== '' && v != null) target.searchParams.set(k, v);
   }
   const init = { method: route.method || 'GET', headers: {} };
