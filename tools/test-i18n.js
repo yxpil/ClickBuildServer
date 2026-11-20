@@ -74,18 +74,18 @@ t('模式：组合统计', translate('9 接口 · 46 tables · 86 routes') === '
 t('模式：自定义函数示例', translate('例：MASK_PHONE(v) → CONCAT(SUBSTR(v,0,3),"****",SUBSTR(v,7,4))').startsWith('Example: MASK_PHONE(v)'));
 
 const missingTpl = templates.BUILTINS.filter((x) => !pack.dict[x.name] || !pack.dict[x.description]).map((x) => x.name);
-t('24 套内置模版名称与说明都有英文', templates.BUILTINS.length === 24 && missingTpl.length === 0, missingTpl);
+t('26 套内置模版名称与说明都有英文', templates.BUILTINS.length === 26 && missingTpl.length === 0, missingTpl);
 const missingTags = [...new Set(templates.BUILTINS.flatMap((x) => x.tags))].filter((x) => /[\u4e00-\u9fff]/.test(x) && !pack.dict[x]);
 t('内置模版中文标签都有英文', missingTags.length === 0, missingTags);
 
 const builtinIfaces = library.list().filter((x) => String(x.id).startsWith('builtin:'));
 const missingIface = builtinIfaces.filter((x) => !pack.dict[x.name] || !pack.dict[x.description]).map((x) => x.name);
-t('73 个内置接口名称与说明都有英文', builtinIfaces.length === 73 && missingIface.length === 0, missingIface);
+t('75 个内置接口名称与说明都有英文', builtinIfaces.length === 75 && missingIface.length === 0, missingIface);
 
 const meta = pkg.build && pkg.build.nsis ? pkg.build.nsis : {};
 t('安装器包含中文与英文', Array.isArray(meta.installerLanguages) && meta.installerLanguages.join(',') === 'zh_CN,en_US', meta.installerLanguages);
 t('安装器启用多语言并按系统选择', meta.multiLanguageInstaller === true && meta.displayLanguageSelector === false);
-t('版本为 1.1.18', pkg.version === '1.1.18', pkg.version);
+t('版本为 1.1.19', pkg.version === '1.1.19', pkg.version);
 
 console.log(`\n结果：${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);

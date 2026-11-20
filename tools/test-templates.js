@@ -21,7 +21,7 @@ function check(name, ok, extra) {
 
 const list = templates.list();
 const builtinCount = list.filter((t) => t.kind === 'builtin').length;
-check('模版列表返回 24 个内置', builtinCount === 24, list.map((t) => t.name).join('/'));
+check('模版列表返回 26 个内置', builtinCount === 26, list.map((t) => t.name).join('/'));
 
 for (const t of list.filter((x) => x.kind === 'builtin')) {
   const got = templates.get(t.id);

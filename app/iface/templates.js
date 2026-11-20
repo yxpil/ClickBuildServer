@@ -44,6 +44,16 @@ const BUILTINS = [
     tags: ['B2B', '客服', '统计'],
   },
   {
+    id: 'builtin:survey', name: '问卷系统', file: 'survey.json',
+    description: '公开填写、后台编辑、答卷统计与 CSV 导出；自带可直接使用的问卷前端',
+    tags: ['问卷', '表单', '统计'],
+  },
+  {
+    id: 'builtin:signup', name: '活动报名', file: 'signup.json',
+    description: '公开报名、名额与重复手机号校验、后台发布、报名名单与 CSV 导出',
+    tags: ['活动', '报名', '名额'],
+  },
+  {
     id: 'builtin:booking', name: '预约', file: 'booking.json',
     description: '服务项目、时段、预约；容量校验、取消释放，全部事务',
     tags: ['本地生活', '预约', '库存'],
