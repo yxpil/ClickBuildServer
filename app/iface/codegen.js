@@ -397,6 +397,7 @@ function generate(project, options) {
   add('src/rowstore.js', engine('rowstore.js'));
   add('src/script.js', engine('script.js'));
   add('public/console.html', template('console.html'));
+  if (p.seed && p.seed.enabled && p.seed.sql) add('src/seed.json', JSON.stringify(p.seed, null, 2));
 
   p.interfaces.forEach((it, idx) => {
     const name = `${String(idx + 1).padStart(2, '0')}_${slug(it.name, 'iface')}.sql`;

@@ -138,9 +138,10 @@ App.startChat = async () => {
   if (!to) { toast('先填对方 only_id', 'err'); return; }
   if (!body) { toast('先写第一条消息', 'err'); return; }
   try {
-    await api(UX.auth.iface, UX.routes.send, { method: 'POST', body: { to, body, msg_type: 'text' } });
+    const d = await api(UX.auth.iface, UX.routes.send, { method: 'POST', body: { to, body, msg_type: 'text' } });
+    const convId = (d && (d.convId != null ? d.convId : d.id)) || '';
     App.closeModal();
     toast('已发送', 'ok');
-    App.openChat('', to, to);
+    App.openChat(convId, to, to);
   } catch (e) { toast(e.message || '发送失败', 'err'); }
 };

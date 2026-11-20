@@ -87,6 +87,7 @@ const CFG = {
   httpPort: Number(cfg('PORT', 18100)),
   apiPrefix: String(cfg('API_PREFIX', '/api')),
   resetDb: String(cfg('RESET_DB', '')) === '1' || String(cfg('RESET_DB', '')).toLowerCase() === 'true',
+  seedDemo: String(cfg('SEED_DEMO', '1')).toLowerCase() !== '0',
   logLevel: String(cfg('LOG_LEVEL', '')).toUpperCase(),
   maxBodyBytes: Math.max(1, Number(cfg('MAX_BODY_MB', 64)) || 64) * 1024 * 1024,
 };
@@ -1558,6 +1559,30 @@ async function initMysql() {
   }
 }
 
+async function applySeed() {
+  if (!CFG.seedDemo) { console.log('SEED_DEMO=0，跳过演示场景'); return; }
+  const file = path.join(ROOT, 'src', 'seed.json');
+  if (!fs.existsSync(file)) return;
+  let seed;
+  try { seed = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { console.error('[seed] seed.json 解析失败', e.message); return; }
+  if (!seed || seed.enabled === false || !String(seed.sql || '').trim()) return;
+  const main = mysqlConn('main');
+  const db = dbOf(main);
+  const conn = await mysql.createConnection({ host: main.host, port: Number(main.port), user: main.user, password: main.password, database: db, multipleStatements: true });
+  try {
+    if (seed.guard) {
+      const [rows] = await conn.query(`SELECT COUNT(*) AS n FROM \`${seed.guard}\``);
+      if (Number(rows[0] && rows[0].n) > 0) { console.log(`[seed] 已有数据，跳过演示场景：${seed.guard}`); return; }
+    }
+    await conn.query(seed.sql);
+    console.log(`[seed] 演示场景已写入：${seed.note || db}`);
+  } catch (e) {
+    console.error('[seed] 演示场景写入失败（服务继续启动）：', e.message);
+  } finally {
+    await conn.end().catch(() => {});
+  }
+}
+
 async function clearCacheNS() {
   if (!redis) return 0;
   let cursor = '0';
@@ -1572,6 +1597,7 @@ async function clearCacheNS() {
 
 async function bootstrap() {
   await initMysql();
+  await applySeed();
   if (CFG.resetDb) {
     try {
       const n = await clearCacheNS();

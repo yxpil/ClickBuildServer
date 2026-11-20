@@ -9562,7 +9562,10 @@ function uiBlockMarkup(t, p, editor) {
     var avTitle = avHome.title || p.title || avBrand;
     var avSub = avHome.sub || p.sub || '';
     var avCounts = avApp.counts || {};
-    var avKpis = [['接口', String(avCounts.interfaces == null ? '—' : avCounts.interfaces)], ['分类', String(avCounts.categories == null ? '—' : avCounts.categories)], ['路由', String(avCounts.routes == null ? '—' : avCounts.routes)], ['数据表', String(avCounts.tables == null ? '—' : avCounts.tables)]];
+    var avDemo = avHome.demo || '';
+    var avKpis = Array.isArray(avHome.kpis) && avHome.kpis.length
+      ? avHome.kpis.slice(0, 4).map(function (k) { return [String(k[0] || ''), String(k[1] == null ? '—' : k[1])]; })
+      : [['业务接口', String(avCounts.interfaces == null ? '—' : avCounts.interfaces)], ['业务分类', String(avCounts.categories == null ? '—' : avCounts.categories)], ['业务路由', String(avCounts.routes == null ? '—' : avCounts.routes)], ['业务数据表', String(avCounts.tables == null ? '—' : avCounts.tables)]];
     var avActions = [];
     var avWrite = avApp.writeLabel || '';
     if (avWrite) avActions.push(avWrite);
@@ -9574,7 +9577,7 @@ function uiBlockMarkup(t, p, editor) {
         '<span style="width:30px;height:30px;border-radius:9px;background:' + ink + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;letter-spacing:.04em">' + esc(String(avMark).slice(0, 2)) + '</span>' +
         '<b style="font-size:14px;color:' + ink + '">' + esc(avBrand) + '</b>' +
         '<span style="font-size:9px;letter-spacing:.12em;color:' + muted + ';text-transform:uppercase">' + esc(avKicker) + '</span>' +
-        '<span style="margin-left:auto;font-size:10px;color:' + muted + '">业务模型预览 · 导出后读取真实数据</span>' +
+        '<span style="margin-left:auto;font-size:10px;color:' + muted + '">业务场景预览 · 导出后读取真实数据</span>' +
       '</div>' +
       '<div style="display:flex;height:calc(100% - 54px)">' +
         '<div style="width:176px;flex:none;background:#fff;border-right:1px solid ' + line + ';padding:12px 10px">' +
@@ -9591,15 +9594,16 @@ function uiBlockMarkup(t, p, editor) {
             '<div><div style="font-size:9px;letter-spacing:.14em;color:' + muted + '">' + esc(String(avKicker).toUpperCase()) + '</div><b style="font-size:20px;color:' + ink + '">' + esc(avTitle) + '</b><div style="font-size:10.5px;color:' + muted + ';margin-top:3px">' + esc(avSub) + '</div></div>' +
             '<span style="font-size:10px;padding:5px 10px;border-radius:999px;background:' + ink + ';color:#fff">' + esc(avMode) + '</span>' +
           '</div>' +
+          (avDemo ? '<div style="margin-bottom:10px;padding:7px 10px;border:1px solid ' + line + ';border-left:3px solid ' + ink + ';border-radius:6px;background:#fff;font-size:9.5px;color:' + color + '"><b style="color:' + ink + '">首次启动自动写入：</b>' + esc(avDemo) + '</div>' : '') +
           '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">' +
             avKpis.map(function (k) { return '<div style="background:#fff;border:1px solid ' + line + ';border-radius:8px;padding:9px 10px"><div style="font-size:8.5px;color:' + muted + '">' + k[0] + '</div><b style="font-size:16px;color:' + ink + '">' + k[1] + '</b></div>'; }).join('') +
           '</div>' +
-          '<div style="display:flex;gap:9px;height:calc(100% - 128px);min-height:120px">' +
+          '<div style="display:flex;gap:9px;height:calc(100% - ' + (avDemo ? 160 : 128) + 'px);min-height:110px">' +
             '<div style="flex:1.6;min-width:0;background:#fff;border:1px solid ' + line + ';border-radius:9px;padding:10px;overflow:hidden">' +
               '<div style="display:flex;gap:6px;margin-bottom:8px"><span style="flex:1;height:24px;border:1px solid ' + line + ';border-radius:5px;background:' + uiColor(p.bg, '#F6F3EC') + ';font-size:9px;line-height:24px;padding-left:8px;color:' + muted + '">搜索真实记录…</span><span style="padding:0 10px;height:24px;line-height:24px;border-radius:5px;background:' + ink + ';color:#fff;font-size:9px">新建</span></div>' +
               '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:5px 4px;border-bottom:1px solid ' + line + ';font-size:8.5px;color:' + muted + '"><span>标题 / 业务对象</span><span>状态</span><span>时间</span></div>' +
               (avRows.length ? avRows.map(function (r, i) { return '<div style="display:grid;grid-template-columns:1.8fr .8fr .6fr;padding:6px 4px;border-bottom:1px solid ' + uiColor(p.bg, '#F6F3EC') + ';font-size:9.5px;color:' + color + '"><b style="color:' + ink + '">' + esc(r) + '</b><span style="color:' + muted + '">' + (i % 2 ? '处理中' : '已完成') + '</span><span style="color:' + muted + '">今天</span></div>'; }).join('')
-                : '<div style="padding:18px 4px;color:' + muted + ';font-size:9.5px;line-height:1.7">画布不请求接口，因此这里不伪造记录。<br>导出后，列表会按 <b style="color:' + ink + '">primary.list</b> 读取真实数据。</div>') +
+                : '<div style="padding:18px 4px;color:' + muted + ';font-size:9.5px;line-height:1.7">画布不请求接口，因此这里不伪造记录。<br>首次启动会写入上方演示数据；导出后，列表按 <b style="color:' + ink + '">primary.list</b> 读取真实记录。</div>') +
             '</div>' +
             '<div style="flex:.75;min-width:0;background:#fff;border:1px solid ' + line + ';border-radius:9px;padding:10px;overflow:hidden">' +
               '<div style="font-size:9px;letter-spacing:.1em;color:' + muted + ';margin-bottom:7px">业务动作</div>' +

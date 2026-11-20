@@ -643,6 +643,12 @@ function normalizeProject(project) {
       resetOnStart: !!(p.isolation && p.isolation.resetOnStart),
       database: (p.isolation && p.isolation.database) || '',
     },
+    seed: (p.seed && typeof p.seed === 'object' && String(p.seed.sql || '').trim()) ? {
+      enabled: p.seed.enabled !== false,
+      guard: String(p.seed.guard || ''),
+      sql: String(p.seed.sql || ''),
+      note: String(p.seed.note || ''),
+    } : null,
     frontend: (p.frontend && p.frontend.project && Array.isArray(p.frontend.project.elements)) ? {
       format: 'yxpp',
       version: 1,
