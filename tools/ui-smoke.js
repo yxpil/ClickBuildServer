@@ -399,6 +399,12 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.addPage(true);w.S.proj.pages[1].name='第二页';w.scheduleSave();return true})()`);
   await wait(3600);
   t('前端多页工程保留页数与页面导航', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.pages&&S.project.frontend.project.pages.length===2&&/第二页/.test(S.project.frontend.html))`), await val(`S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.pages?S.project.frontend.project.pages.length:-1`));
+  const homeSet = await val(`(()=>{const f=document.querySelector('#studioFrame');const w=f.contentWindow,d=f.contentDocument;w.authState.account=null;w.switchPage(0);const want=w.S.proj.pages[1].id;d.querySelectorAll('.page-tab')[1].click();d.getElementById('btnSetHome').click();return JSON.stringify({home:w.S.proj.homePage,want,auth:!!w.authState.account,active:w.S.proj.active});})()`);
+  const hs = JSON.parse(homeSet);
+  t('未登录点小房子把当前页设为首页且不弹网站登录', hs.home === hs.want && hs.auth === false && hs.active === 1, homeSet);
+  const homeOpen = await val(`(()=>{const f=document.querySelector('#studioFrame');const w=f.contentWindow,d=f.contentDocument;w.S.proj.active=0;w.openMyHomePage();return JSON.stringify({active:w.S.proj.active,want:(w.S.proj.pages.findIndex(p=>p.id===w.S.proj.homePage)),auth:!!w.authState.account});})()`);
+  const ho = JSON.parse(homeOpen);
+  t('未登录打开首页只切页不跳网站', ho.active === ho.want && ho.auth === false, homeOpen);
   await val(`setView('api')`);
   await wait(300);
 

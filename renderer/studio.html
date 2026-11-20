@@ -1497,7 +1497,7 @@ body.cbs-embedded .cbs-site-only{display:none!important}
           <button class="mini mini--icon" id="btnDupPage" data-icon="copy" title="复制当前页" aria-label="复制当前页"></button>
           <button class="mini mini--icon" id="btnRenamePage" data-icon="edit" title="重命名当前页" aria-label="重命名当前页"></button>
           <button class="mini mini--icon" id="btnPageSetup" data-icon="settings" title="页面设置：尺寸 / 方向 / 背景" aria-label="页面设置"></button>
-          <button class="mini mini--icon" id="btnSetHome" data-icon="home" title="登录后把当前页设为我的主页" aria-label="设为主页"></button>
+          <button class="mini mini--icon" id="btnSetHome" data-icon="home" title="把当前页设为首页；导出时从这一页开始，不需要登录" aria-label="设为首页"></button>
           <button class="mini mini--icon" id="btnDelPage" data-icon="trash" title="删除当前页" aria-label="删除当前页"></button>
           <button class="mini" id="btnClearPage" data-icon="eraser" title="清空当前页元素（保留尺寸、底色、页面代码和资产）" aria-label="清空当前页"><span>清空</span></button>
           <button class="mini mini--icon" id="btnPlayAnim" data-icon="play" title="按设置播放本页元素动画" aria-label="播放页面动画"></button>
@@ -5933,8 +5933,8 @@ function renderPageTabs() {
     var b = document.createElement('button');
     var isHome = S.proj.homePage === p.id;
     b.className = 'page-tab' + (i === S.proj.active ? ' is-active' : '');
-    b.innerHTML = '<span class="ix">' + (i + 1) + '</span>' + (isHome ? '<span class="home" title="我的主页">主</span>' : '') + '<span class="nm">' + esc(p.name) + '</span>';
-    b.title = '切换到「' + p.name + '」（双击重命名）' + (isHome ? ' · 我的主页' : '');
+    b.innerHTML = '<span class="ix">' + (i + 1) + '</span>' + (isHome ? '<span class="home" title="首页">主</span>' : '') + '<span class="nm">' + esc(p.name) + '</span>';
+    b.title = '切换到「' + p.name + '」（双击重命名）' + (isHome ? ' · 首页' : '');
     b.addEventListener('click', function () { switchPage(i); });
     b.addEventListener('dblclick', function (e) { e.stopPropagation(); if (i === S.proj.active) renamePage(); });
     b.addEventListener('contextmenu', function (e) {
@@ -5982,41 +5982,34 @@ function refreshHomeButton() {
   if (!btn) return;
   var isHome = !!(S.proj && S.proj.homePage && S.proj.homePage === curPage().id);
   btn.classList.toggle('is-home', isHome);
-  btn.title = isHome ? '当前页已是我的主页；导出页会从这一页开始' : '登录后把当前页设为我的主页';
-  btn.setAttribute('aria-label', isHome ? '当前页已是我的主页' : '设为主页');
+  btn.title = isHome ? '当前页已是首页；导出和分享从这个页面开始' : '把当前页设为首页；导出时从这一页开始，不需要登录';
+  btn.setAttribute('aria-label', isHome ? '当前页已是首页' : '设为首页');
   btn.setAttribute('aria-pressed', isHome ? 'true' : 'false');
 }
 function applySetMyHome() {
   var acc = authCurrent();
-  if (!acc) { openAuthModal('login', 'home'); return; }
   var pg = curPage();
   S.proj.homePage = pg.id;
-  S.proj.homeOwner = acc.email;
+  S.proj.homeOwner = acc ? acc.email : '';
   commit();
   clearTimeout(saveTimer);
   saveProjectNow();
   renderPageTabs();
-  toast('已将「' + pg.name + '」设为我的主页');
+  toast(acc ? '已将「' + pg.name + '」设为首页' : '已将「' + pg.name + '」设为首页；登录网站账号后可把它发布为我的主页');
 }
 function requestSetMyHome() {
-  if (!authCurrent()) {
-    openAuthModal('login', 'home');
-    toast('请先登录，再把当前页设为我的主页');
-    return;
-  }
   if (S.proj.homePage === curPage().id) {
-    toast('当前页已经是我的主页');
+    toast('当前页已经是首页');
     return;
   }
   applySetMyHome();
 }
 function openMyHomePage() {
-  if (!authCurrent()) { openAuthModal('login', 'open-home'); return; }
   var idx = homePageIndex();
-  if (idx < 0) { toast('还没有设置主页，先点页面栏的「设为主页」'); return; }
+  if (idx < 0) { toast('还没有设置首页，先点页面栏的「设为首页」'); return; }
   closeAuthModal();
   if (idx !== S.proj.active) switchPage(idx);
-  toast('已打开我的主页：' + S.proj.pages[idx].name);
+  toast('已打开首页：' + S.proj.pages[idx].name);
 }
 
 function pageOrientationOf(w, h) { return Number(w) > Number(h) ? 'landscape' : 'portrait'; }
@@ -6470,8 +6463,8 @@ add('tpl-osbt', '使用「osbt.space 案例」模板', '模板', 'layers', '桌�
   add('import-asset-paste', '粘贴 SVG / 图片到资产库', '资源', 'upload', '粘贴 SVG 源码、Data URI、图片 URL 或 Markdown 图片', function () { openAssetImport('paste'); }, '', 'asset paste 粘贴 svg data uri base64 图片 资产 导入');
   add('save-local', '保存到浏览器本地', '文件', 'check', '立即写入当前设备的 localStorage 自动草稿', gsSaveLocal, 'Ctrl+S', 'save 保存 本地 草稿 localStorage');
   add('page-setup', '页面设置（尺寸 / 方向 / 背景）', '页面', 'grid', '像网页一样设置画布尺寸、横竖方向、页面底色和内容缩放', openPageSetup, '', 'page setup 页面 设置 尺寸 大小 方向 横向 纵向 背景 网页 A4 A3 A5 B5 Letter Legal 16:9 16:10 4:3 21:9 1920 手机 平板 小红书 短视频 预设');
-  add('set-home', '设为我的主页', '账号', 'home', '登录后把当前页设为我的主页，导出页默认从这一页开始', requestSetMyHome, '', 'home homepage 主页 首页 我的 设置 登录 默认页');
-  add('open-home', '打开我的主页', '账号', 'home', '切换到已设置的主页页面', openMyHomePage, '', 'home homepage 主页 首页 打开 跳转');
+  add('set-home', '设为首页（导出起点）', '页面', 'home', '把当前页设为首页，导出和分享默认从这一页开始；不需要登录网站账号', requestSetMyHome, '', 'home homepage 主页 首页 我的 设置 默认页 导出');
+  add('open-home', '打开首页', '页面', 'home', '切换到已设为首页的页面，不需要登录', openMyHomePage, '', 'home homepage 主页 首页 打开 跳转');
   add('login-account', '登录网站账号 / 保存到个人空间', '账号', 'user', '复用网站 /login 与 /api/me，不创建 yxpilStudio 本地账号', function () { openAuthModal(); }, '', 'login auth 登录 账号 网站 个人空间');
   add('site-publish', '保存到我的网站 / 生成链接', '账号', 'cloud', '登录网站账号，把当前工程保存到用户空间文件夹，上传后生成可访问链接', siteOpen, '', 'site 网站 发布 上传 保存 用户空间 文件夹 链接 yxpil 主页 离线 网页');
   add('site-download', '下载离线网页 HTML', '文件', 'download', '把当前工程导出为自包含 HTML，可直接双击打开或上传到任意静态空间', siteDownloadHtml, '', 'offline 离线 html 网页 下载 导出 静态 页面');
@@ -12921,8 +12914,8 @@ function openPageContext(e, i) {
         { label: '新建空白页', icon: 'plus', action: function () { addPage(); } }
       ]},
       { label: '我的主页', items: [
-        { label: '设为我的主页', icon: 'home', hint: '需登录', action: requestSetMyHome },
-        { label: '打开我的主页', icon: 'home', hint: '切换到主页页', action: openMyHomePage }
+        { label: '设为首页（导出起点）', icon: 'home', hint: '本地设置，无需登录', action: requestSetMyHome },
+        { label: '打开首页', icon: 'home', hint: '切换到首页页', action: openMyHomePage }
       ]},
       { label: '代码与预览', items: [
         { label: '页面代码与执行', icon: 'code', action: openPageCode },

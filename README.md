@@ -70,12 +70,21 @@
 
 ![测试页自动生成](docs/screenshots/ui-testgen.png)
 
+## 首页按钮只改本地首页，不拉网站登录（1.1.57）
+
+- 页面栏的小房子以前会先查网站账号，没登录就 `window.open` 到 yxpil.com 的登录页，看起来像“点设为主页却跳去了我的网站”。现在 `homePage` 是工程本地字段，点一下直接把当前页设为首页，导出和分享从这一页开始，不登录也能用。
+- 「打开我的主页」同样改成「打开首页」，只切页面标签，不再触发网站登录；网站账号只在「保存到我的网站 / 生成链接」时使用。
+- 按钮文案统一成「设为首页 / 当前页已是首页」，页面标签上的“主”标也改为首页；网站面板里真正的「打开我的主页」仍然打开 yxpil.com 的个人主页，两者不再混在一起。
+- `ui-smoke` 新增两条断言：未登录点小房子能设置 `homePage` 且不弹网站登录；未登录打开首页只切页、不跳网站。UI 冒烟从 136 升到 **138/138**。
+
+![未登录也能把当前页设为首页](docs/screenshots/home-local.png)
+
 ## 案例往 .yxpp 原生里走：真实运行时画布（1.1.56）
 
 - 24 套 app 案例本来就是 PageStudio 原生 `appview` 工程：`project.app` 描述模式、菜单、接口、字段、权限和业务动作，导出后由 `runtime/app-runtime.js` 渲染真实页面，不是另写一套静态 HTML 冒充前端。
 - 前端工坊的 `appview` 画布不再画通用骨架。打开案例时，桌面端用案例 `seed.sql` 生成一份只读预览数据，把同一份业务运行时装进画布，直接渲染首页、列表、卡片、后台队列、聊天会话、社区动态；切页面标签会切到对应的 `view`，不是五页同一张假图。
 - 预览数据只进 `previewSeed`，不写进 `window.CASE`，也不进生成服务的页面；导出后的 `/` 仍然请求 MariaDB / Redis / RustFS 的真实接口。画布右下角标注「真实运行时预览 · 数据来自案例 seed」，不会把预览数据说成线上数据。
-- 新增 `tools/test-yxpp-preview.js`：24 套 app 案例逐个生成预览 HTML，在 Chromium 里跑真实运行时，断言 `window.CBS_PREVIEW` 生效、`fetch` 被本地数据接管、页面正文不少于 20 字、没有「读取失败 / 无法连接服务」，结果 **24/24**。案例生成回归仍为 **60/60**，UI 冒烟 **136/136**，模板 **194/194**。
+- 新增 `tools/test-yxpp-preview.js`：24 套 app 案例逐个生成预览 HTML，在 Chromium 里跑真实运行时，断言 `window.CBS_PREVIEW` 生效、`fetch` 被本地数据接管、页面正文不少于 20 字、没有「读取失败 / 无法连接服务」，结果 **24/24**。案例生成回归仍为 **60/60**，UI 冒烟 **138/138**，模板 **194/194**。
 
 ![案例在前端工坊里的真实运行时画布](docs/screenshots/yxpp-real-preview.png)
 
@@ -132,10 +141,10 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.56.exe
+dist\ClickBuildServer-Setup-1.1.57.exe
 ```
 
-安装包 222,020,811 B（约 212 MB），构建时间 2026-11-21 06:19:13，SHA256 `5E364B8922CF8ECFCD382D54CC812D1941E5BAF894F05CB981A32C49F517E89D`。
+安装包 222,021,197 B（约 212 MB），构建时间 2026-11-21 06:31:58，SHA256 `39C8CEB3DF1F6C966F8D1DC7E9E332E742384C3BE800E69D3A1538977FFF60AC`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
@@ -436,7 +445,7 @@ npm run dist       # 发布安装包
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言 / 安装期语言） | **24/24** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导） | **136/136**（源码版 / 1.1.56 安装版） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **138/138**（源码版 / 1.1.57 安装版） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
