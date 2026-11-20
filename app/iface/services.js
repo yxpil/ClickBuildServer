@@ -248,13 +248,14 @@ function runtimes() {
   const node = nodeBin();
   const bun = which('bun.exe') || which('bun.cmd') || which('bun');
   const java = which('java.exe') || which('java');
+  const javac = which('javac.exe') || which('javac');
   const go = which('go.exe') || which('go.cmd') || which('go');
   return [
     // 显示真正用来跑服务的 node.exe 版本，而不是 Electron 内置的 process.version
     { id: 'node', name: 'Node', version: probe(node, ['--version']) || process.version, path: node, available: fs.existsSync(node) || node === 'node', native: true, note: '内置 Node.js，直接运行 server.js' },
     { id: 'bun', name: 'Bun', version: probe(bun, ['--version']), path: bun, available: !!bun, native: true, note: '需要系统已安装 Bun，兼容 Node API' },
-    { id: 'java', name: 'Java', version: probe(java, ['-version']), path: java, available: !!java, native: false, note: 'Java 启动器，内核仍为 Node' },
-    { id: 'go', name: 'Go', version: probe(go, ['version']), path: go, available: !!go, native: false, note: 'Go 启动器，内核仍为 Node' },
+    { id: 'java', name: 'Java', version: probe(java, ['-version']), path: java, available: !!(java && javac), native: true, note: javac ? 'Java 原生服务：javac 编译 native/java 后直连 MySQL，不调用 Node' : '只找到 java，没有 javac；请安装完整 JDK 17+' },
+    { id: 'go', name: 'Go', version: probe(go, ['version']), path: go, available: !!go, native: true, note: 'Go 原生服务：go build 后直接运行 native/go，不调用 Node' },
   ];
 }
 
@@ -267,24 +268,69 @@ async function startServer(dir, opts) {
   if (!['node', 'bun', 'java', 'go'].includes(runtime)) return { ok: false, error: `暂不支持 ${runtime} 运行时` };
   let exe = nodeBin();
   let args = [hot && fs.existsSync(path.join(dir, 'dev.js')) ? 'dev.js' : 'server.js'];
+  let cwd = dir;
   if (runtime === 'bun') {
     exe = which('bun.exe') || which('bun.cmd') || which('bun');
     if (!exe) return { ok: false, error: '没有找到 Bun，请先安装 Bun 或切换到 Node' };
   } else if (runtime === 'java') {
     exe = which('java.exe') || which('java');
-    if (!exe) return { ok: false, error: '没有找到 Java，请先安装 JDK 11+ 或切换到 Node' };
-    if (!fs.existsSync(path.join(dir, 'launcher', 'Server.java'))) return { ok: false, error: '生成目录缺少 launcher/Server.java，请重新生成服务' };
-    args = ['launcher/Server.java', hot ? 'dev.js' : 'server.js'];
+    if (!exe) return { ok: false, error: '没有找到 Java，请先安装 JDK 17+ 或切换到 Node' };
+    const nativeDir = path.join(dir, 'native', 'java');
+    if (fs.existsSync(path.join(nativeDir, 'src', 'icb', 'Main.java'))) {
+      const javac = which('javac.exe') || which('javac');
+      if (!javac) return { ok: false, error: '没有找到 javac，请安装完整 JDK（不是只装 JRE）' };
+      const binDir = path.join(nativeDir, 'bin');
+      fs.mkdirSync(binDir, { recursive: true });
+      const sources = fs.readdirSync(path.join(nativeDir, 'src', 'icb')).filter((f) => f.endsWith('.java')).map((f) => path.join('src', 'icb', f));
+      const built = spawnSync(javac, ['-encoding', 'UTF-8', '-cp', 'lib/*', '-d', 'bin', ...sources], {
+        cwd: nativeDir,
+        encoding: 'utf8',
+        timeout: 120000,
+      });
+      if (built.status !== 0) {
+        return { ok: false, error: 'Java 编译失败：' + String(built.stderr || built.stdout || '').trim().split(/\r?\n/).slice(-4).join(' | ') };
+      }
+      exe = which('java.exe') || which('java');
+      args = ['-cp', 'bin;lib/*', 'icb.Main'];
+      cwd = nativeDir;
+    } else {
+      if (!fs.existsSync(path.join(dir, 'launcher', 'Server.java'))) return { ok: false, error: '生成目录缺少 launcher/Server.java，请重新生成服务' };
+      args = ['launcher/Server.java', hot ? 'dev.js' : 'server.js'];
+    }
   } else if (runtime === 'go') {
-    exe = which('go.exe') || which('go');
-    if (!exe) return { ok: false, error: '没有找到 Go，请先安装 Go 或切换到 Node' };
-    if (!fs.existsSync(path.join(dir, 'launcher', 'main.go'))) return { ok: false, error: '生成目录缺少 launcher/main.go，请重新生成服务' };
-    args = ['run', 'launcher/main.go', hot ? 'dev.js' : 'server.js'];
+    exe = which('go.exe') || which('go.cmd') || which('go');
+    if (!exe) return { ok: false, error: '没有找到 Go，请先安装 Go 1.21+ 或切换到 Node' };
+    const nativeDir = path.join(dir, 'native', 'go');
+    if (!fs.existsSync(path.join(nativeDir, 'service.json'))) return { ok: false, error: '生成目录缺少 native/go/service.json，请重新生成服务' };
+    const binDir = path.join(nativeDir, 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    const outExe = path.join(binDir, process.platform === 'win32' ? 'server.exe' : 'server');
+    const goEnv = { ...process.env, GOPROXY: process.env.GOPROXY || 'https://goproxy.cn,direct' };
+    if (!fs.existsSync(path.join(nativeDir, 'go.sum'))) {
+      const tidy = spawnSync(exe, ['mod', 'tidy'], { cwd: nativeDir, encoding: 'utf8', shell: /\.(cmd|bat)$/i.test(exe), env: goEnv, timeout: 180000 });
+      if (tidy.status !== 0) {
+        return { ok: false, error: 'Go 依赖准备失败：' + String(tidy.stderr || tidy.stdout || '').trim().split(/\r?\n/).slice(-3).join(' | ') };
+      }
+    }
+    const built = spawnSync(exe, ['build', '-o', outExe, '.'], {
+      cwd: nativeDir,
+      encoding: 'utf8',
+      shell: /\.(cmd|bat)$/i.test(exe),
+      env: goEnv,
+      timeout: 180000,
+    });
+    if (built.status !== 0) {
+      return { ok: false, error: 'Go 编译失败：' + String(built.stderr || built.stdout || '').trim().split(/\r?\n/).slice(-3).join(' | ') };
+    }
+    exe = outExe;
+    args = [];
+    cwd = nativeDir;
   }
-  const entry = args[args.length - 1];
-  if (!fs.existsSync(path.join(dir, entry))) return { ok: false, error: `生成目录里找不到 ${entry}` };
+  const nativeRun = runtime === 'go' || (runtime === 'java' && cwd !== dir);
+  const entry = runtime === 'go' ? 'native/go/bin/server' : args[args.length - 1];
+  if (!nativeRun && !fs.existsSync(path.join(dir, entry))) return { ok: false, error: `生成目录里找不到 ${entry}` };
   const res = spawnSvc('server', exe, args, {
-    cwd: dir,
+    cwd,
     shell: /\.(cmd|bat)$/i.test(exe),
     env: {
       ...process.env,

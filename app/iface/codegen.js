@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const spec = require('./spec');
 const script = require('./script');
+const native = require('./native');
 
 const DEFAULT_PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
 
@@ -439,6 +440,60 @@ function generate(project, options) {
     '',
   ].join('\n'));
 
+  // 语言版服务：Go 原生运行时。和 server.js 共用同一份项目快照和 AST，
+  // 启动后不再调用 Node，可直接 go run / go build。
+  const snapshot = native.serviceSnapshot(p);
+  add('native/go/service.json', JSON.stringify(snapshot, null, 2));
+  native.runtimeFiles('go').forEach((f) => add(`native/go/${f.path}`, f.content));
+  const goModule = `clickbuild.native/${slug(p.name, 'service')}`;
+  add('native/go/go.mod', [
+    `module ${goModule}`,
+    '',
+    'go 1.21',
+    '',
+    'require (',
+    '\tgithub.com/emmansun/gmsm v0.30.1',
+    '\tgithub.com/go-sql-driver/mysql v1.9.3',
+    ')',
+    '',
+  ].join('\n'));
+  add('native/go/README.md', [
+    `# ${p.name} · Go 原生服务`,
+    '',
+    '这个目录不是 Node 启动器，而是直接读取 `service.json`、用 Go 执行脚本和 SQL 的独立服务。',
+    '',
+    '```bash',
+    'go mod tidy',
+    'go run .',
+    '```',
+    '',
+    `默认端口来自环境变量 \`PORT\`，接口前缀 \`${snapshot.apiPrefix}\`，数据库连接读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`。`,
+    '',
+    '支持：路由匹配、脚本 IF / FOREACH / RETURN、SQL 占位符、MySQL 查询与写入、TOKEN 会话、内置函数、上传落本地 `uploads/`。',
+    '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
+    '',
+  ].join('\n'));
+
+  // Java 原生运行时：同一份 service.json，JDK + JDBC 直连 MySQL，不启动 Node。
+  add('native/java/service.json', JSON.stringify(snapshot, null, 2));
+  native.runtimeFiles('java').forEach((f) => add(`native/java/${f.path}`, f.content));
+  add('native/java/README.md', [
+    `# ${p.name} · Java 原生服务`,
+    '',
+    '这个目录用 JDK 直接运行，读取 `service.json` 执行脚本与 SQL，不再启动 Node 启动器。',
+    '',
+    '```bash',
+    'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java',
+    'java -cp "bin;lib/*" icb.Main',
+    '```',
+    '',
+    `默认端口来自环境变量 \`PORT\`，接口前缀 \`${snapshot.apiPrefix}\`，数据库连接读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`。`,
+    '',
+    '依赖 `lib/` 内的 MySQL Connector/J、Gson、BouncyCastle，支持 SM4、AES、TOKEN、事务、上传与脚本内置函数。',
+    '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
+    '',
+  ].join('\n'));
+
   add('dev.js', `#!/usr/bin/env node
 /* ClickBuild 热部署：监听 src / public / sql / interfaces.json，文件变化后自动重启 server.js */
 const fs = require('fs');
@@ -631,8 +686,9 @@ Write-Host "已创建登录自启任务：$TaskName"
     '',
     '- Node：`node server.js`，热部署 `node dev.js`',
     '- Bun：`bun server.js`，热部署 `bun dev.js`',
-    '- Java 启动器（需 JDK 11+）：`java launcher/Server.java`',
-    '- Go 启动器（需 Go）：`go run launcher/main.go`；`export/go/` 下的 Go 路由骨架已带 `go.mod`，可 `go build ./export/go` 做编译检查',
+    '- Java 原生（需 JDK 17+）：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
+    '- Go 原生（需 Go 1.21+）：`cd native/go && go mod tidy && go run .`；`export/go/` 下的 Go 路由骨架已带 `go.mod`，可 `go build ./export/go` 做编译检查',
+    '- 旧启动器（仅兼容保留）：`java launcher/Server.java`、`go run launcher/main.go`，内核仍转发给 Node',
     '',
     '## 守护进程',
     '',
@@ -664,6 +720,7 @@ function writeTo(project, outDir, options) {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, f.content, 'utf8');
   }
+  native.copyAssets('java', dir);
   return { dir, files: result.files.map((f) => f.path), project: result.project };
 }
 

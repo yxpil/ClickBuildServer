@@ -611,7 +611,7 @@ function renderRibbon() {
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('ai', 'iface', 'AI 生成', '用 AI 对话框生成接口工程')}
     ${rb('monitor', 'console', '监控', '实时看请求日志与健康状态')}
-    ${rb('theme', 'field', '主题', '改页眉/页脚/强调色/字体')}
+    ${rb('settings', 'field', '设置', 'AI 接口、模型参数与本地服务端口')}
     ${rb('assoc', 'page', '关联', '把 .yxpn 设为默认打开')}
     ${rb('newWindow', 'open', '新窗口', '为当前工程再开一个窗口')}
   </div><div class="lbl">扩展</div></div>`;
@@ -815,6 +815,7 @@ function renderEditor() {
 function tabTables(it) {
   const t = tableOfIface(it, S.tableKey);
   if (!t) return '<div class="p-4">没有表。</div>';
+  const st = storeOf(t);
   const typeOptions = (cur) => ['bigint', 'int', 'smallint', 'tinyint', 'bool', 'decimal', 'float', 'double', 'varchar', 'char', 'text', 'longtext', 'datetime', 'date', 'json']
     .map((k) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${k}</option>`).join('');
   return `
@@ -836,6 +837,10 @@ function tabTables(it) {
         <span class="text-[11px]">表名 <input id="tName" class="border border-neutral-300 px-1 py-0.5 mono w-44" value="${esc(t.name)}"></span>
         <span class="text-[11px]">库 <input id="tSchema" class="border border-neutral-300 px-1 py-0.5 mono w-28" placeholder="留空=默认库" value="${esc(t.schema)}"></span>
         <span class="text-[11px]">注释 <input id="tComment" class="border border-neutral-300 px-1 py-0.5 w-40" value="${esc(t.comment)}"></span>
+        <span class="text-[11px]">加速 <select id="tStore" class="border border-neutral-300 px-1 py-0.5 text-[11px]" title="${esc(STORE_MODES.map((m) => `${m.name}：${m.desc}`).join('\n'))}">${STORE_MODES.map((m) => `<option value="${m.id}" ${m.id === st.mode ? 'selected' : ''} title="${esc(m.desc)}">${esc(m.name)}</option>`).join('')}</select></span>
+        <span class="text-[11px] ${st.mode === 'cache' || st.mode === 'redis' || st.mode === 'redis-mysql' || st.mode === 'periodic' ? '' : 'hidden'}" data-store-for="ttl">TTL(秒) <input id="tStoreTtl" type="number" min="0" step="1" class="border border-neutral-300 px-1 py-0.5 mono w-16" value="${st.ttl}"></span>
+        <span class="text-[11px] ${st.mode === 'lru' || st.mode === 'lru-redis' ? '' : 'hidden'}" data-store-for="max">上限(条) <input id="tStoreMax" type="number" min="100" step="100" class="border border-neutral-300 px-1 py-0.5 mono w-20" value="${st.max}"></span>
+        <span class="text-[11px] ${st.mode === 'periodic' ? '' : 'hidden'}" data-store-for="flush">刷盘(毫秒) <input id="tStoreFlush" type="number" min="500" step="500" class="border border-neutral-300 px-1 py-0.5 mono w-20" value="${st.flushMs}"></span>
         <button class="btn thin ml-auto" data-action="delTable">删表</button>
       </div>
     </div>
@@ -862,7 +867,10 @@ function tabTables(it) {
     </div>
     <div class="shrink-0 border-t border-neutral-200 px-3 py-2 flex items-center gap-2 text-[12px]">
       <button class="btn thin" data-action="addField">＋ 加字段</button>
+      <button class="btn thin" data-action="importTable">导入表格</button>
+      <input id="tImport" type="file" accept=".csv,.tsv,.txt" class="hidden">
       <span class="text-neutral-500">表键 <b>${esc(t.key)}</b>，脚本里用 {{columns:${esc(t.key)}}}、{{where:${esc(t.key)}}} 引用这张表。</span>
+      <span id="tStoreHint" class="text-neutral-500 truncate" style="max-width:320px">${esc((STORE_MODES.find((m) => m.id === st.mode) || {}).desc || '')}</span>
       <button class="btn thin ml-auto" data-action="ddl">看 DDL</button>
     </div>
   </div>`;
@@ -888,6 +896,60 @@ function bindTables(it) {
   const name = $('#tName'); if (name) name.oninput = (e) => { t.name = e.target.value; scheduleSave(); };
   const sc = $('#tSchema'); if (sc) sc.oninput = (e) => { t.schema = e.target.value; scheduleSave(); };
   const cm = $('#tComment'); if (cm) cm.oninput = (e) => { t.comment = e.target.value; scheduleSave(); };
+  const storeSel = $('#tStore');
+  const syncStoreFields = () => {
+    const mode = t.store && t.store.mode ? t.store.mode : 'mysql';
+    $$('[data-store-for]').forEach((el) => {
+      const show = (el.dataset.storeFor === 'ttl' && ['cache', 'redis', 'redis-mysql', 'periodic'].includes(mode))
+        || (el.dataset.storeFor === 'max' && ['lru', 'lru-redis'].includes(mode))
+        || (el.dataset.storeFor === 'flush' && mode === 'periodic');
+      el.classList.toggle('hidden', !show);
+    });
+  };
+  if (storeSel) storeSel.onchange = () => {
+    t.store = { ...storeOf(t), mode: storeSel.value };
+    scheduleSave();
+    syncStoreFields();
+    const hint = $('#tStoreHint');
+    if (hint) hint.textContent = (STORE_MODES.find((m) => m.id === storeSel.value) || {}).desc || '';
+  };
+  const ttl = $('#tStoreTtl'); if (ttl) ttl.oninput = () => { t.store = { ...storeOf(t), ttl: Number(ttl.value || 0) }; scheduleSave(); };
+  const max = $('#tStoreMax'); if (max) max.oninput = () => { t.store = { ...storeOf(t), max: Number(max.value || 10000) }; scheduleSave(); };
+  const flush = $('#tStoreFlush'); if (flush) flush.oninput = () => { t.store = { ...storeOf(t), flushMs: Number(flush.value || 5000) }; scheduleSave(); };
+  syncStoreFields();
+  const importInput = $('#tImport');
+  if (importInput) importInput.onchange = async () => {
+    const file = importInput.files && importInput.files[0];
+    if (!file) return;
+    try {
+      const rows = parseDelimited(await file.text());
+      if (rows.length < 1) throw new Error('文件是空的');
+      const headers = rows[0], data = rows.slice(1);
+      if (!(await confirmBox('导入表格', `用「${file.name}」的表头替换当前表字段？字段按列位置覆盖，已有主键/自增标记保留。`))) return;
+      const usedNames = new Set();
+      t.fields = headers.map((h, i) => {
+        const old = t.fields[i] || {};
+        let name = fieldNameFromHeader(h, i);
+        while (usedNames.has(name)) name = name.replace(/(_\d+)?$/, (m) => `_${Number((m || '_1').slice(1)) + 1}`);
+        usedNames.add(name);
+        return {
+          name,
+          type: data.length ? guessColumnType(data.map((r) => r[i])) : (old.type || 'varchar'),
+          comment: String(h || '').trim() || old.comment || '',
+          pk: !!old.pk, autoIncrement: !!old.autoIncrement, nullable: old.nullable !== false,
+          search: old.search !== false, hidden: !!old.hidden, query: old.query !== false,
+          writable: old.writable !== false, default: old.default || '',
+        };
+      });
+      scheduleSave();
+      renderWorkspace();
+      toast(`已导入 ${t.fields.length} 个字段（${data.length} 行样例）`, 4000);
+    } catch (e) {
+      toast('表格导入失败：' + e.message, 5000);
+    } finally {
+      importInput.value = '';
+    }
+  };
   $$('[data-fi]').forEach((el) => {
     const i = Number(el.dataset.fi);
     const k = el.dataset.fk;
@@ -1087,8 +1149,8 @@ function runnerOptions() {
   const list = (S.runtimes && S.runtimes.length) ? S.runtimes : [
     { id: 'node', name: 'Node', available: true, note: '内置 Node.js' },
     { id: 'bun', name: 'Bun', available: false, note: '未检测到 Bun' },
-    { id: 'java', name: 'Java', available: false, note: '语言版服务未接入' },
-    { id: 'go', name: 'Go', available: false, note: '语言版服务未接入' },
+    { id: 'java', name: 'Java', available: false, note: '未检测到 JDK' },
+    { id: 'go', name: 'Go', available: false, note: '未检测到 Go' },
   ];
   return list.map((r) => {
     const ver = String(r.version || '').replace(/^java version "?([^"\s]+)"?.*$/i, '$1').replace(/^go version go/i, '').replace(/^v/i, '').split(/\s+/)[0];
@@ -1292,6 +1354,8 @@ function searchMatches(q) {
     if ((it.comment || '').toLowerCase().includes(low)) push('接口', it.comment, '备注');
     for (const t of it.tables) {
       if (t.name.toLowerCase().includes(low)) push('表', t.name, `表键 ${t.key}`);
+      const mode = storeOf(t).mode;
+      if (mode.includes(low) || storeLabel(mode).toLowerCase().includes(low)) push('表', `${t.name} · ${storeLabel(mode)}`, '加速模式');
       for (const f of t.fields) if (f.name.toLowerCase().includes(low)) push('字段', `${t.name}.${f.name}`, f.type);
     }
     for (const r of it.routes) {
@@ -1488,6 +1552,7 @@ async function act(name, el) {
     S.tableKey = it.tables[0].key; scheduleSave(); renderWorkspace();
     return;
   }
+  if (name === 'importTable') { const inp = $('#tImport'); if (inp) inp.click(); return; }
   if (name === 'addField' && it) {
     const t = tableOfIface(it, S.tableKey);
     const n = await ask('字段名', 'new_field');
@@ -1672,11 +1737,12 @@ async function act(name, el) {
   if (name === 'saveIface') return showSaveIface();
   if (name === 'plugins') return showPlugins();
   if (name === 'monitor') return showMonitor();
+  if (name === 'settings') return showSettings();
   if (name === 'theme') return showTheme();
   if (name === 'newWindow') { await api.newWindow(S.project.name); toast('已打开新窗口，可直接编辑同一工程'); return; }
   if (name === 'assoc') {
     const r = await api.assocYxpn();
-    toast(r.ok ? '已把 .yxpn 关联到本软件，双击工程包就能打开' : '关联失败：' + (r.error || r.out || ''), 5000);
+    toast(r.ok ? '已把 .yxpn / .yxpp 关联到本软件，双击即可用这里打开' : '关联失败：' + (r.error || r.out || ''), 5000);
     return;
   }
 }
@@ -2077,6 +2143,297 @@ function applyTheme(t) {
   if (th.titleSuffix) document.title = `ClickBuildServer · ${th.titleSuffix}`;
 }
 
+/* ---------------- 设置 ---------------- */
+function aiDefaults() {
+  const savedAi = (S.settings && S.settings.ai) || {};
+  return {
+    provider: savedAi.provider || 'ollama',
+    endpoint: savedAi.endpoint || (savedAi.provider === 'openai' ? 'https://api.openai.com/v1' : 'http://127.0.0.1:11434'),
+    model: savedAi.model || '',
+    apiKey: savedAi.apiKey || '',
+    timeout: Number(savedAi.timeout || 180000),
+    temperature: savedAi.temperature == null ? 0.2 : Number(savedAi.temperature),
+    maxTokens: Number(savedAi.maxTokens || 4096),
+    fallbackMock: !!savedAi.fallbackMock,
+  };
+}
+
+function parseDelimited(text) {
+  const clean = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const first = clean.split('\n')[0] || '';
+  const delim = first.includes('\t') ? '\t' : ',';
+  const rows = [];
+  let row = [], cell = '', quoted = false;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (quoted) {
+      if (ch === '"' && clean[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
+}
+function guessColumnType(values) {
+  const sample = values.map((v) => String(v == null ? '' : v).trim()).filter(Boolean).slice(0, 12);
+  if (!sample.length) return 'varchar';
+  if (sample.every((v) => /^-?\d+$/.test(v))) return 'bigint';
+  if (sample.every((v) => /^-?\d+(\.\d+)?$/.test(v))) return 'decimal';
+  if (sample.every((v) => /^(true|false|0|1)$/i.test(v))) return 'bool';
+  if (sample.every((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))) return 'date';
+  if (sample.every((v) => /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v))) return 'datetime';
+  if (sample.every((v) => /^[\[{]/.test(v))) return 'json';
+  return 'varchar';
+}
+function fieldNameFromHeader(h, i) {
+  const s = String(h || '').trim().replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!s) return `field_${i + 1}`;
+  return /^[0-9]/.test(s) ? `f_${s}` : s;
+}
+
+const STORE_MODES = [  { id: 'mysql', name: '直连 MySQL', desc: '每次都读库，最稳，适合账务和必须实时的数据' },
+  { id: 'cache', name: 'MySQL + Redis 查询缓存', desc: '读走 Redis 缓存，写后失效，适合读多写少' },
+  { id: 'redis', name: 'Redis 临时缓存表', desc: '读走 Redis、带 TTL；写仍落 MySQL，适合验证码、在线状态等热读' },
+  { id: 'redis-mysql', name: 'Redis 热读 + MySQL 权威', desc: '热读 Redis，MySQL 保底，适合排行榜与高频详情' },
+  { id: 'lru', name: 'LRU 内存淘汰', desc: '进程内 LRU 查询缓存，超上限淘汰最久未用' },
+  { id: 'lru-redis', name: 'LRU + Redis 两级', desc: '本地 LRU 一级、Redis 二级，适合多实例热点' },
+  { id: 'periodic', name: '定期刷新缓存', desc: '按设定的秒数定期失效重读，降低数据库压力；不是持久化队列' },
+];
+function storeOf(t) {
+  const s = (t && t.store) || {};
+  return { mode: STORE_MODES.some((x) => x.id === s.mode) ? s.mode : 'mysql', ttl: Number(s.ttl || 0), max: Number(s.max || 10000), flushMs: Number(s.flushMs || 5000) };
+}
+function storeLabel(id) {
+  const m = STORE_MODES.find((x) => x.id === id);
+  return m ? m.name : '直连 MySQL';
+}
+
+const AI_PRESETS = {
+  ollama: { provider: 'ollama', endpoint: 'http://127.0.0.1:11434', label: 'Ollama 本机' },
+  openai: { provider: 'openai', endpoint: 'https://api.openai.com/v1', label: 'OpenAI' },
+  deepseek: { provider: 'openai', endpoint: 'https://api.deepseek.com/v1', label: 'DeepSeek' },
+  moonshot: { provider: 'openai', endpoint: 'https://api.moonshot.cn/v1', label: 'Moonshot / Kimi' },
+  zhipu: { provider: 'openai', endpoint: 'https://open.bigmodel.cn/api/paas/v4', label: '智谱 BigModel' },
+  siliconflow: { provider: 'openai', endpoint: 'https://api.siliconflow.cn/v1', label: 'SiliconFlow' },
+  custom: null,
+};
+
+function showSettings() {
+  const ai = aiDefaults();
+  const ports = { http: 18100, mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, ...(S.settings.ports || {}) };
+  const presetOf = (provider, endpoint) => {
+    const e = String(endpoint || '').replace(/\/+$/, '');
+    const hit = Object.keys(AI_PRESETS).find((k) => AI_PRESETS[k] && AI_PRESETS[k].provider === provider && AI_PRESETS[k].endpoint.replace(/\/+$/, '') === e);
+    return hit || 'custom';
+  };
+  modal(`<div class="p-4 w-[820px] max-w-[94vw] max-h-[90vh] overflow-auto">
+    <div class="flex items-center gap-2 mb-3">
+      <b class="text-[13px]">设置</b>
+      <span class="text-[11px] text-neutral-500">AI 接口、模型参数和本地服务端口都在这里改，不用编辑任何配置文件。</span>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.9fr);gap:12px;align-items:start">
+      <section class="border border-neutral-300 p-3">
+        <div class="flex items-center gap-2 mb-2"><b class="text-[12px]">AI 接口</b><span class="pill" id="setAiPill">未检测</span></div>
+        <div class="grid grid-cols-2 gap-2 text-[12px]">
+          <label class="block">接入方式
+            <select id="setProvider" class="w-full border border-neutral-300 px-1 py-1 mt-1">
+              <option value="ollama">Ollama（本机）</option>
+              <option value="openai">OpenAI 兼容</option>
+              <option value="mock">本地模拟</option>
+            </select>
+          </label>
+          <label class="block">服务预设
+            <select id="setPreset" class="w-full border border-neutral-300 px-1 py-1 mt-1">
+              <option value="ollama">Ollama 本机</option>
+              <option value="openai">OpenAI</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="moonshot">Moonshot / Kimi</option>
+              <option value="zhipu">智谱 BigModel</option>
+              <option value="siliconflow">SiliconFlow</option>
+              <option value="custom">自定义</option>
+            </select>
+          </label>
+        </div>
+        <label class="block text-[12px] mt-2">接口地址
+          <input id="setEndpoint" class="w-full border border-neutral-300 px-2 py-1 mt-1 mono" placeholder="http://127.0.0.1:11434">
+        </label>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:8px">
+          <label class="block text-[12px]">模型
+            <input id="setModel" list="setModels" class="w-full border border-neutral-300 px-2 py-1 mt-1 mono" placeholder="qwen3:8b / gpt-4o-mini">
+            <datalist id="setModels"></datalist>
+          </label>
+          <button class="btn thin h-[30px]" id="setTest">测试连接</button>
+        </div>
+        <label class="block text-[12px] mt-2">API Key
+          <input id="setKey" type="password" class="w-full border border-neutral-300 px-2 py-1 mt-1 mono" placeholder="本机 Ollama 可留空">
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px" class="text-[12px]">
+          <label>超时（秒）<input id="setTimeout" type="number" min="3" step="1" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+          <label>温度<input id="setTemp" type="number" min="0" max="2" step="0.1" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+          <label>最大 Token<input id="setMaxTokens" type="number" min="256" step="256" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+        </div>
+        <label class="flex items-center gap-1 text-[11px] mt-2"><input type="checkbox" id="setFallback"> 真实接口失败时退回本地模拟</label>
+        <div id="setAiStatus" class="text-[11px] text-neutral-600 mt-2">填写后点“测试连接”，成功再保存。</div>
+        <div class="text-[10px] text-neutral-500 mt-2">Ollama 默认地址 http://127.0.0.1:11434；OpenAI 兼容服务地址通常以 /v1 结尾，例如 DeepSeek 的 https://api.deepseek.com/v1。</div>
+      </section>
+      <div>
+        <section class="border border-neutral-300 p-3">
+          <b class="text-[12px]">本地服务端口</b>
+          <div class="grid grid-cols-2 gap-2 mt-2 text-[12px]">
+            <label>网页服务<input id="portHttp" type="number" min="1" max="65535" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+            <label>MariaDB<input id="portMysql" type="number" min="1" max="65535" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+            <label>Redis<input id="portRedis" type="number" min="1" max="65535" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+            <label>RustFS<input id="portS3" type="number" min="1" max="65535" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+            <label class="col-span-2">RustFS 控制台<input id="portS3Console" type="number" min="1" max="65535" class="w-full border border-neutral-300 px-1 py-1 mt-1"></label>
+          </div>
+          <div class="text-[10px] text-neutral-500 mt-2">改端口后，先停止再启动对应服务；正在运行的服务不会自动迁移。</div>
+        </section>
+        <section class="border border-neutral-300 p-3 mt-3">
+          <b class="text-[12px]">语言运行时</b>
+          <div class="mt-2 text-[11px] space-y-1">
+            ${(S.runtimes || []).map((r) => `<div class="flex items-center gap-2"><span class="pill ${r.available ? 'solid' : ''}">${r.available ? '可用' : '不可用'}</span><span class="mono">${esc(r.name)}</span><span class="text-neutral-500 truncate" title="${esc(r.path || '')}">${esc(r.version || '')}</span></div>`).join('') || '<div class="text-neutral-500">未检测到运行时</div>'}
+          </div>
+          <div class="text-[10px] text-neutral-500 mt-2">Go / Java 生成的是原生服务；启动时用本机 Go 或 JDK 编译，不需要 Node。检测结果在下次启动软件时刷新。</div>
+        </section>
+        <section class="border border-neutral-300 p-3 mt-3">
+          <b class="text-[12px]">存储加速模式</b>
+          <div class="mt-2 text-[11px] space-y-1">
+            ${STORE_MODES.map((m) => `<div><span class="mono">${esc(m.name)}</span><span class="text-neutral-500"> · ${esc(m.desc)}</span></div>`).join('')}
+          </div>
+          <div class="text-[10px] text-neutral-500 mt-2">在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。</div>
+        </section>
+        <section class="border border-neutral-300 p-3 mt-3">
+          <b class="text-[12px]">界面</b>
+          <button class="btn thin w-full mt-2" id="setTheme">主题、页眉页脚与字体</button>
+          <div class="text-[10px] text-neutral-500 mt-2">语言在顶部语言菜单切换，选择后界面会立即重载。</div>
+        </section>
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end mt-3">
+      <button class="btn thin" id="setClose">关闭</button>
+      <button class="btn solid" id="setSave">保存设置</button>
+    </div>
+  </div>`, (root) => {
+    const provider = root.querySelector('#setProvider');
+    const preset = root.querySelector('#setPreset');
+    const endpoint = root.querySelector('#setEndpoint');
+    const model = root.querySelector('#setModel');
+    const key = root.querySelector('#setKey');
+    const timeout = root.querySelector('#setTimeout');
+    const temp = root.querySelector('#setTemp');
+    const maxTokens = root.querySelector('#setMaxTokens');
+    const fallback = root.querySelector('#setFallback');
+    const models = root.querySelector('#setModels');
+    const pill = root.querySelector('#setAiPill');
+    const statusEl = root.querySelector('#setAiStatus');
+
+    provider.value = ai.provider;
+    preset.value = presetOf(ai.provider, ai.endpoint);
+    endpoint.value = ai.endpoint;
+    model.value = ai.model;
+    key.value = ai.apiKey;
+    timeout.value = Math.round(ai.timeout / 1000);
+    temp.value = ai.temperature;
+    maxTokens.value = ai.maxTokens;
+    fallback.checked = ai.fallbackMock;
+    root.querySelector('#portHttp').value = ports.http;
+    root.querySelector('#portMysql').value = ports.mysql;
+    root.querySelector('#portRedis').value = ports.redis;
+    root.querySelector('#portS3').value = ports.s3;
+    root.querySelector('#portS3Console').value = ports.s3Console;
+
+    const readAi = () => ({
+      provider: provider.value,
+      endpoint: endpoint.value.trim(),
+      model: model.value.trim(),
+      apiKey: key.value.trim(),
+      timeout: Math.max(3000, Number(timeout.value || 180) * 1000),
+      temperature: Number(temp.value == null || temp.value === '' ? 0.2 : temp.value),
+      maxTokens: Number(maxTokens.value || 4096),
+      fallbackMock: fallback.checked,
+    });
+    const setPill = (text, cls) => { pill.textContent = text; pill.className = `pill ${cls || ''}`; };
+
+    preset.onchange = () => {
+      const p = AI_PRESETS[preset.value];
+      if (!p) return;
+      provider.value = p.provider;
+      endpoint.value = p.endpoint;
+      model.value = '';
+      statusEl.textContent = '已填入 ' + p.label + ' 的默认地址，再填写模型名并测试连接。';
+      setPill('未检测', '');
+    };
+    provider.onchange = () => {
+      if (provider.value === 'ollama' && !/11434|ollama/i.test(endpoint.value)) {
+        endpoint.value = 'http://127.0.0.1:11434';
+        preset.value = 'ollama';
+      }
+      if (provider.value === 'mock') {
+        setPill('本地模拟', '');
+        statusEl.textContent = '本地模拟不调用任何接口，按关键词生成固定模板。';
+      } else {
+        preset.value = presetOf(provider.value, endpoint.value);
+      }
+    };
+    endpoint.oninput = () => { preset.value = presetOf(provider.value, endpoint.value); };
+
+    root.querySelector('#setTest').onclick = async () => {
+      const cfg = readAi();
+      if (cfg.provider === 'mock') { setPill('本地模拟', ''); statusEl.textContent = '本地模拟，不需要连接。'; return; }
+      if (!cfg.endpoint) { setPill('地址为空', 'pill-bad'); statusEl.textContent = '先填写接口地址。'; return; }
+      setPill('检测中…', '');
+      statusEl.textContent = `正在连接 ${cfg.endpoint} …`;
+      let st;
+      try { st = await api.aiStatus(cfg); } catch (e) { st = { ok: false, error: e.message || String(e) }; }
+      if (!st || !st.ok) {
+        setPill('未连接', 'pill-bad');
+        statusEl.textContent = `连接失败：${(st && st.error) || '未知错误'}`;
+        return;
+      }
+      setPill('已连接', 'pill-ok');
+      models.innerHTML = (st.models || []).map((m) => `<option value="${esc(m.name)}"></option>`).join('');
+      const names = (st.models || []).map((m) => m.name);
+      if (!model.value && names.length) model.value = names.find((n) => /qwen3|qwen2\.5|gpt-4o/i.test(n)) || names[0];
+      statusEl.textContent = `${st.message || '已连接'}${names.length ? ` · 找到 ${names.length} 个模型` : ''}`;
+    };
+
+    root.querySelector('#setTheme').onclick = () => { closeModal(); showTheme(); };
+    root.querySelector('#setClose').onclick = closeModal;
+    root.querySelector('#setSave').onclick = async () => {
+      const cfg = readAi();
+      const nextPorts = {
+        http: Number(root.querySelector('#portHttp').value),
+        mysql: Number(root.querySelector('#portMysql').value),
+        redis: Number(root.querySelector('#portRedis').value),
+        s3: Number(root.querySelector('#portS3').value),
+        s3Console: Number(root.querySelector('#portS3Console').value),
+      };
+      if (!(cfg.temperature >= 0 && cfg.temperature <= 2)) { setPill('温度不合法', 'pill-bad'); statusEl.textContent = '温度范围是 0–2。'; return; }
+      if (!(cfg.maxTokens >= 256)) { setPill('Token 不合法', 'pill-bad'); statusEl.textContent = '最大 Token 至少 256。'; return; }
+      const vals = Object.values(nextPorts);
+      if (vals.some((v) => !Number.isInteger(v) || v < 1 || v > 65535)) { setPill('端口不合法', 'pill-bad'); statusEl.textContent = '端口必须是 1–65535 的整数。'; return; }
+      if (new Set(vals).size !== vals.length) { setPill('端口重复', 'pill-bad'); statusEl.textContent = '五个端口不能重复。'; return; }
+      try {
+        await api.saveSettings({ ai: cfg });
+        S.settings.ai = cfg;
+        const savedPorts = await api.setPorts(nextPorts);
+        S.settings.ports = savedPorts;
+        S.services = await api.services();
+        renderSide();
+        closeModal();
+        toast('设置已保存；改过的服务端口需要停止后重新启动才生效', 5000);
+      } catch (e) {
+        setPill('保存失败', 'pill-bad');
+        statusEl.textContent = `保存失败：${e.message || e}`;
+      }
+    };
+  });
+}
+
 function showTheme() {
   const t = { head: '#ffffff', headText: '#111111', accent: '#111111', footer: '#f4f4f4', font: '', ...(S.settings.theme || {}) };
   modal(`<div class="p-4 w-[560px]">
@@ -2116,17 +2473,7 @@ function showTheme() {
 
 /* ---------------- AI 生成 ---------------- */
 function showAi() {
-  const savedAi = (S.settings && S.settings.ai) || {};
-  const aiCfg = {
-    provider: savedAi.provider || 'ollama',
-    endpoint: savedAi.endpoint || (savedAi.provider === 'openai' ? 'https://api.openai.com/v1' : 'http://127.0.0.1:11434'),
-    model: savedAi.model || '',
-    apiKey: savedAi.apiKey || '',
-    timeout: Number(savedAi.timeout || 180000),
-    temperature: savedAi.temperature == null ? 0.2 : Number(savedAi.temperature),
-    maxTokens: Number(savedAi.maxTokens || 4096),
-    fallbackMock: !!savedAi.fallbackMock,
-  };
+  const aiCfg = aiDefaults();
   const ctx = {
     name: S.project.name || '接口工程',
     interfaces: S.project.interfaces.length,
@@ -2153,6 +2500,7 @@ function showAi() {
         <button class="btn thin" id="aiTest">测试连接</button>
         <label>超时</label><input id="aiTimeout" type="number" min="3" step="1" class="w-[72px]"><span class="text-neutral-500">秒</span>
       </div>
+      <div class="ai-row"><label>温度</label><input id="aiTemp" type="number" min="0" max="2" step="0.1" class="w-[64px]"><label>最大 Token</label><input id="aiMaxTokens" type="number" min="256" step="256" class="w-[84px]"><span class="text-neutral-500">参数会随工程上下文一起发给模型</span></div>
       <div class="ai-row"><label>API Key</label>
         <input id="aiKey" type="password" class="mono" placeholder="Ollama 可留空">
         <label class="flex items-center gap-1"><input type="checkbox" id="aiFallback"> 失败时退回本地模拟</label>
@@ -2177,6 +2525,8 @@ function showAi() {
     const endpoint = root.querySelector('#aiEndpoint');
     const model = root.querySelector('#aiModel');
     const timeout = root.querySelector('#aiTimeout');
+    const temp = root.querySelector('#aiTemp');
+    const maxTokens = root.querySelector('#aiMaxTokens');
     const key = root.querySelector('#aiKey');
     const fallback = root.querySelector('#aiFallback');
     const mode = root.querySelector('#aiMode');
@@ -2190,6 +2540,8 @@ function showAi() {
     model.value = aiCfg.model;
     key.value = aiCfg.apiKey;
     timeout.value = Math.round(aiCfg.timeout / 1000);
+    temp.value = aiCfg.temperature;
+    maxTokens.value = aiCfg.maxTokens;
     fallback.checked = aiCfg.fallbackMock;
 
     const readCfg = () => ({
@@ -2198,14 +2550,16 @@ function showAi() {
       model: model.value.trim(),
       apiKey: key.value.trim(),
       timeout: Math.max(3000, Number(timeout.value || 180) * 1000),
-      temperature: aiCfg.temperature,
-      maxTokens: aiCfg.maxTokens,
+      temperature: Number(temp.value == null || temp.value === '' ? 0.2 : temp.value),
+      maxTokens: Number(maxTokens.value || 4096),
       fallbackMock: fallback.checked,
     });
     const persist = async () => {
       const cfg = readCfg();
       aiCfg.provider = cfg.provider; aiCfg.endpoint = cfg.endpoint; aiCfg.model = cfg.model;
-      aiCfg.apiKey = cfg.apiKey; aiCfg.timeout = cfg.timeout; aiCfg.fallbackMock = cfg.fallbackMock;
+      aiCfg.apiKey = cfg.apiKey; aiCfg.timeout = cfg.timeout;
+      aiCfg.temperature = cfg.temperature; aiCfg.maxTokens = cfg.maxTokens;
+      aiCfg.fallbackMock = cfg.fallbackMock;
       S.settings.ai = cfg;
       try { await api.saveSettings({ ai: cfg }); } catch (e) { /* 设置保存失败不阻断生成 */ }
       return cfg;
@@ -2803,7 +3157,7 @@ function hubFilterText(item) {
 }
 
 function uniqueProjectName(base) {
-  const names = new Set(HUB.list.map((x) => String(x.name || '').toLowerCase()));
+  const names = new Set([...(S.list || []), ...(HUB.list || [])].map((x) => String(x.name || '').toLowerCase()));
   let next = String(base || '新工程').trim() || '新工程';
   let n = 2;
   while (names.has(next.toLowerCase())) next = `${String(base || '新工程').trim()} ${n++}`;
@@ -3050,11 +3404,41 @@ window.addEventListener('blur', hideHubMenu);
     S.help = await api.help();
 
     const wanted = new URLSearchParams(location.search).get('project');
-    const openYxpn = new URLSearchParams(location.search).get('openYxpn');
+    const openFile = new URLSearchParams(location.search).get('openFile') || new URLSearchParams(location.search).get('openYxpn');
     let direct = null;
+    let openStudio = false;
     if (wanted) direct = await api.load(wanted);
-    if (openYxpn) {
-      const r = await api.importYxpnPath(openYxpn);
+    if (openFile && /\.yxpp$/i.test(openFile)) {
+      const r = await api.importYxppPath(openFile);
+      if (r && r.ok) {
+        const yxppName = String((r.yxpp && r.yxpp.name) || '').trim();
+        const hit = (S.list || []).find((p) => !p.missing && yxppName && (p.name === yxppName || (p.frontend && p.frontend.name === yxppName)));
+        let base;
+        if (hit) {
+          // 已有同名工程：只更新前端绑定，绝不覆盖它的接口和表。
+          base = await api.load(hit.name);
+          base.frontend = r.yxpp;
+          base.frontendPath = openFile;
+          await api.save(base);
+          toast(`已打开「${base.name}」的前端工程，后端接口保持不变`, 4000);
+        } else {
+          base = await api.seed();
+          base.name = uniqueProjectName(yxppName || '前端工程');
+          base.description = '从 .yxpp 打开的前端工程（空白后端）';
+          base.interfaces = [];
+          base.functions = [];
+          base.frontend = r.yxpp;
+          base.frontendPath = openFile;
+          await api.save(base);
+          toast(`已从前端工程新建「${base.name}」`, 4000);
+        }
+        direct = base;
+        openStudio = true;
+      } else {
+        toast('前端工程打不开：' + ((r && r.error) || '未知错误'), 5000);
+      }
+    } else if (openFile) {
+      const r = await api.importYxpnPath(openFile);
       if (r && r.ok) {
         direct = r.project;
         await api.save(direct);
@@ -3066,6 +3450,7 @@ window.addEventListener('blur', hideHubMenu);
 
     if (direct) {
       await enterWorkspace(direct);
+      if (openStudio) setView('studio');
     } else {
       if (wanted) toast('找不到文件：' + wanted, 6000);
       await showProjectHub();

@@ -75,6 +75,38 @@ const LOG_CFG = project.log || {};
 const TOKEN_CFG = project.token || {};
 const DOCS_CFG = project.docs || {};
 const CACHE_NS = process.env.CACHE_PREFIX || `icb:cache:${project.name || 'project'}`;
+const STORE_MEM = new Map();
+const STORE_VER = new Map();
+function storePolicy(iface, sql) {
+  const tables = iface.tables || [];
+  let t = tables[0] || {};
+  if (sql) {
+    // 按实际查询的表选择加速策略；联表时命中第一个出现的表，写操作仍整体失效。
+    const hit = tables.find((x) => {
+      const name = String(x.name || '');
+      if (!name) return false;
+      try { return new RegExp(`(^|[^A-Za-z0-9_])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9_]|$)`, 'i').test(sql); } catch (e) { return false; }
+    });
+    if (hit) t = hit;
+  }
+  const s = t.store || {};
+  return { mode: s.mode || 'mysql', ttl: Number(s.ttl || 0) || 60, max: Number(s.max || 10000), flushMs: Number(s.flushMs || 5000) };
+}
+function storeVersion(iface) { return STORE_VER.get(iface.id || iface.name) || 0; }
+function storeBump(iface) {
+  const k = iface.id || iface.name;
+  STORE_VER.set(k, (STORE_VER.get(k) || 0) + 1);
+  for (const key of STORE_MEM.keys()) if (key.startsWith(`q:${k}:`)) STORE_MEM.delete(key);
+}
+function storeTouch(key, val, max) {
+  STORE_MEM.delete(key);
+  STORE_MEM.set(key, { val, at: Date.now() });
+  while (STORE_MEM.size > max) {
+    const oldest = STORE_MEM.keys().next().value;
+    STORE_MEM.delete(oldest);
+  }
+}
+
 
 const FUNCS = {};
 (project.functions || []).forEach((f) => {
@@ -716,13 +748,40 @@ async function handle(req, res, item) {
     const key = connKeyForSql(sql);
     const st = txStates.get(key);
     const runner = st && st.inTx ? st.conn : (await poolFor(key)).pool;
-    return (await runner.query(sql, params))[0];
+    const policy = storePolicy(iface, sql);
+    if (policy.mode === 'mysql') return (await runner.query(sql, params))[0];
+    const ikey = iface.id || iface.name;
+    const qkey = `q:${ikey}:${storeVersion(iface)}:${crypto.createHash('sha1').update(sql + '|' + JSON.stringify(params || [])).digest('hex')}`;
+    const useMem = ['lru', 'lru-redis', 'periodic'].includes(policy.mode);
+    const useRedis = ['cache', 'redis', 'redis-mysql', 'lru-redis'].includes(policy.mode);
+    const ttl = policy.mode === 'periodic' ? Math.max(1, Math.round(policy.flushMs / 1000)) : policy.ttl;
+    if (useMem) {
+      const hit = STORE_MEM.get(qkey);
+      if (hit && (policy.mode === 'periodic' || Date.now() - hit.at < ttl * 1000)) return hit.val;
+    }
+    if (useRedis && redis) {
+      try {
+        const raw = await redis.get(`${CACHE_NS}:${qkey}`);
+        if (raw) {
+          const rows = JSON.parse(raw);
+          if (useMem) storeTouch(qkey, rows, policy.max);
+          return rows;
+        }
+      } catch (e) { /* 回退 MySQL */ }
+    }
+    const rows = (await runner.query(sql, params))[0];
+    if (useMem) storeTouch(qkey, rows, policy.max);
+    if (useRedis && redis) {
+      try { await redis.setex(`${CACHE_NS}:${qkey}`, ttl, JSON.stringify(rows)); } catch (e) {}
+    }
+    return rows;
   }
   async function dbExecute(sql, params) {
     const key = connKeyForSql(sql);
     const st = txStates.get(key);
     const runner = st && st.inTx ? st.conn : (await poolFor(key)).pool;
     const [r] = await runner.execute(sql, params);
+    if (storePolicy(iface, sql).mode !== 'mysql' && !st) storeBump(iface);
     return { affectedRows: r.affectedRows || 0, insertId: r.insertId != null ? r.insertId : null, info: r.info || '' };
   }
 

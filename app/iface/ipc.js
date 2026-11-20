@@ -217,6 +217,14 @@ function registerIpc() {
     } catch (err) { return { ok: false, error: err.message }; }
   });
 
+  ipcMain.handle('iface:importYxppPath', async (e, file) => {
+    if (!file || !fs.existsSync(file)) return { ok: false, error: '找不到这个前端工程' };
+    try {
+      const yxpp = frontend.readYxpp(file);
+      return { ok: true, yxpp, file };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
   ipcMain.handle('app:assocYxpn', async () => {
     if (process.platform !== 'win32') return { ok: false, error: '目前只处理 Windows 关联' };
     const { execFile } = require('child_process');
@@ -224,12 +232,20 @@ function registerIpc() {
     const exe = process.execPath;
     const appDir = store.resourceRoot();
     const icon = path.join(appDir, 'logo.png');
-    await cmd(['add', 'HKCU\\Software\\Classes\\.yxpn', '/ve', '/d', 'ClickBuild.Yxpn', '/f']);
-    await cmd(['add', 'HKCU\\Software\\Classes\\ClickBuild.Yxpn', '/ve', '/d', 'ClickBuild 接口工程包', '/f']);
-    await cmd(['add', 'HKCU\\Software\\Classes\\ClickBuild.Yxpn\\DefaultIcon', '/ve', '/d', icon, '/f']);
     const openCmd = store.isPackaged() ? `"${exe}" "%1"` : `"${exe}" "${appDir}" "%1"`;
-    const r = await cmd(['add', 'HKCU\\Software\\Classes\\ClickBuild.Yxpn\\shell\\open\\command', '/ve', '/d', openCmd, '/f']);
-    return r.ok ? { ok: true, exe, appDir } : r;
+    const types = [
+      { ext: 'yxpn', id: 'ClickBuild.Yxpn', label: 'ClickBuild 接口工程包' },
+      { ext: 'yxpp', id: 'ClickBuild.Yxpp', label: 'ClickBuild 前端工程' },
+    ];
+    let last = { ok: true };
+    for (const t of types) {
+      await cmd(['add', `HKCU\\Software\\Classes\\.${t.ext}`, '/ve', '/d', t.id, '/f']);
+      await cmd(['add', `HKCU\\Software\\Classes\\${t.id}`, '/ve', '/d', t.label, '/f']);
+      await cmd(['add', `HKCU\\Software\\Classes\\${t.id}\\DefaultIcon`, '/ve', '/d', icon, '/f']);
+      last = await cmd(['add', `HKCU\\Software\\Classes\\${t.id}\\shell\\open\\command`, '/ve', '/d', openCmd, '/f']);
+      if (!last.ok) return last;
+    }
+    return { ok: true, exe, appDir, types: types.map((t) => t.ext) };
   });
 
   ipcMain.handle('iface:docs', (e, project) => {

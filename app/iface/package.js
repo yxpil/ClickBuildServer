@@ -15,6 +15,7 @@ const path = require('path');
 const zlib = require('zlib');
 const spec = require('./spec');
 const codegen = require('./codegen');
+const native = require('./native');
 
 const CRC_TABLE = (() => {
   const t = new Int32Array(256);
@@ -146,6 +147,7 @@ function build(project, opts) {
   entries.push({ name: 'manifest.json', data: JSON.stringify(manifest, null, 2) });
   entries.push({ name: 'project.json', data: JSON.stringify(p, null, 2) });
   for (const f of files) entries.push({ name: f.path, data: f.content });
+  for (const a of native.assetFiles('java')) entries.push({ name: `native/java/${a.path}`, data: a.data });
   return { buffer: zip(entries), manifest, files: files.map((f) => f.path) };
 }
 

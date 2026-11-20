@@ -155,6 +155,18 @@ function keyOf(name, used) {
   return key;
 }
 
+const STORE_MODES = ['mysql', 'cache', 'redis', 'redis-mysql', 'lru', 'lru-redis', 'periodic'];
+
+function storeOf(t) {
+  const s = (t && t.store) || {};
+  return {
+    mode: STORE_MODES.includes(s.mode) ? s.mode : 'mysql',
+    ttl: Number(s.ttl || 0),
+    max: Number(s.max || 10000),
+    flushMs: Number(s.flushMs || 5000),
+  };
+}
+
 function newTable(name, usedKeys) {
   const safe = safeIdent(name, 'tbl');
   return {
@@ -162,6 +174,7 @@ function newTable(name, usedKeys) {
     name: safe,
     schema: '',
     comment: '',
+    store: storeOf(null),
     fields: blankFields(),
   };
 }
@@ -422,6 +435,7 @@ function normalizeTable(t, idx, used) {
     schema: t.schema || '',
     conn: t.conn || 'main',
     comment: t.comment || '',
+    store: storeOf(t),
     fields,
   };
 }

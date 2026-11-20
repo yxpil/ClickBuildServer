@@ -113,13 +113,13 @@ if (!gotLock) {
     return Menu.buildFromTemplate(template);
   }
 
-  function yxpnArg(argv) {
-    const hit = (argv || []).find((a) => typeof a === 'string' && /\.yxpn$/i.test(a));
+  function openFileArg(argv) {
+    const hit = (argv || []).find((a) => typeof a === 'string' && /\.(yxpn|yxpp)$/i.test(a));
     if (!hit) return '';
     return require('fs').existsSync(hit) ? hit : '';
   }
 
-  function createWindow(openYxpn) {
+  function createWindow(openFile) {
     win = new BrowserWindow({
       width: 1480,
       height: 940,
@@ -139,7 +139,7 @@ if (!gotLock) {
       },
     });
 
-    win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: openYxpn ? { openYxpn } : {} });
+    win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: openFile ? { openFile } : {} });
     win.once('ready-to-show', () => win.show());
     win.setMenuBarVisibility(false);
     const pushState = () => { if (!win.isDestroyed()) win.webContents.send('win:state', windowState(win)); };
@@ -167,7 +167,7 @@ if (!gotLock) {
     registerWindowIpc();
     registerIpc(win);
     registerIfaceIpc();
-    createWindow(yxpnArg(process.argv));
+    createWindow(openFileArg(process.argv));
     Menu.setApplicationMenu(null);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -175,9 +175,9 @@ if (!gotLock) {
   });
 
   app.on('second-instance', (event, argv) => {
-    const file = yxpnArg(argv);
+    const file = openFileArg(argv);
     if (win) {
-      if (file) win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: { openYxpn: file } });
+      if (file) win.loadFile(path.join(__dirname, 'renderer', 'wbench.html'), { query: { openFile: file } });
       if (win.isMinimized()) win.restore();
       win.focus();
     }
