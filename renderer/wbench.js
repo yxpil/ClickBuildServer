@@ -3720,7 +3720,14 @@ function studioLoadProject(project, binding) {
   if (!project) return;
   const language = String((S.settings && S.settings.language) || 'zh-CN').toLowerCase();
   const lang = language.startsWith('en') ? 'en' : 'zh';
-  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, at: studioLastAt });
+  const ifaces = ((S.project && S.project.interfaces) || []).map((i) => ({
+    name: i.name,
+    routes: (i.routes || []).map((r) => ({ key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary })),
+    fields: (((i.tables || []).find((t) => t.key === 'main') || {}).fields || []).map((f) => ({
+      name: f.name, type: f.type, comment: f.comment, hidden: !!f.hidden, writable: !!f.writable, pk: !!f.pk,
+    })),
+  }));
+  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, ifaces, at: studioLastAt });
 }
 
 function captureStudioProject() {

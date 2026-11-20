@@ -5,6 +5,7 @@ const path = require('path');
 const spec = require('./spec');
 const script = require('./script');
 const native = require('./native');
+const fe = require('./frontend');
 
 const DEFAULT_PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
 
@@ -435,7 +436,13 @@ function generate(project, options) {
       `# ${yxpp.name}`, '', '这是随接口服务一起打包的 ClickBuild 前端工程（.yxpp）。',
       '', '- 生成服务的 `/` 会优先返回该前端页面。', '- 可以在 ClickBuild 的「前端」模式里继续编辑，再导出 .yxpp。',
     ].join('\n'));
-    if (p.frontend.html) add('public/index.html', p.frontend.html);
+    let html = p.frontend.html || '';
+    if (p.frontend.project && p.frontend.project.app && p.frontend.project.app.mode) {
+      html = fe.htmlFromProject(p.frontend.project, { name: yxpp.name });
+      yxpp.html = html;
+      add('frontend/index.yxpp', JSON.stringify(yxpp, null, 2));
+    }
+    if (html) add('public/index.html', html);
   }
 
   add('interfaces.json', JSON.stringify({

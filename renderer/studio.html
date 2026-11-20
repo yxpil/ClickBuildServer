@@ -3753,7 +3753,8 @@ var TOOL_CATS = [
     { type: 'textarea', label: '多行输入', hint: '留言 / 备注', w: 360, h: 150 },
     { type: 'select', label: '下拉选择', hint: '方案 / 分类', w: 320, h: 86 },
     { type: 'chatbox', label: '聊天框', hint: 'Markdown / 自定义 JS / 对话接口', w: 460, h: 500 },
-    { type: 'sidebar', label: '折叠侧边栏', hint: 'SVG 图标 / 文字 / 自定义列表 ID', w: 248, h: 620 }
+    { type: 'sidebar', label: '折叠侧边栏', hint: 'SVG 图标 / 文字 / 自定义列表 ID', w: 248, h: 620 },
+    { type: 'appview', label: '业务应用', hint: '选后端接口，自动生成列表 / 详情 / 表单 / 流程', w: 1200, h: 780 }
   ] },
   { id: 'media', label: '图片 / 媒体', hint: '图片 / 视频 / 音乐', icon: 'image', items: [
     { type: 'image', label: '图片', hint: '本地上传 / URL', w: 520, h: 340 },
@@ -6253,11 +6254,15 @@ function projectFileName() {
 function syncAppFromAppView() {
   if (!S.proj) return;
   var el = null;
-  (S.proj.pages || []).some(function (pg) {
-    var found = (pg.elements || []).find(function (n) { return n && n.type === 'appview'; });
-    if (found) { el = found; return true; }
-    return false;
-  });
+  var active = (S.proj.pages || [])[S.proj.active || 0];
+  if (active) el = (active.elements || []).find(function (n) { return n && n.type === 'appview'; }) || null;
+  if (!el) {
+    (S.proj.pages || []).some(function (pg) {
+      var found = (pg.elements || []).find(function (n) { return n && n.type === 'appview'; });
+      if (found) { el = found; return true; }
+      return false;
+    });
+  }
   if (!el) return;
   var p = el.props || {};
   var app = S.proj.app = Object.assign({}, S.proj.app || {});
@@ -6277,6 +6282,11 @@ function syncAppFromAppView() {
 }
 function projectFilePayload() {
   syncAppFromAppView();
+  var project = JSON.parse(serializeProject());
+  if (!Array.isArray(project.elements)) {
+    var active = project.pages && project.pages[project.active || 0];
+    project.elements = (active && Array.isArray(active.elements)) ? active.elements : (S.proj.elements || []);
+  }
   return {
     format: 'yxpp',
     version: 1,
@@ -6284,7 +6294,7 @@ function projectFilePayload() {
     framework: S.proj.framework || S.fw || 'tailwind',
     createdAt: S.proj.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    project: JSON.parse(serializeProject())
+    project: project
   };
 }
 function projectFileProject(obj) {
@@ -10811,6 +10821,7 @@ function fieldsFor(n) {
       content.push({ p: 'props.title', l: '页面标题', k: 'text' });
       content.push({ p: 'props.sub', l: '说明', k: 'textarea', rows: 3 });
       content.push({ p: 'props.view', l: '当前视图', k: 'text' });
+      content.push({ l: '数据源绑定', k: 'ifacepick' });
       content.push({ p: 'props.nav', l: '视图导航（名称|view，每行一个）', k: 'textarea', rows: 6 });
       content.push({ p: 'props.iface', l: '主接口名称（留空则由工程 app 描述决定）', k: 'text' });
       content.push({ p: 'props.api', l: 'API 前缀', k: 'text' });
@@ -11476,6 +11487,222 @@ function buildActionsField(n) {
   wrap.appendChild(foot);
   return wrap;
 }
+function appNodeJson(n) {
+  var a = {};
+  try { a = JSON.parse((n.props && n.props.appJson) || '{}') || {}; } catch (e) { a = {}; }
+  if (!Object.keys(a).length && typeof S !== 'undefined' && S.proj && S.proj.app) {
+    try { a = JSON.parse(JSON.stringify(S.proj.app)); } catch (e2) { a = {}; }
+  }
+  return a;
+}
+function projectIfaces() {
+  if (typeof S !== 'undefined' && Array.isArray(S.ifaces)) return S.ifaces;
+  var p = (typeof S !== 'undefined' && (S.project || S.proj)) || {};
+  if (!Array.isArray(p.interfaces) && typeof window !== 'undefined' && window.parent && window.parent !== window && window.parent.S) {
+    p = window.parent.S.project || window.parent.S.proj || p;
+  }
+  return Array.isArray(p.interfaces) ? p.interfaces : [];
+}
+function routeDefaults(iface) {
+  var routes = (iface && iface.routes) || [];
+  var byKey = {};
+  routes.forEach(function (r) { if (r.key) byKey[String(r.key)] = r.path; });
+  var firstGet = routes.find(function (r) { return String(r.method || '').toUpperCase() === 'GET' && String(r.path || '').indexOf(':') < 0; });
+  var firstGetId = routes.find(function (r) { return String(r.method || '').toUpperCase() === 'GET' && String(r.path || '').indexOf(':') >= 0; });
+  var firstPost = routes.find(function (r) { return String(r.method || '').toUpperCase() === 'POST'; });
+  var firstPut = routes.find(function (r) { return /^PUT|PATCH/i.test(String(r.method || '')); });
+  var firstDel = routes.find(function (r) { return String(r.method || '').toUpperCase() === 'DELETE'; });
+  return {
+    iface: iface.name,
+    list: byKey.list || (firstGet && firstGet.path) || '',
+    detail: byKey.detail || (firstGetId && firstGetId.path) || '',
+    create: byKey.create || (firstPost && firstPost.path) || '',
+    update: byKey.update || (firstPut && firstPut.path) || '',
+    remove: byKey.delete || (firstDel && firstDel.path) || '',
+    read: byKey.read || '',
+    publish: byKey.publish || '',
+    upload: byKey.upload || ''
+  };
+}
+function inferAppFields(iface) {
+  var cols = (iface && iface.fields) || [];
+  var names = cols.map(function (f) { return String(f.name || ''); });
+  function pick(list) {
+    for (var i = 0; i < list.length; i++) {
+      var hit = names.find(function (n) { return n.toLowerCase() === list[i]; });
+      if (hit) return hit;
+    }
+    return '';
+  }
+  return {
+    title: pick(['title', 'name', 'subject', 'topic', 'product_name', 'nickname']) || names.find(function (n) { return /name|title/i.test(n); }) || '',
+    body: pick(['body', 'content', 'description', 'summary', 'detail', 'note', 'remark']) || '',
+    date: pick(['created_at', 'updated_at', 'date', 'time', 'createdat']) || '',
+    views: pick(['views', 'view_count', 'sales', 'count', 'qty', 'amount', 'total', 'stock']) || '',
+    category: pick(['category', 'cat', 'type', 'kind']) || '',
+    status: pick(['status', 'state']) || '',
+    id: pick(['id']) || ''
+  };
+}
+function ensureAppSkeleton(app, n, iface, ifaces) {
+  app.mode = app.mode || (n.props && n.props.mode) || 'content';
+  app.brand = app.brand || (n.props && n.props.brand) || '业务应用';
+  app.mark = app.mark || (n.props && n.props.mark) || 'APP';
+  app.kicker = app.kicker || (n.props && n.props.kicker) || 'BUSINESS APP';
+  app.home = app.home || {
+    kicker: app.kicker,
+    title: (n.props && n.props.title) || ('『' + iface.name + '』业务页面'),
+    sub: (n.props && n.props.sub) || '数据来自绑定的后端接口，导出后直接读取真实记录。',
+    cta: '查看列表'
+  };
+  app.nav = app.nav || [
+    { label: '首页', view: 'home' },
+    { label: '全部' + iface.name, view: 'collection' }
+  ];
+  app.primary = app.primary || routeDefaults(iface);
+  app.itemLabel = app.itemLabel || iface.name;
+  app.writeLabel = app.writeLabel || ('新建' + iface.name);
+  app.actions = app.actions || [{ label: app.writeLabel, view: 'create' }];
+  app.auth = app.auth || null;
+  app.fields = (app.fields && Object.keys(app.fields).length) ? app.fields : inferAppFields(iface);
+  app.enums = app.enums || {};
+  app.interfaces = ifaces;
+  app.counts = app.counts || {};
+  app.counts.interfaces = ifaces.length;
+  return app;
+}
+function buildIfaceField(n) {
+  var wrap = document.createElement('div');
+  wrap.className = 'field';
+  wrap.style.cssText = 'align-items:stretch;gap:6px';
+  var label = document.createElement('label');
+  label.textContent = '后端接口数据源（搜索后直接绑定）';
+  wrap.appendChild(label);
+  var app = appNodeJson(n);
+  var ifaces = projectIfaces();
+  if (!ifaces.length && Array.isArray(app.interfaces)) {
+    ifaces = app.interfaces.map(function (i) {
+      return {
+        name: i.name,
+        routes: (i.routes || []).map(function (r) { return { key: r.key, name: r.name, method: r.method, path: r.path, summary: r.summary }; }),
+        fields: (i.fields || []).map(function (f) { return { name: f.name, type: f.type, comment: f.comment, hidden: !!f.hidden, writable: !!f.writable, pk: !!f.pk }; })
+      };
+    });
+  }
+  var cur = app.primary && app.primary.iface ? String(app.primary.iface) : String(n.props.iface || '');
+  var hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.style.cssText = 'font-size:9.5px;line-height:1.5;color:var(--ink-3)';
+  hint.textContent = '共 ' + ifaces.length + ' 个可选接口（来自工程后端或当前业务模型）。输入名称可搜索；选中后会自动匹配列表 / 详情 / 新建 / 更新 / 删除路由，也可逐项改绑。';
+  wrap.appendChild(hint);
+
+  var search = document.createElement('input');
+  search.className = 'inp';
+  search.type = 'text';
+  search.placeholder = '搜索接口名或路由，例如 文章 / 商品 / 工单 / /orders';
+  search.value = '';
+  wrap.appendChild(search);
+
+  var sel = document.createElement('select');
+  sel.className = 'inp';
+  sel.style.marginTop = '4px';
+  function fillOptions(kw) {
+    sel.innerHTML = '';
+    var k = String(kw || '').trim().toLowerCase();
+    var list = ifaces.filter(function (i) {
+      if (!k) return true;
+      var routes = (i.routes || []).map(function (r) { return r.path + ' ' + r.name; }).join(' ');
+      return (String(i.name) + ' ' + routes).toLowerCase().indexOf(k) >= 0;
+    });
+    if (!list.length) {
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '没有匹配的接口';
+      sel.appendChild(empty);
+      return;
+    }
+    list.slice(0, 60).forEach(function (i) {
+      var o = document.createElement('option');
+      o.value = i.name;
+      o.textContent = i.name + ' · ' + ((i.routes || []).length) + ' 个路由';
+      if (String(i.name) === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (list.some(function (i) { return String(i.name) === cur; })) sel.value = cur;
+  }
+  fillOptions('');
+  search.addEventListener('input', function () { fillOptions(search.value); });
+  wrap.appendChild(sel);
+
+  var selected = ifaces.find(function (i) { return String(i.name) === cur; }) || null;
+  if (selected) {
+    var slots = [['list', '列表接口'], ['detail', '详情接口'], ['create', '新建接口'], ['update', '更新接口'], ['remove', '删除接口']];
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-top:4px';
+    slots.forEach(function (s) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px';
+      var lab = document.createElement('span');
+      lab.style.cssText = 'width:52px;flex:none;font-size:9px;color:var(--ink-3)';
+      lab.textContent = s[1];
+      var rs = document.createElement('select');
+      rs.className = 'inp';
+      rs.style.cssText = 'flex:1;min-width:0;font-size:10px;height:24px';
+      var none = document.createElement('option');
+      none.value = '';
+      none.textContent = '不绑定';
+      rs.appendChild(none);
+      var wantKey = s[0] === 'remove' ? 'delete' : s[0];
+      var curPath = app.primary ? String(app.primary[s[0]] || '') : '';
+      var keyRoute = (selected.routes || []).find(function (r) {
+        return String(r.key || '') === wantKey && String(r.path || '') === curPath;
+      });
+      (selected.routes || []).forEach(function (r) {
+        var o = document.createElement('option');
+        o.value = r.path;
+        o.dataset.key = r.key || '';
+        o.dataset.method = String(r.method || 'GET').toUpperCase();
+        o.textContent = String(r.method || 'GET') + ' ' + r.path + ' · ' + (r.name || r.key || '');
+        if (keyRoute ? String(r.key || '') === wantKey && String(r.path || '') === curPath
+          : curPath && String(r.path || '') === curPath && !(app.primary && app.primary[s[0]] && r.key === wantKey)) o.selected = true;
+        rs.appendChild(o);
+      });
+      if (keyRoute) {
+        Array.prototype.forEach.call(rs.options, function (o) {
+          if (String(o.dataset.key || '') === wantKey && String(o.value) === curPath) o.selected = true;
+        });
+      } else if (curPath) rs.value = curPath;
+      rs.addEventListener('change', function () {
+        app = appNodeJson(n);
+        app.primary = app.primary || {};
+        app.primary.iface = selected.name;
+        app.primary[s[0]] = rs.value;
+        n.props.appJson = JSON.stringify(app);
+        n.props.iface = selected.name;
+        syncNode(n); scheduleSave(); renderCanvas(); renderInspector(); commit();
+      });
+      row.appendChild(lab); row.appendChild(rs); grid.appendChild(row);
+    });
+    wrap.appendChild(grid);
+  }
+
+  sel.addEventListener('change', function () {
+    var name = sel.value;
+    var iface = ifaces.find(function (i) { return String(i.name) === name; });
+    if (!iface) return;
+    app = appNodeJson(n);
+    app = ensureAppSkeleton(app, n, iface, ifaces);
+    app.primary = routeDefaults(iface);
+    app.interfaces = ifaces;
+    app.counts = app.counts || {};
+    app.counts.interfaces = ifaces.length;
+    n.props.appJson = JSON.stringify(app);
+    n.props.iface = iface.name;
+    syncNode(n); scheduleSave(); renderCanvas(); renderInspector(); commit();
+    toast('已绑定后端接口「' + iface.name + '」');
+  });
+  return wrap;
+}
 function buildField(f, n) {
   var wrap = document.createElement('div');
   wrap.className = 'field';
@@ -11532,6 +11759,7 @@ function buildField(f, n) {
     return tw;
   }
   if (f.k === 'actions') return buildActionsField(n);
+  if (f.k === 'ifacepick') return buildIfaceField(n);
   if (f.k === 'hint') {
     wrap.className = 'hint';
     wrap.style.fontSize = '10px';
@@ -11599,6 +11827,13 @@ function buildField(f, n) {
       if (f.k === 'num') { v = Number(v); if (isNaN(v)) return; }
       if (f.k === 'color') { if (!/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return; }
       if (f.virtual) { n._cls = v; } else { setVal(n, f.p, v); }
+      if (n.type === 'appview' && /^props\.(brand|kicker|title|sub)$/.test(String(f.p || ''))) {
+        var app = appNodeJson(n);
+        var key = String(f.p).split('.')[1];
+        app.home = app.home || {};
+        if (key === 'brand') app.brand = v; else app.home[key] = v;
+        n.props.appJson = JSON.stringify(app);
+      }
       syncNode(n); scheduleSave(); refreshStatus();
       if (isCommit) commit();
     };
@@ -21057,6 +21292,7 @@ setupGlobalSearch();
     var d = ev.data || {};
     if (!d || typeof d.type !== 'string' || d.type.indexOf('cbs:yxpp:') !== 0) return;
     if (d.type === 'cbs:yxpp:load') {
+      S.ifaces = Array.isArray(d.ifaces) ? d.ifaces : [];
       applyProject(d.project, d.binding, d.lang);
       markSynced(d.at);
       return;
