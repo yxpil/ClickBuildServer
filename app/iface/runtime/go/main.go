@@ -15,16 +15,16 @@ import (
 )
 
 type Field struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Comment string `json:"comment"`
-	Default string `json:"default"`
-	PK      bool   `json:"pk"`
-	Auto    bool   `json:"auto"`
-	Hidden  bool   `json:"hidden"`
-	Query   bool   `json:"query"`
-	Writable bool  `json:"writable"`
-	Search  bool   `json:"search"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Comment  string `json:"comment"`
+	Default  string `json:"default"`
+	PK       bool   `json:"pk"`
+	Auto     bool   `json:"auto"`
+	Hidden   bool   `json:"hidden"`
+	Query    bool   `json:"query"`
+	Writable bool   `json:"writable"`
+	Search   bool   `json:"search"`
 }
 
 type Table struct {
@@ -49,17 +49,17 @@ type Store struct {
 }
 
 type Route struct {
-	ID          string         `json:"id"`
-	Key         string         `json:"key"`
-	Name        string         `json:"name"`
-	Method      string         `json:"method"`
-	Path        string         `json:"path"`
-	Auth        bool           `json:"auth"`
-	Tx          bool           `json:"tx"`
-	Cache       Cache          `json:"cache"`
-	Script      string         `json:"script"`
-	AST         []any          `json:"ast"`
-	ParseErrors []string       `json:"parseErrors"`
+	ID          string   `json:"id"`
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
+	Method      string   `json:"method"`
+	Path        string   `json:"path"`
+	Auth        bool     `json:"auth"`
+	Tx          bool     `json:"tx"`
+	Cache       Cache    `json:"cache"`
+	Script      string   `json:"script"`
+	AST         []any    `json:"ast"`
+	ParseErrors []string `json:"parseErrors"`
 }
 
 type Interface struct {
@@ -72,19 +72,19 @@ type Interface struct {
 }
 
 type Function struct {
-	Name   string `json:"name"`
+	Name   string   `json:"name"`
 	Params []string `json:"params"`
-	AST    any    `json:"ast"`
+	AST    any      `json:"ast"`
 }
 
 type Service struct {
-	Format     string      `json:"format"`
-	Name       string      `json:"name"`
-	APIPrefix  string      `json:"apiPrefix"`
-	Page       map[string]any `json:"page"`
-	Storage    map[string]any `json:"storage"`
-	Functions  []Function  `json:"functions"`
-	Interfaces []Interface `json:"interfaces"`
+	Format     string          `json:"format"`
+	Name       string          `json:"name"`
+	APIPrefix  string          `json:"apiPrefix"`
+	Page       map[string]any  `json:"page"`
+	Storage    map[string]any  `json:"storage"`
+	Functions  []Function      `json:"functions"`
+	Interfaces []Interface     `json:"interfaces"`
 	Seen       map[string]bool `json:"-"`
 }
 
@@ -106,17 +106,13 @@ func loadService(file string) (*Service, error) {
 	return &s, nil
 }
 
-func env(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
 func main() {
 	svc, err := loadService("service.json")
 	if err != nil {
 		log.Fatalf("读取 service.json 失败：%v", err)
+	}
+	if v, ok := configValue("API_PREFIX"); ok && v != "" {
+		svc.APIPrefix = v
 	}
 	for _, it := range svc.Interfaces {
 		for _, t := range it.Tables {

@@ -24,6 +24,8 @@ public class Main {
         }
         if (svc == null) throw new RuntimeException("service.json 解析为空");
         if (svc.apiPrefix == null || svc.apiPrefix.isEmpty()) svc.apiPrefix = "/api";
+        String cfgPrefix = env("API_PREFIX", "");
+        if (cfgPrefix != null && !cfgPrefix.isEmpty()) svc.apiPrefix = cfgPrefix;
         if (svc.page == null) svc.page = new LinkedHashMap<>(Map.of("size", 20));
         if (svc.interfaces != null) {
             for (Model.Iface it : svc.interfaces) {
@@ -47,8 +49,7 @@ public class Main {
     }
 
     static String env(String key, String def) {
-        String v = System.getenv(key);
-        return v == null || v.isEmpty() ? def : v;
+        return Config.get(key, def);
     }
 }
 

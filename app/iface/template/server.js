@@ -17,46 +17,86 @@ const scriptEngine = require('./src/script');
 
 const ROOT = __dirname;
 
-// 读同目录的 .env：方便导出后在 IDEA / 终端里直接 npm start。
-try {
-  const envFile = path.join(ROOT, '.env');
-  if (fs.existsSync(envFile)) {
+// 配置优先级：真正的系统环境变量 > config.json > .env > 内置默认值。
+// config.json 是导出工程的主配置，改完重启即可生效，不需要改 server.js。
+function readDotEnv() {
+  const out = {};
+  try {
+    const envFile = path.join(ROOT, '.env');
+    if (!fs.existsSync(envFile)) return out;
     for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
       const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
       if (!m) continue;
       let value = m[2].trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-      if (process.env[m[1]] == null) process.env[m[1]] = value;
+      const quote = value[0];
+      if (quote === '"' || quote === "'") {
+        const end = value.indexOf(quote, 1);
+        if (end > 0) value = value.slice(1, end);
+      } else {
+        value = value.split(/\s+#/)[0].trim();
+      }
+      out[m[1]] = value;
+    }
+  } catch (e) { console.error('[env] 读取 .env 失败', e.message); }
+  return out;
+}
+function readConfig() {
+  const candidates = [
+    process.env.CBS_CONFIG,
+    path.join(ROOT, 'config.json'),
+    path.join(ROOT, '..', 'config.json'),
+    path.join(ROOT, '..', '..', 'config.json'),
+  ].filter(Boolean);
+  for (const file of candidates) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+      if (parsed && typeof parsed === 'object') {
+        console.log(`[config] 已加载 ${file}`);
+        return parsed;
+      }
+    } catch (e) {
+      console.error(`[config] 读取 ${file} 失败：${e.message}`);
     }
   }
-} catch (e) { console.error('[env] 读取 .env 失败', e.message); }
+  return {};
+}
+const DOT_ENV = readDotEnv();
+const CONFIG = readConfig();
+function cfg(key, fallback) {
+  if (process.env[key] !== undefined) return process.env[key];
+  if (CONFIG[key] !== undefined) return CONFIG[key];
+  if (DOT_ENV[key] !== undefined) return DOT_ENV[key];
+  return fallback;
+}
 
 const CFG = {
-  host: process.env.MYSQL_HOST || '127.0.0.1',
-  port: Number(process.env.MYSQL_PORT || 13306),
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DB || 'clickbuild',
-  redisHost: process.env.REDIS_HOST || '127.0.0.1',
-  redisPort: Number(process.env.REDIS_PORT || 16379),
-  redisDb: Number(process.env.REDIS_DB || 0),
-  s3End: process.env.S3_ENDPOINT || '127.0.0.1',
-  s3Port: Number(process.env.S3_PORT || 19000),
-  s3Key: process.env.S3_ACCESS_KEY || 'clickbuild',
-  s3Secret: process.env.S3_SECRET_KEY || 'clickbuild123',
-  s3Ssl: String(process.env.S3_SSL || 'false') === 'true',
-  httpPort: Number(process.env.PORT || 18100),
-  apiPrefix: process.env.API_PREFIX || '/api',
-  resetDb: String(process.env.RESET_DB || '') === '1',
-  logLevel: String(process.env.LOG_LEVEL || '').toUpperCase(),
+  host: String(cfg('MYSQL_HOST', '127.0.0.1')),
+  port: Number(cfg('MYSQL_PORT', 13306)),
+  user: String(cfg('MYSQL_USER', 'root')),
+  password: String(cfg('MYSQL_PASSWORD', '')),
+  database: String(cfg('MYSQL_DB', 'clickbuild')),
+  redisHost: String(cfg('REDIS_HOST', '127.0.0.1')),
+  redisPort: Number(cfg('REDIS_PORT', 16379)),
+  redisDb: Number(cfg('REDIS_DB', 0)),
+  s3End: String(cfg('S3_ENDPOINT', '127.0.0.1')),
+  s3Port: Number(cfg('S3_PORT', 19000)),
+  s3Key: String(cfg('S3_ACCESS_KEY', 'clickbuild')),
+  s3Secret: String(cfg('S3_SECRET_KEY', 'clickbuild123')),
+  s3Ssl: String(cfg('S3_SSL', 'false')) === 'true',
+  httpPort: Number(cfg('PORT', 18100)),
+  apiPrefix: String(cfg('API_PREFIX', '/api')),
+  resetDb: String(cfg('RESET_DB', '')) === '1' || String(cfg('RESET_DB', '')).toLowerCase() === 'true',
+  logLevel: String(cfg('LOG_LEVEL', '')).toUpperCase(),
+  maxBodyBytes: Math.max(1, Number(cfg('MAX_BODY_MB', 64)) || 64) * 1024 * 1024,
 };
 
 const project = JSON.parse(fs.readFileSync(path.join(ROOT, 'interfaces.json'), 'utf8'));
 const UPSTREAMS = Array.isArray(project.upstreams) ? project.upstreams : [];
 const PERMISSIONS = project.permissions || {};
 const ERR_CFG = project.errors || {};
-const ERR_PAGES = process.env.ERROR_PAGES == null ? ERR_CFG.pages !== false : String(process.env.ERROR_PAGES) !== 'false';
-const ERR_DETAIL = process.env.ERROR_DETAIL == null ? ERR_CFG.detail !== false : String(process.env.ERROR_DETAIL) !== 'false';
+const ERR_PAGES = String(cfg('ERROR_PAGES', ERR_CFG.pages === false ? 'false' : 'true')) !== 'false';
+const ERR_DETAIL = String(cfg('ERROR_DETAIL', ERR_CFG.detail === false ? 'false' : 'true')) !== 'false';
 let IFACES = [];
 try {
   IFACES = require(path.join(ROOT, 'src', 'modules'));
@@ -76,7 +116,7 @@ const CONNS = project.connections || {};
 const LOG_CFG = project.log || {};
 const TOKEN_CFG = project.token || {};
 const DOCS_CFG = project.docs || {};
-const CACHE_NS = process.env.CACHE_PREFIX || `icb:cache:${project.name || 'project'}`;
+const CACHE_NS = String(cfg('CACHE_PREFIX', `icb:cache:${project.name || 'project'}`));
 const STORE_MEM = new Map();
 const STORE_VER = new Map();
 function storePolicy(iface, sql) {
@@ -564,10 +604,12 @@ function readBody(req) {
     req.on('data', (c) => {
       if (tooLarge) return;
       size += c.length;
-      if (size > 64 * 1024 * 1024) {
+      if (size > CFG.maxBodyBytes) {
         tooLarge = true;
         chunks.length = 0;
-        reject(new Error('请求体超过 64MB'));
+        const err = new Error(`请求体超过 ${Math.round(CFG.maxBodyBytes / 1024 / 1024)}MB`);
+        err.code = 'BODY_TOO_LARGE';
+        reject(err);
         return;
       }
       chunks.push(c);
@@ -788,7 +830,7 @@ async function handle(req, res, item) {
   try {
     raw = await readBody(req);
   } catch (e) {
-    if (/64MB/.test(e.message)) {
+    if (e.code === 'BODY_TOO_LARGE' || /请求体超过/.test(e.message)) {
       return sendError(req, res, 413, { ok: false, error: 'BODY_TOO_LARGE', message: e.message, traceId }, '请求体过大');
     }
     throw e;
@@ -1337,7 +1379,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/_errors/413') {
       const traceId = crypto.randomBytes(6).toString('hex');
-      return sendError(req, res, 413, { ok: false, error: 'BODY_TOO_LARGE', message: '这是 413 页面预览：请求体超过 64MB', traceId }, '请求体过大');
+      return sendError(req, res, 413, { ok: false, error: 'BODY_TOO_LARGE', message: `这是 413 页面预览：请求体超过 ${Math.round(CFG.maxBodyBytes / 1024 / 1024)}MB`, traceId }, '请求体过大');
     }
     if (pathname === '/_errors/500') throw new Error('这是 500 页面预览：模拟服务端异常');
     if (pathname === '/_health/interfaces') {

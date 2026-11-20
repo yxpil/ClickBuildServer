@@ -62,6 +62,14 @@ function killTree(child) {
   t('导出 Python Flask 运行时', fs.existsSync(path.join(dir, 'native', 'python', 'app.py')));
   t('导出 Python service.json', fs.existsSync(path.join(dir, 'native', 'python', 'service.json')));
   t('导出 Python 依赖清单', fs.existsSync(path.join(dir, 'native', 'python', 'requirements.txt')));
+  const configFile = path.join(dir, 'config.json');
+  const config = fs.existsSync(configFile) ? JSON.parse(fs.readFileSync(configFile, 'utf8').replace(/^\uFEFF/, '')) : {};
+  t('导出根目录 config.json', fs.existsSync(configFile));
+  t('config.json 含 21 个可改参数', Object.keys(config).length === 21 && config.PORT === 19120, { keys: Object.keys(config).length, port: config.PORT });
+  t('config.json 含数据库/缓存/对象存储键', ['MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_DB', 'REDIS_PORT', 'S3_PORT', 'MAX_BODY_MB'].every((k) => k in config));
+  const envFile = path.join(dir, '.env');
+  const envLines = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8').split(/\r?\n/).filter((l) => l.trim()) : ['missing'];
+  t('.env 只作为注释示例，不覆盖 config.json', envLines.every((l) => l.trim().startsWith('#')));
   t('Java 类名与文件名一致', javaFiles.every((f) => {
     const src = fs.readFileSync(path.join(dir, 'export', 'java', f), 'utf8');
     const m = src.match(/public\s+class\s+([A-Za-z_$][\w$]*)/);

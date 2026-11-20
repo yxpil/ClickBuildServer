@@ -26,34 +26,101 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(ROOT, "service.json"), "r", encoding="utf-8") as f:
     SERVICE = json.load(f)
 
-API_PREFIX = os.environ.get("API_PREFIX", SERVICE.get("apiPrefix") or "/api")
-PORT = int(os.environ.get("PORT", "18100"))
+
+def _find_config_file():
+    candidates = []
+    if os.environ.get("CBS_CONFIG"):
+        candidates.append(os.environ["CBS_CONFIG"])
+    candidates += [
+        os.path.join(ROOT, "config.json"),
+        os.path.join(ROOT, "..", "..", "config.json"),
+        os.path.join(ROOT, "..", "..", "..", "config.json"),
+    ]
+    for file in candidates:
+        try:
+            if file and os.path.isfile(file):
+                return os.path.abspath(file)
+        except Exception:
+            pass
+    return ""
+
+
+def _read_dotenv():
+    out = {}
+    for file in (os.path.join(ROOT, ".env"), os.path.join(ROOT, "..", "..", ".env")):
+        try:
+            if not os.path.isfile(file):
+                continue
+            with open(file, "r", encoding="utf-8") as f:
+                for line in f:
+                    m = re.match(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$", line)
+                    if not m:
+                        continue
+                    value = m.group(2).strip()
+                    if value[:1] in ("'", '"'):
+                        q = value[0]
+                        end = value.find(q, 1)
+                        if end > 0:
+                            value = value[1:end]
+                    else:
+                        value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
+                    out[m.group(1)] = value
+        except Exception:
+            pass
+    return out
+
+
+CONFIG_FILE = _find_config_file()
+CONFIG = {}
+if CONFIG_FILE:
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
+            CONFIG = json.load(f) or {}
+        print("[config] 已加载 " + CONFIG_FILE, flush=True)
+    except Exception as e:
+        print("[config] 读取 %s 失败：%s" % (CONFIG_FILE, e))
+DOT_ENV = _read_dotenv()
+
+
+def cfg(key, fallback=None):
+    """优先级：系统环境变量 > config.json > .env > 代码默认值。"""
+    if key in os.environ:
+        return os.environ[key]
+    if key in CONFIG:
+        return CONFIG[key]
+    if key in DOT_ENV:
+        return DOT_ENV[key]
+    return fallback
+
+
+API_PREFIX = str(cfg("API_PREFIX", SERVICE.get("apiPrefix") or "/api"))
+PORT = int(cfg("PORT", "18100"))
 
 MYSQL = {
-    "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("MYSQL_PORT", "13306")),
-    "user": os.environ.get("MYSQL_USER", "root"),
-    "password": os.environ.get("MYSQL_PASSWORD", ""),
-    "database": os.environ.get("MYSQL_DB", "clickbuild"),
+    "host": str(cfg("MYSQL_HOST", "127.0.0.1")),
+    "port": int(cfg("MYSQL_PORT", "13306")),
+    "user": str(cfg("MYSQL_USER", "root")),
+    "password": str(cfg("MYSQL_PASSWORD", "")),
+    "database": str(cfg("MYSQL_DB", "clickbuild")),
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor,
     "autocommit": False,
 }
 REDIS_CFG = {
-    "host": os.environ.get("REDIS_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("REDIS_PORT", "16379")),
-    "db": int(os.environ.get("REDIS_DB", "0")),
+    "host": str(cfg("REDIS_HOST", "127.0.0.1")),
+    "port": int(cfg("REDIS_PORT", "16379")),
+    "db": int(cfg("REDIS_DB", "0")),
 }
 S3_CFG = {
-    "endpoint": os.environ.get("S3_ENDPOINT", "127.0.0.1"),
-    "port": int(os.environ.get("S3_PORT", "19000")),
-    "access": os.environ.get("S3_ACCESS_KEY", "clickbuild"),
-    "secret": os.environ.get("S3_SECRET_KEY", "clickbuild123"),
-    "secure": os.environ.get("S3_SSL", "false").lower() == "true",
+    "endpoint": str(cfg("S3_ENDPOINT", "127.0.0.1")),
+    "port": int(cfg("S3_PORT", "19000")),
+    "access": str(cfg("S3_ACCESS_KEY", "clickbuild")),
+    "secret": str(cfg("S3_SECRET_KEY", "clickbuild123")),
+    "secure": str(cfg("S3_SSL", "false")).lower() == "true",
 }
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = max(1, int(cfg("MAX_BODY_MB", "64"))) * 1024 * 1024
 
 UPSTREAMS = {u.get("id") or u.get("name"): u for u in (SERVICE.get("upstreams") or [])}
 PERMISSIONS = SERVICE.get("permissions") or {}

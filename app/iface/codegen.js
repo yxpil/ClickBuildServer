@@ -8,6 +8,60 @@ const native = require('./native');
 
 const DEFAULT_PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
 
+// 导出工程的主配置文件。键名和运行时的环境变量一一对应，
+// Node / Python / Go / Java 都优先读 process.env，再读 config.json，最后用内置默认值。
+function runtimeConfig(project, opts) {
+  const p = project || {};
+  const o = opts || {};
+  return {
+    PORT: Number(o.port || DEFAULT_PORTS.http),
+    API_PREFIX: '/api',
+    MYSQL_HOST: '127.0.0.1',
+    MYSQL_PORT: DEFAULT_PORTS.mysql,
+    MYSQL_USER: 'root',
+    MYSQL_PASSWORD: '',
+    MYSQL_DB: 'clickbuild',
+    REDIS_HOST: '127.0.0.1',
+    REDIS_PORT: DEFAULT_PORTS.redis,
+    REDIS_DB: 0,
+    S3_ENDPOINT: '127.0.0.1',
+    S3_PORT: DEFAULT_PORTS.s3,
+    S3_ACCESS_KEY: 'clickbuild',
+    S3_SECRET_KEY: 'clickbuild123',
+    S3_SSL: false,
+    ERROR_PAGES: (p.errors && p.errors.pages) !== false,
+    ERROR_DETAIL: (p.errors && p.errors.detail) !== false,
+    LOG_LEVEL: 'INFO',
+    CACHE_PREFIX: `icb:cache:${p.name || 'project'}`,
+    MAX_BODY_MB: 64,
+    RESET_DB: false,
+  };
+}
+
+const CONFIG_KEYS = [
+  ['PORT', '服务端口'],
+  ['API_PREFIX', '接口前缀'],
+  ['MYSQL_HOST', 'MySQL 主机'],
+  ['MYSQL_PORT', 'MySQL 端口'],
+  ['MYSQL_USER', 'MySQL 用户'],
+  ['MYSQL_PASSWORD', 'MySQL 密码'],
+  ['MYSQL_DB', 'MySQL 数据库'],
+  ['REDIS_HOST', 'Redis 主机'],
+  ['REDIS_PORT', 'Redis 端口'],
+  ['REDIS_DB', 'Redis 库号'],
+  ['S3_ENDPOINT', 'S3 主机'],
+  ['S3_PORT', 'S3 端口'],
+  ['S3_ACCESS_KEY', 'S3 AccessKey'],
+  ['S3_SECRET_KEY', 'S3 SecretKey'],
+  ['S3_SSL', 'S3 是否 HTTPS'],
+  ['ERROR_PAGES', '是否启用错误页'],
+  ['ERROR_DETAIL', '500 是否显示详情'],
+  ['LOG_LEVEL', '日志等级'],
+  ['CACHE_PREFIX', 'Redis 缓存前缀'],
+  ['MAX_BODY_MB', '请求体上限 MB'],
+  ['RESET_DB', '启动时重置数据库'],
+];
+
 function slug(text, fallback) {
   const s = String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return s || (fallback || 'item');
@@ -417,28 +471,14 @@ function generate(project, options) {
 
   if (opts.ide) addIdeaFiles(add);
 
+  const conf = runtimeConfig(p, opts);
+  add('config.json', JSON.stringify(conf, null, 2));
   add('.env', [
-    '# MySQL（ClickBuild 内置临时实例）',
-    `MYSQL_HOST=127.0.0.1`,
-    `MYSQL_PORT=${DEFAULT_PORTS.mysql}`,
-    `MYSQL_USER=root`,
-    `MYSQL_PASSWORD=`,
-    `MYSQL_DB=clickbuild`,
+    '# config.json 是主配置；本文件只作为可选的本地覆盖。',
+    '# 需要覆盖时取消下面对应行的注释，或直接用真正的系统环境变量。',
+    '# 优先级：系统环境变量 > config.json > 本文件。',
     '',
-    '# Redis',
-    `REDIS_HOST=127.0.0.1`,
-    `REDIS_PORT=${DEFAULT_PORTS.redis}`,
-    `REDIS_DB=0`,
-    '',
-    '# 对象存储 RustFS / S3',
-    `S3_ENDPOINT=127.0.0.1`,
-    `S3_PORT=${DEFAULT_PORTS.s3}`,
-    `S3_ACCESS_KEY=clickbuild`,
-    `S3_SECRET_KEY=clickbuild123`,
-    `S3_SSL=false`,
-    '',
-    `PORT=${opts.port || DEFAULT_PORTS.http}`,
-    `API_PREFIX=/api`,
+    ...CONFIG_KEYS.map(([k, label]) => `# ${k}=${JSON.stringify(conf[k])}   # ${label}`),
     '',
   ].join('\n'));
 
@@ -469,7 +509,7 @@ function generate(project, options) {
     'go run .',
     '```',
     '',
-    `默认端口来自环境变量 \`PORT\`，接口前缀 \`${snapshot.apiPrefix}\`，数据库连接读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`。`,
+    `默认端口与接口前缀读工程根目录 \`config.json\`（键名 \`PORT\` / \`API_PREFIX\`），数据库读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`；系统环境变量可覆盖配置文件。`,
     '',
     '支持：路由匹配、脚本 IF / FOREACH / RETURN、SQL 占位符、MySQL 查询与写入、TOKEN 会话、内置函数、上传落本地 `uploads/`。',
     '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
@@ -489,7 +529,7 @@ function generate(project, options) {
     'java -cp "bin;lib/*" icb.Main',
     '```',
     '',
-    `默认端口来自环境变量 \`PORT\`，接口前缀 \`${snapshot.apiPrefix}\`，数据库连接读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`。`,
+    `默认端口与接口前缀读工程根目录 \`config.json\`（键名 \`PORT\` / \`API_PREFIX\`），数据库读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`；系统环境变量可覆盖配置文件。`,
     '',
     '依赖 `lib/` 内的 MySQL Connector/J、Gson、BouncyCastle，支持 SM4、AES、TOKEN、事务、上传与脚本内置函数。',
     '尚未接入：Redis 缓存/发布、S3、外部 HTTP 调用；这些路由会明确报错，不会静默返回假数据。',
@@ -512,6 +552,7 @@ function generate(project, options) {
     '```',
     '',
     '支持：路由匹配、IF / FOREACH / RETURN / LET QUERY / EXEC / TX / WAIT / HTTP / CRAWL / TOKEN、SQL 占位符、上传、对象表、上游转发、角色权限。',
+    '配置：工程根目录 `config.json` 管端口、MySQL、Redis、S3；系统环境变量优先，`config.json` 次之。',
     '说明：Python 运行时直连 MySQL；Redis / S3 连接不上时会降级为内存 token / 本地 `uploads/`，并在启动日志中标注。',
     '',
   ].join('\n'));
@@ -697,6 +738,13 @@ Write-Host "已创建登录自启任务：$TaskName"
     '',
     `启动后：控制台 http://127.0.0.1:${opts.port || DEFAULT_PORTS.http}/ ，文档 /docs ，路由清单 /_routes ，元信息 /_meta ，日志流 /_logs/stream 。`,
     `错误页：浏览器请求 404/500 默认显示错误页；API 客户端仍收到 JSON。预览：/_errors/404 、/_errors/500 。`,
+    '',
+    '## 配置文件',
+    '',
+    '- 根目录 `config.json` 是主配置：端口、接口前缀、MySQL、Redis、S3、错误页、日志等级、请求体上限都在这里改。',
+    '- 键名与运行时环境变量一一对应，例如 `MYSQL_DB`、`MYSQL_PASSWORD`、`PORT`。',
+    '- 优先级：系统环境变量 > `config.json` > `.env`；改完重启服务生效。',
+    '- Node、Python Flask、Go、Java 四套运行时都读同一份 `config.json`。',
     '',
     '- 数据落 MySQL，GET 结果可走 Redis 旁路缓存，附件进 RustFS。',
     '- 写路由可开事务（guard.tx），脚本异常自动回滚并写 FATAL 日志。',
