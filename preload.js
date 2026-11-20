@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('icb', {
   generate: (project, dir, opts) => invoke('iface:generate', project, dir, opts),
   deploy: (project, opts) => invoke('iface:deploy', project, opts || {}),
   services: () => invoke('iface:services'),
+  resources: (items) => invoke('iface:resources', items || []),
   startService: (id) => invoke('iface:services:start', id || ''),
   stopService: (id) => invoke('iface:services:stop', id || ''),
   logs: (id) => invoke('iface:services:logs', id),

@@ -11,6 +11,7 @@ const docs = require('./docs');
 const funcs = require('./funcs');
 const codegen = require('./codegen');
 const services = require('./services');
+const resources = require('./resources');
 const projects = require('./project-store');
 const pkg = require('./package');
 const ai = require('./ai');
@@ -255,6 +256,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('iface:services', async () => services.status());
+  ipcMain.handle('iface:resources', (e, items) => resources.snapshot(items));
   ipcMain.handle('iface:services:start', async (e, id) => {
     if (id === 'mysql') return services.startMysql();
     if (id === 'redis') return services.startRedis();

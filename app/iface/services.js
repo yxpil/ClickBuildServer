@@ -224,10 +224,12 @@ async function preparePorts(wantOverride) {
 
 async function status() {
   const { ports, servicesRoot } = settings();
-  const mysqlOpen = await isPortOpen(ports.mysql);
-  const redisOpen = await isPortOpen(ports.redis);
-  const s3Open = await isPortOpen(ports.s3);
-  const httpOpen = await isPortOpen(ports.http);
+  const [mysqlOpen, redisOpen, s3Open, httpOpen] = await Promise.all([
+    isPortOpen(ports.mysql),
+    isPortOpen(ports.redis),
+    isPortOpen(ports.s3),
+    isPortOpen(ports.http),
+  ]);
   const bin = {
     mariadbd: path.join(servicesRoot, 'MariaDB', 'bin', 'mariadbd.exe'),
     installDb: path.join(servicesRoot, 'MariaDB', 'bin', 'mariadb-install-db.exe'),

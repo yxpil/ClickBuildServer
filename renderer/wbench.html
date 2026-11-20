@@ -598,6 +598,7 @@
   .side-check, .side-head span, .side-ports, .side-details summary, .side-kv { color: var(--cb-muted); }
   .side-kv b { color: var(--cb-text-2); }
   .side-svc { color: var(--cb-text-2); }
+  .side-mem { font: 9.5px/1 var(--cb-font); color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   /* 表格与分类栏 */
   .gt { border-collapse: separate; border-spacing: 0; }
@@ -655,6 +656,88 @@
     box-shadow: none !important;
     color: var(--cb-accent);
     font-weight: 600;
+  }
+  #resStats {
+    flex: none;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-left: 5px;
+    padding: 0 8px 0 10px;
+    border-left: 1px solid var(--cb-line);
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #resStats:hover { background: var(--cb-hover); }
+  #resStats.on { background: var(--cb-accent-soft); }
+  .res-chip { display: inline-flex; align-items: center; gap: 4px; font: 10.5px/1 var(--cb-font); color: #7c8492; white-space: nowrap; }
+  .res-chip .res-key { color: #8b93a1; }
+  .res-chip b { color: #46505f; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .res-chip b.res-bad { color: #c23b3b; }
+  .res-chip .res-sub { color: #8b93a1; font-variant-numeric: tabular-nums; }
+  .res-meter { width: 30px; height: 4px; border-radius: 3px; background: #edf0f4; overflow: hidden; }
+  .res-meter i { display: block; height: 100%; border-radius: 3px; background: var(--cb-accent); transition: width .25s ease; }
+  .res-meter.warn i { background: #d9952f; }
+  .res-meter.bad i { background: #d64545; }
+  .res-dot { width: 5px; height: 5px; border-radius: 50%; background: #26a269; }
+  .res-dot.off { background: #d9952f; }
+  .res-pop {
+    position: fixed;
+    z-index: 30;
+    width: min(620px, calc(100vw - 24px));
+    max-height: min(70vh, 560px);
+    bottom: 46px;
+    right: 12px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid var(--cb-line);
+    border-radius: 11px;
+    box-shadow: 0 18px 52px rgba(19,25,35,.18);
+  }
+  .res-pop-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 9px; border-bottom: 1px solid var(--cb-line-soft); position: sticky; top: 0; background: #fff; z-index: 1; }
+  .res-pop-head b { font-size: 13px; color: var(--cb-text); }
+  .res-pop-head .res-time { font: 10.5px/1.4 var(--cb-font); color: #8b93a1; }
+  .res-pop-head .res-close { width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #8b93a1; cursor: pointer; }
+  .res-pop-head .res-close:hover { background: var(--cb-hover); color: var(--cb-text); }
+  .res-pop-head .res-refresh { height: 24px; padding: 0 8px; border: 1px solid var(--cb-line); border-radius: 6px; background: #fff; color: #697280; font-size: 10.5px; cursor: pointer; }
+  .res-pop-head .res-refresh:hover { border-color: #c9d8f5; color: var(--cb-accent); background: #fbfdff; }
+  .res-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 14px 4px; }
+  .res-card { border: 1px solid var(--cb-line-soft); border-radius: 9px; background: #fbfcfe; padding: 9px 11px 10px; }
+  .res-card-top { display: flex; align-items: baseline; gap: 6px; }
+  .res-card-top span { font-size: 11px; color: #7c8492; }
+  .res-card-top b { margin-left: auto; font: 600 15px/1 var(--cb-font); color: #39424f; font-variant-numeric: tabular-nums; }
+  .res-card-top b.warn { color: #b8791f; }
+  .res-card-top b.bad { color: #c23b3b; }
+  .res-card-sub { margin-top: 5px; font: 10px/1.55 var(--cb-font); color: #8b93a1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .res-card-bar { margin-top: 7px; height: 5px; border-radius: 3px; background: #edf0f4; overflow: hidden; }
+  .res-card-bar i { display: block; height: 100%; border-radius: 3px; background: var(--cb-accent); }
+  .res-card-bar.warn i { background: #d9952f; }
+  .res-card-bar.bad i { background: #d64545; }
+  .res-notes { margin: 7px 14px 0; padding: 9px 11px; border: 1px solid #e3e9f3; border-radius: 9px; background: #f7faff; }
+  .res-notes-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .res-notes-head b { font-size: 11.5px; color: #39424f; }
+  .res-notes-head .res-level { margin-left: auto; font: 600 10px/1 var(--cb-font); color: #1f7a55; }
+  .res-notes-head .res-level.warn { color: #b8791f; }
+  .res-notes-head .res-level.bad { color: #c23b3b; }
+  .res-notes ul { margin: 0; padding-left: 15px; }
+  .res-notes li { font: 11px/1.65 var(--cb-font); color: #5b6472; }
+  .res-svc { margin: 10px 14px 13px; }
+  .res-svc-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .res-svc-head b { font-size: 11.5px; color: #39424f; }
+  .res-svc-head span { margin-left: auto; font: 10px/1 var(--cb-font); color: #8b93a1; }
+  .res-svc-row { display: grid; grid-template-columns: 12px 1fr 74px 56px; gap: 7px; align-items: center; height: 27px; padding: 0 7px; border-radius: 6px; font-size: 11px; color: #5b6472; }
+  .res-svc-row + .res-svc-row { border-top: 1px solid var(--cb-line-soft); }
+  .res-svc-row.head { height: 22px; border: 0; background: transparent; color: #9aa1ac; font-size: 10px; }
+  .res-svc-row.head + .res-svc-row { border-top: 1px solid var(--cb-line-soft); }
+  .res-svc-row .res-svc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .res-svc-row .res-svc-name em { font-style: normal; color: #9aa1ac; font-size: 9.5px; margin-left: 5px; }
+  .res-svc-row .res-svc-mem { text-align: right; font: 10.5px/1 var(--cb-font); color: #5b6472; font-variant-numeric: tabular-nums; }
+  .res-svc-row .res-svc-port { text-align: right; font: 10px/1 var(--cb-font); color: #9aa1ac; font-variant-numeric: tabular-nums; }
+  .res-foot { padding: 0 14px 12px; font: 10px/1.5 var(--cb-font); color: #9aa1ac; }
+  @media (max-width: 1240px) {
+    .res-chip.hide-sm { display: none; }
   }
 
   /* 弹窗、菜单与浮层 */
@@ -999,6 +1082,7 @@
 <div id="modal" class="hidden fixed inset-0 bg-black/30 z-40 flex items-center justify-center"></div>
 <div id="toast" class="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 hidden border border-neutral-900 bg-white px-4 py-2 text-[12px] shadow"></div>
 <div id="drawer" class="hidden fixed right-0 top-0 h-full w-[680px] bg-white border-l border-neutral-900 z-40 flex flex-col"></div>
+<div id="resPop" class="res-pop hidden fixed z-30"></div>
 <div id="ctxmenu" class="hidden fixed z-50 bg-white border border-neutral-900 shadow text-[12px] min-w-[180px]"></div>
 
 <div id="projectHub" class="hidden fixed inset-0 z-[60]"></div>

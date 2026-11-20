@@ -8,6 +8,7 @@ const S = {
   project: null,
   list: [],
   services: null,
+  res: null,
   settings: null,
   cat: '',
   mode: 'grid',
@@ -1051,7 +1052,9 @@ function renderSheets() {
       <span class="mono">${S.project.interfaces.reduce((n, i) => n + i.tables.length, 0)} 表</span>
       <span class="mono">${S.project.interfaces.reduce((n, i) => n + i.routes.length, 0)} 路由</span>
       <span id="saveState" class="mono cursor-pointer" style="color:${saveColor}" title="${saveTitle}">${esc(S.saveText)}</span>
-    </div>`;
+    </div>
+    <div id="resStats" role="button" aria-label="资源占用分析" title="资源占用分析"></div>`;
+  renderResourceBar();
   $$('#sheetbar .sheet[data-sheet]').forEach((el) => {
     el.addEventListener('click', () => { S.cat = el.dataset.sheet; S.mode = 'grid'; S.tab = 'tables'; render(); });
     el.addEventListener('dblclick', async () => {
@@ -1063,6 +1066,161 @@ function renderSheets() {
   });
   const sv = $('#saveState');
   if (sv) sv.onclick = () => save();
+}
+
+/* ---------------- 资源占用 ---------------- */
+const RES_TONE = (pct, warn = 65, bad = 85) => {
+  if (pct == null || !Number.isFinite(pct)) return '';
+  if (pct >= bad) return 'bad';
+  if (pct >= warn) return 'warn';
+  return '';
+};
+function resBytes(n) {
+  const v = Number(n) || 0;
+  if (v >= 1024 ** 3) return `${(v / 1024 ** 3).toFixed(v >= 10 * 1024 ** 3 ? 1 : 2)} GB`;
+  if (v >= 1024 ** 2) return `${(v / 1024 ** 2).toFixed(1)} MB`;
+  if (v >= 1024) return `${Math.round(v / 1024)} KB`;
+  return `${Math.round(v)} B`;
+}
+function resPct(n, digits = 0) {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `${Number(n).toFixed(digits)}%`;
+}
+function resServiceMem(id) {
+  const hit = ((S.res && S.res.services) || []).find((x) => x.id === id);
+  return hit ? hit.memBytes : 0;
+}
+function renderResourceBar() {
+  const box = $('#resStats');
+  if (!box) return;
+  const r = S.res;
+  const cpu = r && r.cpu ? r.cpu.percent : null;
+  const mem = r && r.memory ? r.memory.percent : null;
+  const disk = r && r.disk ? r.disk.percent : null;
+  const svc = r ? `${r.serviceRunning}/${r.services.length}` : '—';
+  const svcMem = r ? resBytes(r.serviceMem) : '—';
+  const appCpu = r && r.app ? r.app.cpuPercent : null;
+  const appMem = r && r.app ? r.app.memBytes : null;
+  const off = !!(r && r.services.some((x) => x.running === false));
+  const cpuTone = RES_TONE(cpu);
+  const memTone = RES_TONE(mem);
+  const diskTone = RES_TONE(disk, 90, 97);
+  box.className = $('#resPop') && !$('#resPop').classList.contains('hidden') ? 'on' : '';
+  box.innerHTML = `
+    <span class="res-chip" title="CPU ${resPct(cpu, 1)} · ${(r && r.cpu.cores) || '—'} 核 · 本应用 ${resPct(appCpu, 1)}">
+      <span class="res-key">CPU</span>
+      <span class="res-meter ${cpuTone}"><i style="width:${cpu == null ? 0 : Math.max(1, Math.min(100, cpu))}%"></i></span>
+      <b>${resPct(cpu, 0)}</b>
+    </span>
+    <span class="res-chip" title="内存 ${resPct(mem, 1)} · ${r ? resBytes(r.memory.used) + ' / ' + resBytes(r.memory.total) : '—'} · 本应用 ${resBytes(appMem)}">
+      <span class="res-key">内存</span>
+      <span class="res-meter ${memTone}"><i style="width:${mem == null ? 0 : Math.max(1, Math.min(100, mem))}%"></i></span>
+      <b>${resPct(mem, 0)}</b>
+    </span>
+    <span class="res-chip hide-sm" title="磁盘 ${resPct(disk, 1)} · ${r && r.disk ? r.disk.label + ' 盘可用 ' + resBytes(r.disk.free) : '—'}">
+      <span class="res-key">磁盘</span><b class="${diskTone === 'bad' ? 'res-bad' : ''}">${resPct(disk, 0)}</b>
+    </span>
+    <span class="res-chip" title="服务进程 ${svc} 运行 · 内存合计 ${svcMem} · 本应用 ${r ? r.app.processes : 0} 个进程">
+      <span class="res-dot ${off ? 'off' : ''}"></span>
+      <span class="res-key">服务</span><b>${svc}</b><span class="res-sub hide-sm">${svcMem}</span>
+    </span>`;
+  box.onclick = (e) => { e.stopPropagation(); toggleResPop(); };
+}
+function toggleResPop(force) {
+  const pop = $('#resPop');
+  if (!pop) return;
+  const open = typeof force === 'boolean' ? force : pop.classList.contains('hidden');
+  if (!open) {
+    pop.classList.add('hidden');
+    renderResourceBar();
+    return;
+  }
+  pop.classList.remove('hidden');
+  renderResPop();
+  renderResourceBar();
+  sampleResources(true);
+}
+function renderResPop() {
+  const pop = $('#resPop');
+  if (!pop || pop.classList.contains('hidden')) return;
+  const r = S.res;
+  if (!r) {
+    pop.innerHTML = `<div class="res-pop-head"><b>资源占用分析</b><span class="res-time">正在采样…</span><button class="res-close" id="resClose" title="关闭">×</button></div>`;
+    const close = $('#resClose');
+    if (close) close.onclick = (e) => { e.stopPropagation(); toggleResPop(false); };
+    return;
+  }
+  const cpu = r.cpu.percent;
+  const mem = r.memory.percent;
+  const disk = r.disk ? r.disk.percent : null;
+  const net = r.net;
+  const lv = r.analysis.level;
+  const lvText = { ok: '正常', warn: '注意', bad: '偏高' }[lv] || '正常';
+  const time = new Date(r.at).toLocaleTimeString('zh-CN', { hour12: false });
+  const services = r.services || [];
+  const maxMem = Math.max(1, ...services.map((x) => x.memBytes || 0));
+  pop.innerHTML = `
+    <div class="res-pop-head">
+      <b>资源占用分析</b>
+      <span class="res-time"><span class="res-key">采样</span> ${time}</span>
+      <button class="res-refresh" id="resRefresh">立即刷新</button>
+      <button class="res-close" id="resClose" title="关闭">×</button>
+    </div>
+    <div class="res-cards">
+      <div class="res-card">
+        <div class="res-card-top"><span>CPU</span><b class="${RES_TONE(cpu)}">${resPct(cpu, 1)}</b></div>
+        <div class="res-card-sub"><span class="res-key">CPU 核心</span> ${r.cpu.cores} · <span class="res-key">本应用</span> ${resPct(r.app.cpuPercent, 1)}</div>
+        <div class="res-card-bar ${RES_TONE(cpu)}"><i style="width:${cpu == null ? 0 : Math.max(1, Math.min(100, cpu))}%"></i></div>
+      </div>
+      <div class="res-card">
+        <div class="res-card-top"><span>内存</span><b class="${RES_TONE(mem)}">${resPct(mem, 1)}</b></div>
+        <div class="res-card-sub">${resBytes(r.memory.used)} / ${resBytes(r.memory.total)} · <span class="res-key">本应用</span> ${resBytes(r.app.memBytes)}</div>
+        <div class="res-card-bar ${RES_TONE(mem)}"><i style="width:${mem == null ? 0 : Math.max(1, Math.min(100, mem))}%"></i></div>
+      </div>
+      <div class="res-card">
+        <div class="res-card-top"><span><span class="res-key">磁盘</span> ${r.disk ? esc(r.disk.label) : ''}</span><b class="${RES_TONE(disk, 90, 97)}">${resPct(disk, 1)}</b></div>
+        <div class="res-card-sub"><span class="res-key">可用</span> ${r.disk ? resBytes(r.disk.free) : '—'} · <span class="res-key">共</span> ${r.disk ? resBytes(r.disk.total) : '—'}</div>
+        <div class="res-card-bar ${RES_TONE(disk, 90, 97)}"><i style="width:${disk == null ? 0 : Math.max(1, Math.min(100, disk))}%"></i></div>
+      </div>
+      <div class="res-card">
+        <div class="res-card-top"><span>网络</span><b>↓ ${net ? resBytes(net.rxRate) : '—'}/s</b></div>
+        <div class="res-card-sub">↑ ${net ? resBytes(net.txRate) : '—'}/s · <span class="res-key">接收</span> ${net ? resBytes(net.rx) : '—'} / <span class="res-key">发送</span> ${net ? resBytes(net.tx) : '—'}</div>
+        <div class="res-card-sub"><span class="res-key">本应用进程</span> ${r.app.processes} · <span class="res-key">含主进程、渲染进程与 GPU</span></div>
+      </div>
+    </div>
+    <div class="res-notes">
+      <div class="res-notes-head"><b>资源分析</b><span class="res-level ${lv}">${lvText}</span></div>
+      <ul>${(r.analysis.notes || []).map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+    </div>
+    <div class="res-svc">
+      <div class="res-svc-head"><b>服务进程</b><span>${r.serviceRunning}/${services.length} <span class="res-key">运行中</span> · <span class="res-key">合计</span> ${resBytes(r.serviceMem)}</span></div>
+      <div class="res-svc-row head"><span></span><span>进程</span><span class="res-svc-mem">内存</span><span class="res-svc-port">端口</span></div>
+      ${services.map((x) => `
+        <div class="res-svc-row" title="${esc(x.name)} PID ${x.pid || '—'}">
+          <span class="res-dot ${x.running ? '' : 'off'}"></span>
+          <span class="res-svc-name">${esc(x.name)}<em>${x.pid ? 'PID ' + x.pid : ''}</em></span>
+          <span class="res-svc-mem">${x.memBytes ? resBytes(x.memBytes) : '—'}</span>
+          <span class="res-svc-port">${x.port || '—'}</span>
+        </div>`).join('') || `<div class="res-svc-row"><span></span><span class="res-svc-name">还没有运行中的服务</span><span class="res-svc-mem">—</span><span class="res-svc-port">—</span></div>`}
+    </div>
+    <div class="res-foot">服务内存来自 tasklist 实测，约 6 秒缓存一次；CPU、内存、磁盘、网络每次采样实时读取。</div>`;
+  const close = $('#resClose');
+  if (close) close.onclick = (e) => { e.stopPropagation(); toggleResPop(false); };
+  const refresh = $('#resRefresh');
+  if (refresh) refresh.onclick = (e) => { e.stopPropagation(); sampleResources(true); };
+}
+let resBusy = false;
+async function sampleResources(force) {
+  if (!S.project || resBusy) return;
+  if (!force && document.hidden) return;
+  resBusy = true;
+  try {
+    const items = ((S.services && S.services.items) || []).map((x) => ({ id: x.id, name: x.name, port: x.port, running: x.running, pid: x.pid }));
+    S.res = await api.resources(items);
+    renderResourceBar();
+    renderResPop();
+  } catch (e) { /* 采样失败不影响工作台 */ }
+  finally { resBusy = false; }
 }
 
 function renderSide() {
@@ -1077,6 +1235,7 @@ function renderSide() {
   const problems = S.problems || [];
   const infra = (svc.items || []).filter((x) => x.id !== 'server');
   const up = infra.filter((x) => x.running).length;
+  const infraMem = infra.reduce((n, x) => n + resServiceMem(x.id), 0);
   $('#sideTop').innerHTML = `
   <div class="side-sect">
     <h4>项目概览</h4>
@@ -1090,12 +1249,13 @@ function renderSide() {
   </div>
 
   <div class="side-sect">
-    <div class="side-head"><h4>运行环境</h4><span>${up}/${infra.length} 运行</span></div>
+    <div class="side-head"><h4>运行环境</h4><span>${up}/${infra.length} 运行${infraMem ? ' · ' + resBytes(infraMem) : ''}</span></div>
     ${svc.bundled === false ? `<div class="text-[11px] text-red-600 mb-1">安装包缺少服务文件：${esc((svc.missing || []).join('、'))}</div>` : ''}
     ${svc.items.filter((x) => x.id !== 'server').map((it) => `
-      <div class="side-svc">
+      <div class="side-svc" title="${it.running ? '运行中' : '未运行'}${resServiceMem(it.id) ? ' · 内存 ' + resBytes(resServiceMem(it.id)) : ''}">
         <span class="dot ${it.running ? 'on' : 'off'}"></span>
         <span class="flex-1 truncate">${esc(it.name)}</span>
+        ${resServiceMem(it.id) ? `<span class="side-mem">${resBytes(resServiceMem(it.id))}</span>` : ''}
         <span class="mono text-[10px] text-neutral-500">${it.port}</span>
         <button class="btn thin side-mini" data-svc="${it.id}" data-on="${it.running ? '0' : '1'}">${it.running ? '停止' : '启动'}</button>
       </div>`).join('')}
@@ -2909,9 +3069,9 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
         <div class="hb-card"><b>顶部：项目标签 + Ribbon</b><p>项目标签显示当前打开的工程；下面一排 Ribbon 按“工程 / 接口 / 表结构 / 脚本 / 运行 / 插件 / 导出与更多”分组，新建接口、启动、测试都在这里。</p></div>
         <div class="hb-card"><b>左侧：接口内部导航</b><p>“业务表格、平台表格、删除接口、表结构、路由脚本、接口类型、接口文档、缓存与存储、上游、权限、对象表、测试、生成导出”。它只切换当前接口的页，不等于切换工程。</p></div>
         <div class="hb-card"><b>中间：当前页画布</b><p>字段表格、脚本编辑器、文档预览、试运行结果都落在这里。宽度变化时表格和编辑器会自适应，左导航不会消失。</p></div>
-        <div class="hb-card"><b>右侧：运行环境</b><p>显示 MariaDB、Redis、RustFS、生成服务的真实端口和运行状态；服务没起来时，这里就是第一现场。帮助模式会临时收起这一栏给正文让位。</p></div>
+        <div class="hb-card"><b>右侧：运行环境</b><p>显示 MariaDB、Redis、RustFS、生成服务的真实端口、运行状态和进程内存；服务没起来时，这里就是第一现场。帮助模式会临时收起这一栏给正文让位。</p></div>
       </div>
-      <div class="hb-tip"><b>找不到按钮时</b><div>先看 Ribbon 的分组名，再看左侧导航。底部状态栏会写当前工程、接口数、表数和“已保存”；右上角“搜索接口 / 表 / 字段 / 路由 / SQL”是跨当前工程搜索，不是帮助搜索。</div></div>
+      <div class="hb-tip"><b>找不到按钮时</b><div>先看 Ribbon 的分组名，再看左侧导航。底部状态栏会写当前工程、接口数、表数和“已保存”，右侧同时显示 CPU、内存、磁盘、服务运行数和进程内存；点这一块会展开资源占用分析，列出每个服务进程的 PID、内存、端口，并根据磁盘余量、服务在线情况给出提示。右上角“搜索接口 / 表 / 字段 / 路由 / SQL”是跨当前工程搜索，不是帮助搜索。</div></div>
       <div class="hb-h3">工程历史页</div>
       <div class="hb-p">启动应用先进入“工程历史”。左键工程卡片直接打开；右键有“打开 / 复制工程 / 删除工程”；卡片右上角红叉也是删除。顶部搜索会同时过滤工程名、描述、路径和模版标签。</div>
       <div class="hb-grid">
@@ -4565,6 +4725,15 @@ function defaultFields() {
   ];
 }
 
+document.addEventListener('click', (e) => {
+  if (!$('#resPop') || $('#resPop').classList.contains('hidden')) return;
+  if (e.target.closest('#resPop') || e.target.closest('#resStats')) return;
+  toggleResPop(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#resPop') && !$('#resPop').classList.contains('hidden')) toggleResPop(false);
+});
+
 /* ---------------- 事件绑定 ---------------- */
 document.addEventListener('click', (e) => {
   const pl = e.target.closest('[data-plugin-run]');
@@ -5703,6 +5872,7 @@ function setView(view) {
   if (S.view === 'studio' && next === 'api' && studioDirty) saveStudioToProject('切换视图');
   S.view = next;
   const studio = S.view === 'studio';
+  if (studio) toggleResPop(false);
   $('#ribbon').classList.toggle('hidden', studio);
   $('#workbenchMain').classList.toggle('hidden', studio);
   $('#sheetbar').classList.toggle('hidden', studio);
@@ -5715,6 +5885,7 @@ function setView(view) {
     if (studioReady) syncStudioFromProject(false);
   } else {
     render();
+    sampleResources();
   }
 }
 
@@ -5901,6 +6072,7 @@ async function showProjectHub() {
   S.list = HUB.list;
   const tpl = await api.templates();
   HUB.templates = tpl && tpl.ok ? tpl.list : [];
+  toggleResPop(false);
   $('#projectHub').classList.remove('hidden');
   renderProjectHub();
 }
@@ -6021,6 +6193,7 @@ async function enterWorkspace(p, opts) {
   }
   hideProjectHub();
   S.project = p;
+  S.res = null;
   if (!TASK_KINDS[S.project.taskType]) S.project.taskType = 'mixed';
   $('#projectName').value = S.project.name;
   $('#taskKind').value = taskKindOf(S.project);
@@ -6176,6 +6349,7 @@ window.addEventListener('blur', hideHubMenu);
         const detailsOpen = !!(document.querySelector('#sideTop .side-details') && document.querySelector('#sideTop .side-details').open);
         S.services = await api.services();
         renderRibbon();
+        await sampleResources();
         renderSide();
         if (detailsOpen) {
           const d = document.querySelector('#sideTop .side-details');

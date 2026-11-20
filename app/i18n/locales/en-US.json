@@ -70,7 +70,7 @@
     "说明": "Description",
     "标签": "Label",
     "方法": "Method",
-    "发送": "Send",
+    "发送": "Sent",
     "响应": "Response",
     "用途": "Purpose",
     "参数": "Parameter",
@@ -927,7 +927,7 @@
     "项目标签": "Project Tags",
     "先保存当前工程，再新建一个任务": "Save the current project first, then create a new task",
     "打开已有工程，开成新标签": "Open existing Project in a new tab",
-    "运行": "Run",
+    "运行": "Running",
     "补审计字段": "Add audit fields",
     "给当前表补 updated_by 字段": "Add updated_by field to the current table",
     "插件报告": "Plugin report",
@@ -949,7 +949,39 @@
     "过滤当前控制台输出…": "Filter current console output…",
     "自动滚动": "Auto-scroll",
     "清屏": "Clear screen",
-    "搜索接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)": "Search API / Table / Field / Route / SQL    (Ctrl+K)"
+    "搜索接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)": "Search API / Table / Field / Route / SQL    (Ctrl+K)",
+    "资源占用分析": "Resource Usage Analysis",
+    "正在采样…": "Sampling…",
+    "立即刷新": "Refresh Now",
+    "分析": "Analysis",
+    "正常": "Normal",
+    "注意": "Caution",
+    "偏高": "High",
+    "服务进程": "Service Processes",
+    "内存": "Memory",
+    "磁盘": "Disk",
+    "网络": "Network",
+    "核": "Core",
+    "本应用": "This Application",
+    "可用": "Available",
+    "共": "Total",
+    "累计收": "Accumulated Received",
+    "发": "Send",
+    "含主进程、渲染进程与 GPU": "Includes main process, renderer process, and GPU",
+    "未运行": "Not running",
+    "内存合计": "Total memory",
+    "合计": "Total",
+    "还没有运行中的服务": "No services are currently running",
+    "服务内存来自 tasklist 实测，约 6 秒缓存一次；CPU、内存、磁盘、网络每次采样实时读取。": "Service memory is measured directly from tasklist and cached approximately every 6 seconds; CPU, memory, disk, and network data are read in real time with each sample.",
+    "采样": "Sampled",
+    "CPU 核心": "CPU Cores",
+    "接收": "Received",
+    "资源分析": "Resource Analysis",
+    "本应用进程": "App processes",
+    "进程": "Process",
+    "端口": "Port",
+    "显示 MariaDB、Redis、RustFS、生成服务的真实端口、运行状态和进程内存；服务没起来时，这里就是第一现场。帮助模式会临时收起这一栏给正文让位。": "Displays the actual ports, runtime status, and process memory of MariaDB, Redis, RustFS, and Generate Service. If a service fails to start, this is the first place to check. Help mode temporarily collapses this section to make room for the main content.",
+    "先看 Ribbon 的分组名，再看左侧导航。底部状态栏会写当前工程、接口数、表数和“已保存”，右侧同时显示 CPU、内存、磁盘、服务运行数和进程内存；点这一块会展开资源占用分析，列出每个服务进程的 PID、内存、端口，并根据磁盘余量、服务在线情况给出提示。右上角“搜索接口 / 表 / 字段 / 路由 / SQL”是跨当前工程搜索，不是帮助搜索。": "First, check the group names in the Ribbon, then the left navigation. The bottom status bar shows the current Project, number of APIs, and number of tables, along with “Saved.” On the right, it also displays CPU, memory, disk usage, number of running services, and process memory. Clicking this area expands the resource usage analysis, listing each service process’s PID, memory, and port, and provides tips based on available disk space and service availability. The “Search API / Table / Field / Route / SQL” control in the upper-right corner searches across the current Project, not Help content."
   },
   "patterns": [
     {
@@ -1431,6 +1463,70 @@
     {
       "src": "只前端任务 · ${desc}",
       "dst": "Frontend-Only Tasks · $1"
+    },
+    {
+      "src": "CPU ${pct}% · ${cores} 核 · 本应用 ${app}%",
+      "dst": "CPU $1% · $2 cores · This app $3%"
+    },
+    {
+      "src": "内存 ${pct}% · ${used} / ${total} · 本应用 ${app}",
+      "dst": "Memory $1% · $2 / $3 · This app $4"
+    },
+    {
+      "src": "磁盘 ${pct}% · ${drive} 盘可用 ${free}",
+      "dst": "Disk $1% · $2 available disk space $3"
+    },
+    {
+      "src": "服务进程 ${svc} 运行 · 内存合计 ${mem} · 本应用 ${n} 个进程",
+      "dst": "Service process $1 running · Total memory $2 · This app $3 processes"
+    },
+    {
+      "src": "服务进程 ${n}/${m} 运行 · 合计 ${mem}",
+      "dst": "Service process $1/$2 running · Total $3"
+    },
+    {
+      "src": "${up}/${total} 运行 · ${mem}",
+      "dst": "$1/$2 running · $3"
+    },
+    {
+      "src": "${name} 占用 ${mem}",
+      "dst": "$1 using $2"
+    },
+    {
+      "src": "CPU 高负载：${pct}%，检查生成服务脚本或依赖启动。",
+      "dst": "High CPU load: $1%. Check the Generate Service script or dependent startup."
+    },
+    {
+      "src": "CPU 偏高：${pct}%，观察是否有生成服务在持续编译或重试。",
+      "dst": "CPU slightly high: $1%. Check whether Generate Service is continuously compiling or retrying."
+    },
+    {
+      "src": "内存占用过高：${pct}%，MariaDB 缓冲池和生成服务堆内存是主要排查对象。",
+      "dst": "Memory usage too high: $1%. Focus on MariaDB buffer pool and Generate Service heap memory."
+    },
+    {
+      "src": "内存偏高：${pct}%，优先看服务进程合计与生成服务运行时。",
+      "dst": "Memory slightly high: $1%. First check total service processes and Generate Service runtime."
+    },
+    {
+      "src": "磁盘空间紧张：${drive} 盘剩余 ${free}，已用 ${pct}%。",
+      "dst": "Low disk space: $1 disk has $2 remaining, $3% used."
+    },
+    {
+      "src": "磁盘使用偏高：${drive} 盘已用 ${pct}%，可用 ${free}。",
+      "dst": "Disk usage is high: $1 drive is $2% full, with $3 available."
+    },
+    {
+      "src": "依赖服务未全部在线：${names}；${n}/${m} 运行。",
+      "dst": "Not all dependent services are online: $1; $2/$3 are running."
+    },
+    {
+      "src": "服务内存合计 ${sum}，占系统内存 ${pct}%；最大是 ${name}（${mem}）。",
+      "dst": "Total service memory is $1, accounting for $2% of system memory; the maximum is $3 ($4)."
+    },
+    {
+      "src": "资源处于正常区间，CPU、内存、磁盘都没有接近瓶颈。",
+      "dst": "Resource usage is within normal ranges. CPU, memory, and disk are not approaching bottlenecks."
     }
   ]
 }
