@@ -109,6 +109,8 @@ const I = {
   help: '<circle cx="8" cy="8" r="6"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.2 2.4c-.4.3-.5.7-.5 1.1M8 11.6v.2"/>',
   page: '<path d="M3 2h7l3 3v9H3z"/><path d="M6 6h4M6 9h4M6 12h3"/>',
   package: '<path d="M8 2l6 3v6l-6 3-6-3V5z"/><path d="M2 5l6 3 6-3M8 8v6"/>',
+  star: '<path d="M8 2.2l1.75 3.55 3.92.57-2.84 2.77.67 3.9L8 11.14l-3.5 1.85.67-3.9L2.33 6.32l3.92-.57z"/>',
+  search: '<circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/>',
 };
 const icon = (k) => `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">${I[k] || I.page}</svg>`;
 
@@ -180,7 +182,7 @@ function confirmBox(title, text) {
 }
 
 const GUIDE_STEPS = [
-  { title: '基础信息', hint: '名字、分类、路径前缀' },
+  { title: '基础信息', hint: '从常用接口复制，或新建' },
   { title: '主表', hint: '表名与初始业务字段' },
   { title: '路由', hint: '选择要生成的基础路由' },
   { title: '确认', hint: '检查后才会写入工程' },
@@ -229,8 +231,13 @@ function guideBasePath(value) {
   return s.replace(/\/+$/, '');
 }
 
-function newIfaceGuide(initialCat) {
+async function newIfaceGuide(initialCat) {
   const cats = (S.project.categories || []).slice();
+  let favoriteLib = [];
+  try {
+    const lib = await api.ifaceLibrary();
+    if (lib && lib.ok) favoriteLib = (lib.list || []).filter((x) => x.favorite);
+  } catch (_) {}
   const state = {
     step: 0,
     name: '',
@@ -246,7 +253,7 @@ function newIfaceGuide(initialCat) {
   };
   return new Promise((resolve) => {
     let done = false;
-    const shell = `<div class="guide-shell flex flex-col" style="height:600px;max-height:82vh">
+    const shell = `<div class="guide-shell flex flex-col" style="height:648px;max-height:88vh">
       <style>
         .guide-shell{font-size:12px;color:var(--cb-text);background:#fff;border-radius:12px;overflow:hidden;font-family:var(--cb-font)}
         .guide-head{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--cb-line);background:#fff}
@@ -287,6 +294,18 @@ function newIfaceGuide(initialCat) {
         .guide-input-group input{flex:1;min-width:0;border:0;box-shadow:none!important;border-radius:0;padding:6px 10px;font:11px/1.5 Consolas,monospace}
         .guide-note{border:1px solid var(--cb-line);background:#f8fafc;border-radius:8px;padding:10px 12px;color:var(--cb-text-2);font-size:11px;line-height:1.65}
         .guide-note-blue{border-color:#dbe6fb;background:var(--cb-accent-soft);color:#35507a}
+        .guide-quick{border:1px solid #f1dfb4;background:#fffbf1;border-radius:9px;padding:12px 13px;margin-bottom:16px}
+        .guide-quick-head{display:flex;align-items:flex-start;gap:9px}
+        .guide-quick-mark{width:28px;height:28px;border-radius:7px;background:#fff3d6;color:#d99a20;display:flex;align-items:center;justify-content:center;flex:none}
+        .guide-quick-mark svg{width:14px;height:14px}
+        .guide-quick-title{font-size:12px;font-weight:600;color:#5e4a1c;line-height:1.4}
+        .guide-quick-sub{font-size:10px;color:#8a7a52;line-height:1.55;margin-top:2px}
+        .guide-quick-row{display:flex;gap:8px;margin-top:10px}
+        .guide-quick-row select{flex:1;min-width:0;height:32px;border:1px solid #e7d7b0;border-radius:7px;background:#fff;padding:0 8px;font-size:11.5px;color:#4c422e;outline:none}
+        .guide-quick-row select:focus{border-color:#d99a20;box-shadow:0 0 0 3px rgba(217,154,32,.12)}
+        .guide-quick-row .btn{height:32px;white-space:nowrap}
+        .guide-quick-or{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#9aa3b2;font-size:10px}
+        .guide-quick-or:before,.guide-quick-or:after{content:"";height:1px;background:#e6eaf0;flex:1}
         .guide-route-list{border:1px solid var(--cb-line);border-radius:9px;overflow:hidden;background:#fff}
         .guide-route-item{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--cb-line-soft);transition:background .12s}
         .guide-route-item:last-child{border-bottom:0}
@@ -432,7 +451,26 @@ function newIfaceGuide(initialCat) {
 
       function renderBody() {
         if (state.step === 0) {
+          const quick = favoriteLib.length
+            ? `<div class="guide-quick">
+                <div class="guide-quick-head">
+                  <span class="guide-quick-mark">${icon('star')}</span>
+                  <div><div class="guide-quick-title">从常用接口开始</div><div class="guide-quick-sub">直接完整复制已编辑好的表、字段、路由、脚本和文档；不会进入后面三步。</div></div>
+                </div>
+                <div class="guide-quick-row">
+                  <select id="guideLibPick">${favoriteLib.map((x) => `<option value="${esc(x.id)}">${esc(x.category)} · ${esc(x.name)}（${x.counts.tables} 表 / ${x.counts.routes} 路由）</option>`).join('')}</select>
+                  <button type="button" class="btn solid" id="guideLibUse">用这个接口</button>
+                </div>
+              </div>`
+            : `<div class="guide-quick">
+                <div class="guide-quick-head">
+                  <span class="guide-quick-mark">${icon('star')}</span>
+                  <div><div class="guide-quick-title">从常用接口开始</div><div class="guide-quick-sub">还没有收藏的常用接口。可以在接口编辑器里点「存为常用接口」，或在接口库里点亮星标后再来选用。</div></div>
+                </div>
+              </div>`;
           body.innerHTML = `
+            ${quick}
+            <div class="guide-quick-or">或从空白接口开始</div>
             <div class="guide-h">第一步 · 基础信息</div>
             <div class="guide-p">这些内容会出现在接口列表、文档和生成的路由前缀里。</div>
             <div class="guide-field">
@@ -458,7 +496,6 @@ function newIfaceGuide(initialCat) {
               <label class="guide-label">一句话说明</label>
               <input id="guideComment" class="guide-input" value="${esc(state.comment)}" placeholder="例如：商品的上架、库存与价格维护">
             </div>
-            <div class="guide-note guide-note-blue">这里只做配置预览；点最后一步的「确认创建」之前，不会改动当前工程。</div>
           `;
           const name = body.querySelector('#guideName');
           name.focus();
@@ -466,6 +503,15 @@ function newIfaceGuide(initialCat) {
           const sync = () => read();
           body.querySelectorAll('#guideName,#guidePrefix,#guideComment').forEach((el) => el.addEventListener('input', sync));
           body.querySelector('#guideCat').addEventListener('change', sync);
+          const libUse = body.querySelector('#guideLibUse');
+          if (libUse) {
+            libUse.onclick = () => {
+              const pick = body.querySelector('#guideLibPick');
+              const item = favoriteLib.find((x) => x.id === pick.value);
+              if (!item) return fail('请选择一个常用接口');
+              finish({ fromLibraryId: item.id, fromLibraryName: item.name, fromLibraryCategory: item.category });
+            };
+          }
         } else if (state.step === 1) {
           body.innerHTML = `
             <div class="guide-h">第二步 · 主表</div>
@@ -1040,6 +1086,7 @@ function renderRibbon() {
 
   ${backend ? `<div class="ribbon-group"><div class="flex gap-1">
     ${rb('newIface', 'iface', '新建接口', '在当前分类新建接口')}
+    ${rb('favLib', 'star', '常用', '收藏、分类，一键复用常用接口')}
     ${rb('dupIface', 'copy', '复制', '复制当前接口')}
     ${rb('delIface', 'trash', '删除', '删除当前接口')}
   </div><div class="lbl">接口</div></div>
@@ -1098,9 +1145,10 @@ function showMoreMenu() {
       <h5>内容与复用</h5>
       <div class="more-grid">
         ${item('templates', '模版库', '套用内置业务工程')}
-        ${item('ifaceLib', '接口库', '插入现成接口')}
+        ${item('favLib', '常用接口', '收藏、分类、搜索、复用')}
+        ${item('ifaceLib', '接口库', '浏览全部内置与我的接口')}
         ${item('saveTemplate', '存为模版', '把当前工程收进模版库')}
-        ${item('saveIface', '存为接口', '把当前接口放进接口库')}
+        ${item('saveIface', '存为常用接口', '把当前接口加入收藏，随时复用')}
       </div>
     </div>
 
@@ -3976,6 +4024,14 @@ async function act(name, el) {
     const cat = S.project.categories.find((c) => c.id === S.cat) || S.project.categories[0];
     const cfg = await newIfaceGuide(cat.id);
     if (!cfg) return;
+    if (cfg.fromLibraryId) {
+      const got = await api.ifaceLibraryInsert(S.project, cfg.fromLibraryId);
+      if (!got.ok) return toast('复用失败：' + String(got.error || '').slice(0, 200), 6500);
+      S.project = got.project; S.cat = got.category; S.selId = got.ifaceId;
+      openIface(got.ifaceId); scheduleSave();
+      toast(`已从常用接口复制「${got.name}」${got.renamed ? '（同名，已自动加序号）' : ''}${got.routesRenamed ? `（${got.routesRenamed} 条路由已避重）` : ''}`, 3600);
+      return;
+    }
     const blank = await api.blank(cfg);
     S.project.interfaces.push(blank); S.cat = blank.categoryId; S.selId = blank.id;
     openIface(blank.id); scheduleSave(); toast(`已创建接口「${blank.name}」`);
@@ -4227,6 +4283,7 @@ async function act(name, el) {
   if (name === 'templates') return showTemplates();
   if (name === 'saveTemplate') return showSaveTemplate();
   if (name === 'ifaceLib') return showIfaceLibrary();
+  if (name === 'favLib') return showIfaceLibrary({ view: 'favorite' });
   if (name === 'saveIface') return showSaveIface();
   if (name === 'plugins') return showPlugins();
   if (name === 'monitor') return showMonitor();
@@ -4360,94 +4417,311 @@ async function showSaveTemplate() {
 }
 
 /* ---------------- 接口库（单个接口） ---------------- */
-async function showSaveIface() {
-  const it = activeIface();
-  if (!it) return toast('当前没有可保存的接口');
-  const name = await ask('存入接口库', it.name, '只保存当前接口（表、路由、文档、脚本）；接口库内不允许重名');
-  if (!name) return;
-  const desc = it.docs && (it.docs.summary || it.docs.description) || `${it.tables.length} 表 · ${it.routes.length} 路由`;
-  const r = await api.ifaceLibrarySave({ name, iface: it, sourceProject: S.project.name, description: desc, tags: [S.project.name] });
-  if (!r.ok) return toast('保存失败：' + String(r.error || '').slice(0, 180), 6500);
-  toast(`已存入接口库「${r.name}」`);
+function ifaceLibCategoryOf(it) {
+  const cat = (S.project.categories || []).find((c) => c.id === it.categoryId);
+  return cat ? cat.name : '未分类';
 }
 
-async function showIfaceLibrary() {
+async function showSaveIface(opts) {
+  const it = activeIface();
+  if (!it) return toast('当前没有可保存的接口');
+  const o = opts || {};
+  const desc = it.docs && (it.docs.summary || it.docs.description) || `${it.tables.length} 表 · ${it.routes.length} 路由`;
+  modal(`<div class="lib-save">
+    <style>
+      .lib-save{padding:20px 22px 18px;background:#fff;border-radius:12px;color:#2f3542}
+      .lib-save h3{margin:0;font-size:15px;font-weight:600;letter-spacing:.2px}
+      .lib-save .sub{margin-top:4px;font-size:11.5px;color:#7b8494}
+      .lib-save label{display:block;margin-top:14px;font-size:11.5px;color:#606a7b}
+      .lib-save input[type=text],.lib-save textarea{width:100%;box-sizing:border-box;margin-top:5px;border:1px solid #dfe4ec;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#2f3542;outline:none;background:#fff}
+      .lib-save input[type=text]:focus,.lib-save textarea:focus{border-color:#4c8dff;box-shadow:0 0 0 3px rgba(76,141,255,.12)}
+      .lib-save textarea{resize:vertical;min-height:58px;line-height:1.5}
+      .lib-save .fav{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid #f1dfb4;background:#fffbf1;border-radius:8px;color:#6b5a2e;font-size:12px}
+      .lib-save .fav input{width:15px;height:15px}
+      .lib-save .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+    </style>
+    <h3>存为常用接口</h3>
+    <div class="sub">保存当前接口的表、路由、文档和脚本，之后可以从常用接口一键复用。</div>
+    <label>接口名称<input id="saveIfaceName" type="text" maxlength="40" value="${esc(it.name)}"></label>
+    <label>分类<input id="saveIfaceCat" type="text" maxlength="20" value="${esc(ifaceLibCategoryOf(it))}" placeholder="例如：用户中心"></label>
+    <label>说明<textarea id="saveIfaceDesc" maxlength="200">${esc(desc)}</textarea></label>
+    <label class="fav"><input id="saveIfaceFav" type="checkbox" checked>加入常用（收藏），在「常用接口」里优先显示</label>
+    <div class="acts"><button class="btn thin" id="saveIfaceNo">取消</button><button class="btn solid" id="saveIfaceYes">保存</button></div>
+  </div>`, (root) => {
+    const name = root.querySelector('#saveIfaceName');
+    const cat = root.querySelector('#saveIfaceCat');
+    const note = root.querySelector('#saveIfaceDesc');
+    const fav = root.querySelector('#saveIfaceFav');
+    name.focus(); name.select();
+    const cancel = () => { closeModal(); if (o.after) o.after(); };
+    const save = async () => {
+      const n = name.value.trim();
+      if (!n) return toast('接口名不能为空');
+      const r = await api.ifaceLibrarySave({
+        name: n,
+        iface: it,
+        sourceProject: S.project.name,
+        description: note.value.trim(),
+        category: cat.value.trim() || ifaceLibCategoryOf(it),
+        favorite: fav.checked,
+        tags: [S.project.name],
+      });
+      if (!r.ok) return toast('保存失败：' + String(r.error || '').slice(0, 180), 6500);
+      closeModal();
+      toast(fav.checked ? `已加入常用接口「${r.name}」` : `已存入接口库「${r.name}」`);
+      if (o.after) o.after();
+    };
+    root.querySelector('#saveIfaceNo').onclick = cancel;
+    root.querySelector('#saveIfaceYes').onclick = save;
+    name.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    cat.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+  }, { width: 520, maxHeight: '90vh', plain: true });
+}
+
+async function showIfaceLibrary(opts) {
+  const o = opts || {};
   const r = await api.ifaceLibrary();
   if (!r.ok) return toast('读取接口库失败：' + r.error);
-  const row = (x) => {
-    const kind = x.kind === 'builtin' ? '内置' : '我的';
-    const source = x.source || '接口库';
-    return `<div class="lib-row flex items-center gap-3 p-2 border-b border-neutral-200" data-lib-row data-kind="${x.kind}" data-name="${esc(x.name)}" data-source="${esc(source)}">
-      <div class="w-8 h-8 shrink-0 border border-neutral-900 flex items-center justify-center mono text-[10px]">${kind}</div>
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2"><b class="text-[12px]">${esc(x.name)}</b>
-          <span class="text-[10px] text-neutral-500 mono">${x.counts.tables} 表 · ${x.counts.routes} 路由</span></div>
-        <div class="text-[10px] text-neutral-500 truncate">${esc(source)}${x.description ? ' · ' + esc(x.description) : ''}</div>
-      </div>
-      <button class="btn thin shrink-0" data-lib-add="${esc(x.id)}">插入</button>
-      ${x.kind === 'user' ? `<button class="btn thin shrink-0" data-lib-del="${esc(x.id)}">删除</button>` : ''}
-    </div>`;
+  const state = {
+    view: o.view || 'all',
+    q: o.q || '',
+    category: o.category || 'all',
   };
-  modal(`<div class="p-4">
-    <div class="flex items-center gap-2 mb-3"><b class="text-[13px]">接口库</b>
-      <span class="pill">${r.list.length} 个接口</span>
-      <span class="text-[11px] text-neutral-500">内置 ${r.list.filter((x) => x.kind === 'builtin').length} 个 · 自存不重名</span>
-      <button class="btn thin ml-auto" id="libSave">存当前接口</button>
-      <button class="btn thin" id="libClose">关闭</button></div>
-    <div class="flex items-center gap-2 mb-2">
-      <input id="libQ" class="border border-neutral-300 px-2 py-1 text-[12px] w-64" placeholder="搜接口名 / 来源">
-      <button class="btn thin" data-lib-kind="all">全部</button>
-      <button class="btn thin" data-lib-kind="builtin">内置</button>
-      <button class="btn thin" data-lib-kind="user">我的</button>
-      <span id="libCount" class="text-[11px] text-neutral-500 ml-auto"></span>
+  let entries = (r.list || []).slice();
+  const root = modal(`<div class="lib-shell">
+    <style>
+      .lib-shell{background:#fff;border-radius:12px;color:#2f3542;display:flex;flex-direction:column;max-height:86vh;font-family:"Microsoft YaHei","Segoe UI",sans-serif}
+      .lib-head{display:flex;align-items:center;gap:12px;padding:17px 20px 13px;border-bottom:1px solid #edf0f4}
+      .lib-mark{width:34px;height:34px;border-radius:9px;background:#fff6e2;color:#d99a20;display:flex;align-items:center;justify-content:center;flex:none}
+      .lib-mark svg{width:18px;height:18px}
+      .lib-title{font-size:15px;font-weight:600;line-height:1.2}
+      .lib-sub{font-size:11.5px;color:#7b8494;margin-top:4px}
+      .lib-head .acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+      .lib-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid #f1f3f7;background:#fcfdfe}
+      .lib-search{display:flex;align-items:center;gap:6px;border:1px solid #dfe4ec;border-radius:8px;background:#fff;padding:0 9px;height:32px;min-width:238px}
+      .lib-search svg{width:14px;height:14px;color:#9aa3b2;flex:none}
+      .lib-search input{border:0;outline:0;background:transparent;font-size:12px;flex:1;min-width:0;color:#2f3542}
+      .lib-tabs{display:flex;border:1px solid #dfe4ec;border-radius:8px;overflow:hidden;background:#fff}
+      .lib-tab{border:0;background:#fff;padding:7px 11px;font-size:11.5px;color:#6b7484;cursor:pointer;border-right:1px solid #edf0f4}
+      .lib-tab:last-child{border-right:0}
+      .lib-tab.on{background:#eef4ff;color:#2f6fe4;font-weight:600}
+      .lib-cat{height:32px;border:1px solid #dfe4ec;border-radius:8px;background:#fff;color:#536074;font-size:11.5px;padding:0 8px;max-width:140px;outline:none}
+      .lib-stats{margin-left:auto;font-size:11.5px;color:#8b93a1;white-space:nowrap}
+      .lib-list{overflow:auto;min-height:180px;max-height:calc(86vh - 198px);padding:4px 0}
+      .lib-row{display:grid;grid-template-columns:28px 44px minmax(0,1fr) 118px auto;gap:10px;align-items:center;padding:10px 20px;border-bottom:1px solid #f1f3f7;background:#fff;transition:background .12s}
+      .lib-row:hover{background:#fbfcff}
+      .lib-row.is-fav{box-shadow:inset 3px 0 0 #f0c35b}
+      .lib-star{width:28px;height:28px;border:1px solid transparent;border-radius:8px;background:transparent;color:#c4cad4;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+      .lib-star svg{width:15px;height:15px}
+      .lib-star.on{color:#d99a20;background:#fff8e7;border-color:#f3e0b4}
+      .lib-star.on svg{fill:#f6c453;stroke:#d99a20}
+      .lib-kind{font-size:10px;text-align:center;padding:3px 0;border-radius:5px;border:1px solid #e2e6ee;color:#7c8697;background:#fafbfd}
+      .lib-kind.user{color:#2f6fe4;border-color:#d7e4ff;background:#f2f7ff}
+      .lib-name-line{display:flex;align-items:center;gap:7px;min-width:0}
+      .lib-name{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .lib-cat-pill{font-size:10px;color:#56627a;background:#f1f3f7;border-radius:10px;padding:1px 8px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+      .lib-desc{font-size:10.5px;color:#8b93a1;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .lib-meta{font-size:10.5px;color:#697386;text-align:right;line-height:1.55;white-space:nowrap}
+      .lib-actions{display:flex;gap:6px;justify-content:flex-end}
+      .lib-actions .btn{padding:5px 10px;font-size:11px}
+      .lib-use{border:1px solid #cfe0ff!important;background:#f3f8ff!important;color:#2361d6!important}
+      .lib-empty{padding:44px 20px 34px;text-align:center;color:#7b8494}
+      .lib-empty .ic{width:42px;height:42px;margin:0 auto 10px;border-radius:12px;background:#fff6e2;color:#d99a20;display:flex;align-items:center;justify-content:center}
+      .lib-empty .ic svg{width:20px;height:20px}
+      .lib-empty b{display:block;font-size:13px;color:#3d4554;margin-bottom:5px}
+      .lib-empty span{font-size:11.5px;line-height:1.6}
+      .lib-empty button{margin-top:13px}
+      .lib-foot{display:flex;align-items:center;gap:10px;padding:10px 20px;border-top:1px solid #edf0f4;font-size:10.5px;color:#8b93a1;background:#fcfdfe}
+    </style>
+    <div class="lib-head">
+      <div class="lib-mark">${icon('star')}</div>
+      <div><div class="lib-title" id="libTitle">${state.view === 'favorite' ? '常用接口' : '接口库'}</div><div class="lib-sub">收藏、分类、搜索；编辑好的接口可以直接复用到当前工程</div></div>
+      <div class="acts"><button class="btn thin" id="libSave">＋ 存当前接口</button><button class="btn thin" id="libClose">关闭</button></div>
     </div>
-    <div id="libList" class="border border-neutral-300 max-h-[64vh] overflow-auto">
-      ${r.list.map(row).join('')}
+    <div class="lib-toolbar">
+      <div class="lib-search">${icon('search')}<input id="libQ" placeholder="搜索名称 / 分类 / 说明 / 来源"></div>
+      <div class="lib-tabs">
+        <button class="lib-tab" data-lib-view="favorite">常用</button>
+        <button class="lib-tab" data-lib-view="all" data-lib-kind="all">全部</button>
+        <button class="lib-tab" data-lib-view="user" data-lib-kind="user">我的</button>
+        <button class="lib-tab" data-lib-view="builtin" data-lib-kind="builtin">内置</button>
+      </div>
+      <select id="libCat" class="lib-cat"><option value="all">全部分类</option></select>
+      <span class="lib-stats" id="libStats"></span>
     </div>
-    <div class="text-[11px] text-neutral-500 mt-2">插入只追加到当前工程，不覆盖已有接口；同名接口、表名、basePath 会自动加序号避重。</div>
-  </div>`, (root) => {
-    let kind = 'all';
-    const apply = () => {
-      const q = String(root.querySelector('#libQ').value || '').trim().toLowerCase();
-      let shown = 0;
-      root.querySelectorAll('[data-lib-row]').forEach((el) => {
-        const hitKind = kind === 'all' || el.dataset.kind === kind;
-        const hay = `${el.dataset.name} ${el.dataset.source}`.toLowerCase();
-        const hit = hitKind && (!q || hay.includes(q));
-        el.style.display = hit ? '' : 'none';
-        if (hit) shown++;
-      });
-      root.querySelector('#libCount').textContent = `显示 ${shown} / ${r.list.length}`;
+    <div class="lib-list" id="libList"></div>
+    <div class="lib-foot"><span>复用会完整复制表、字段、路由、脚本和文档；名称、表名、basePath 自动避重。</span><span id="libCount" style="margin-left:auto"></span></div>
+  </div>`, (box) => {
+    const listEl = box.querySelector('#libList');
+    const qEl = box.querySelector('#libQ');
+    const catEl = box.querySelector('#libCat');
+    const statsEl = box.querySelector('#libStats');
+    const countEl = box.querySelector('#libCount');
+    const titleEl = box.querySelector('#libTitle');
+
+    const cats = () => [...new Set(entries.map((x) => x.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    const updateCats = () => {
+      const cur = state.category;
+      catEl.innerHTML = `<option value="all">全部分类</option>` + cats().map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      catEl.value = cur !== 'all' && cats().includes(cur) ? cur : 'all';
+      state.category = catEl.value;
     };
-    root.querySelector('#libClose').onclick = closeModal;
-    root.querySelector('#libSave').onclick = () => { closeModal(); showSaveIface(); };
-    root.querySelector('#libQ').oninput = apply;
-    root.querySelectorAll('[data-lib-kind]').forEach((b) => {
-      b.onclick = () => { kind = b.dataset.libKind; apply(); };
-    });
-    root.querySelectorAll('[data-lib-add]').forEach((b) => {
-      b.onclick = async () => {
-        const got = await api.ifaceLibraryInsert(S.project, b.dataset.libAdd);
-        if (!got.ok) return toast('插入失败：' + String(got.error || '').slice(0, 200), 6500);
-        S.project = got.project;
-        S.cat = got.category;
-        S.selId = got.ifaceId;
-        S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
-        await api.save(S.project);
-        closeModal(); render();
-        toast(`已插入「${got.name}」${got.renamed ? '（同名，已自动加序号）' : ''}`);
-      };
-    });
-    root.querySelectorAll('[data-lib-del]').forEach((b) => {
-      b.onclick = async () => {
-        if (!(await confirmBox('删除接口', '确定从接口库删除这个自存接口？不影响当前工程。'))) return;
-        const d = await api.ifaceLibraryRemove(b.dataset.libDel);
+
+    const row = (x) => {
+      const desc = [x.description, x.source && x.source !== x.name ? '来源：' + x.source : ''].filter(Boolean).join(' · ');
+      return `<div class="lib-row ${x.favorite ? 'is-fav' : ''}" data-lib-row="${esc(x.id)}" data-kind="${esc(x.kind)}" data-name="${esc(x.name)}" data-source="${esc(x.source || '')}">
+        <button class="lib-star ${x.favorite ? 'on' : ''}" data-lib-star="${esc(x.id)}" title="${x.favorite ? '取消常用' : '加入常用'}">${icon('star')}</button>
+        <div class="lib-kind ${x.kind}">${x.kind === 'builtin' ? '内置' : '我的'}</div>
+        <div style="min-width:0">
+          <div class="lib-name-line"><span class="lib-name" title="${esc(x.name)}">${esc(x.name)}</span><span class="lib-cat-pill" title="${esc(x.category)}">${esc(x.category)}</span></div>
+          <div class="lib-desc" title="${esc(desc)}">${esc(desc || '没有说明')}</div>
+        </div>
+        <div class="lib-meta">${x.counts.tables} 表 · ${x.counts.routes} 路由<br>复用 ${x.uses || 0} 次${x.lastUsedAt ? ' · ' + esc(new Date(x.lastUsedAt).toLocaleDateString('zh-CN')) : ''}</div>
+        <div class="lib-actions">
+          <button class="btn thin lib-use" data-lib-add="${esc(x.id)}">复用</button>
+          <button class="btn thin" data-lib-edit="${esc(x.id)}">编辑</button>
+          ${x.kind === 'user' ? `<button class="btn thin" data-lib-del="${esc(x.id)}">删除</button>` : ''}
+        </div>
+      </div>`;
+    };
+
+    const render = () => {
+      updateCats();
+      titleEl.textContent = state.view === 'favorite' ? '常用接口' : '接口库';
+      const q = state.q.trim().toLowerCase();
+      const shown = entries.filter((x) => {
+        const byView = state.view === 'all' ? true : state.view === 'favorite' ? x.favorite : x.kind === state.view;
+        const byCat = state.category === 'all' || x.category === state.category;
+        const hay = [x.name, x.category, x.description, x.source].join(' ').toLowerCase();
+        return byView && byCat && (!q || hay.includes(q));
+      }).sort((a, b) => (Number(b.favorite) - Number(a.favorite)) || ((b.uses || 0) - (a.uses || 0)) || (a.kind === b.kind ? 0 : a.kind === 'user' ? -1 : 1));
+      box.querySelectorAll('[data-lib-view]').forEach((b) => b.classList.toggle('on', b.dataset.libView === state.view));
+      const fav = entries.filter((x) => x.favorite).length;
+      const mine = entries.filter((x) => x.kind === 'user').length;
+      statsEl.textContent = `${fav} 常用 · ${mine} 我的 · ${entries.length - mine} 内置`;
+      countEl.textContent = `显示 ${shown.length} / ${entries.length}`;
+      listEl.innerHTML = shown.length ? shown.map(row).join('') : `<div class="lib-empty">
+        <div class="ic">${icon(state.view === 'favorite' ? 'star' : 'iface')}</div>
+        <b>${state.view === 'favorite' ? '还没有常用接口' : '没有符合条件的接口'}</b>
+        <span>${state.view === 'favorite' ? '给接口库里的条目点亮星标，或在接口编辑器里点「存为常用接口」，之后就能在这里一键复用。' : '换个关键词、分类或筛选条件再试试。'}</span>
+        ${state.view === 'favorite' ? `<button class="btn thin" id="libEmptySave">存当前接口</button>` : ''}
+      </div>`;
+      const emptySave = listEl.querySelector('#libEmptySave');
+      if (emptySave) emptySave.onclick = saveCurrent;
+    };
+
+    const saveCurrent = () => {
+      if (!activeIface()) return toast('当前没有可保存的接口');
+      closeModal();
+      showSaveIface({ after: () => showIfaceLibrary({ view: 'favorite' }) });
+    };
+
+    const useEntry = async (id) => {
+      const got = await api.ifaceLibraryInsert(S.project, id);
+      if (!got.ok) return toast('复用失败：' + String(got.error || '').slice(0, 200), 6500);
+      S.project = got.project;
+      S.cat = got.category;
+      S.selId = got.ifaceId;
+      S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
+      await api.save(S.project);
+      closeModal(); render();
+      toast(`已复用「${got.name}」${got.renamed ? '（同名，已自动加序号）' : ''}${got.routesRenamed ? `（${got.routesRenamed} 条路由已避重）` : ''}`, 3200);
+    };
+
+    listEl.addEventListener('click', async (e) => {
+      const star = e.target.closest('[data-lib-star]');
+      if (star) {
+        const x = entries.find((y) => y.id === star.dataset.libStar);
+        if (!x) return;
+        const d = await api.ifaceLibraryUpdate(x.id, { favorite: !x.favorite });
+        if (!d.ok) return toast(d.error || '操作失败');
+        Object.assign(x, d.entry);
+        render();
+        toast(x.favorite ? `已加入常用「${x.name}」` : `已取消常用「${x.name}」`);
+        return;
+      }
+      const use = e.target.closest('[data-lib-add]');
+      if (use) return useEntry(use.dataset.libAdd);
+      const edit = e.target.closest('[data-lib-edit]');
+      if (edit) {
+        closeModal();
+        return showIfaceLibraryEdit(edit.dataset.libEdit, state);
+      }
+      const del = e.target.closest('[data-lib-del]');
+      if (del) {
+        const x = entries.find((y) => y.id === del.dataset.libDel);
+        closeModal();
+        if (!(await confirmBox('删除常用接口', `确定删除「${x ? x.name : '这个接口'}」？只影响接口库，不影响当前工程。`))) {
+          showIfaceLibrary(state);
+          return;
+        }
+        const d = await api.ifaceLibraryRemove(del.dataset.libDel);
         if (!d.ok) return toast(d.error || '删除失败');
-        closeModal(); showIfaceLibrary();
-      };
+        showIfaceLibrary(state);
+        toast('已从接口库删除');
+      }
     });
-    apply();
-  });
+
+    qEl.value = state.q;
+    qEl.addEventListener('input', () => { state.q = qEl.value; render(); });
+    catEl.addEventListener('change', () => { state.category = catEl.value; render(); });
+    box.querySelectorAll('[data-lib-view]').forEach((b) => {
+      b.onclick = () => { state.view = b.dataset.libView; render(); };
+    });
+    box.querySelector('#libClose').onclick = closeModal;
+    box.querySelector('#libSave').onclick = saveCurrent;
+    render();
+  }, { width: 920, maxHeight: '86vh', plain: true });
+  return root;
+}
+
+async function showIfaceLibraryEdit(id, back) {
+  const r = await api.ifaceLibraryGet(id);
+  if (!r.ok) { toast(r.error || '读取失败'); return showIfaceLibrary(back); }
+  const e = r.entry || r;
+  const builtin = e.kind === 'builtin';
+  modal(`<div class="lib-save">
+    <style>
+      .lib-save{padding:20px 22px 18px;background:#fff;border-radius:12px;color:#2f3542}
+      .lib-save h3{margin:0;font-size:15px;font-weight:600}
+      .lib-save .sub{margin-top:4px;font-size:11.5px;color:#7b8494}
+      .lib-save label{display:block;margin-top:14px;font-size:11.5px;color:#606a7b}
+      .lib-save input[type=text],.lib-save textarea{width:100%;box-sizing:border-box;margin-top:5px;border:1px solid #dfe4ec;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#2f3542;outline:none;background:#fff}
+      .lib-save input[type=text]:focus,.lib-save textarea:focus{border-color:#4c8dff;box-shadow:0 0 0 3px rgba(76,141,255,.12)}
+      .lib-save textarea{resize:vertical;min-height:64px;line-height:1.5}
+      .lib-save .fav{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid #f1dfb4;background:#fffbf1;border-radius:8px;color:#6b5a2e;font-size:12px}
+      .lib-save .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+    </style>
+    <h3>编辑接口信息</h3>
+    <div class="sub">${builtin ? '内置接口可以改分类、说明和收藏状态，接口内容保持不变。' : '修改名称、分类和说明，不会改变已复用到工程里的接口。'}</div>
+    <label>接口名称<input id="editLibName" type="text" maxlength="40" value="${esc(e.name)}" ${builtin ? 'disabled style="background:#f5f6f8;color:#8b93a1"' : ''}></label>
+    <label>分类<input id="editLibCat" type="text" maxlength="20" value="${esc(e.category)}"></label>
+    <label>说明<textarea id="editLibDesc" maxlength="200">${esc(e.description || '')}</textarea></label>
+    <label class="fav"><input id="editLibFav" type="checkbox" ${e.favorite ? 'checked' : ''}>加入常用（收藏）</label>
+    <div class="acts"><button class="btn thin" id="editLibNo">取消</button><button class="btn solid" id="editLibYes">保存</button></div>
+  </div>`, (root) => {
+    const name = root.querySelector('#editLibName');
+    const cat = root.querySelector('#editLibCat');
+    const desc = root.querySelector('#editLibDesc');
+    const fav = root.querySelector('#editLibFav');
+    const cancel = () => { closeModal(); showIfaceLibrary(back); };
+    const save = async () => {
+      const patch = {
+        category: cat.value.trim(),
+        description: desc.value.trim(),
+        favorite: fav.checked,
+      };
+      if (!builtin) patch.name = name.value.trim();
+      const d = await api.ifaceLibraryUpdate(e.id, patch);
+      if (!d.ok) return toast('保存失败：' + String(d.error || '').slice(0, 180), 5500);
+      closeModal();
+      showIfaceLibrary(back);
+      toast('接口信息已更新');
+    };
+    root.querySelector('#editLibNo').onclick = cancel;
+    root.querySelector('#editLibYes').onclick = save;
+    name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') save(); });
+  }, { width: 540, maxHeight: '90vh', plain: true });
 }
 
 /* ---------------- 插件 / Defender ---------------- */

@@ -455,6 +455,9 @@ function registerIpc() {
   ipcMain.handle('iface:library:save', (e, payload) => {
     try { return { ok: true, ...ifaceLibrary.save(payload), list: ifaceLibrary.list() }; } catch (e) { return { ok: false, error: e.message }; }
   });
+  ipcMain.handle('iface:library:update', (e, id, patch) => {
+    try { return { ok: true, ...ifaceLibrary.update(id, patch), list: ifaceLibrary.list() }; } catch (e) { return { ok: false, error: e.message }; }
+  });
   ipcMain.handle('iface:library:remove', (e, id) => {
     try { return { ok: true, ...ifaceLibrary.remove(id), list: ifaceLibrary.list() }; } catch (e) { return { ok: false, error: e.message }; }
   });

@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld('icb', {
   ifaceLibrary: () => invoke('iface:library:list'),
   ifaceLibraryGet: (id) => invoke('iface:library:get', id),
   ifaceLibrarySave: (payload) => invoke('iface:library:save', payload),
+  ifaceLibraryUpdate: (id, patch) => invoke('iface:library:update', id, patch),
   ifaceLibraryRemove: (id) => invoke('iface:library:remove', id),
   ifaceLibraryInsert: (project, id) => invoke('iface:library:insert', project, id),
   plugins: () => invoke('iface:plugins:list'),

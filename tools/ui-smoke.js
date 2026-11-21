@@ -99,7 +99,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
-  t('Ribbon 收敛为 6 组常用入口 + 插件组', await val(`(()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));const baseActs=base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0);return g.length===7 && base.length===6 && baseActs<=16 && document.querySelectorAll('#ribbon [data-plugin-run]').length>0;})()`), await val(`((()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));return g.length+' 组 / 基础按钮 '+base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0)+' 项 / 插件命令 '+document.querySelectorAll('#ribbon [data-plugin-run]').length;})())`));
+  t('Ribbon 收敛为 6 组常用入口 + 插件组', await val(`(()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));const baseActs=base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0);return g.length===7 && base.length===6 && baseActs<=17 && document.querySelectorAll('#ribbon [data-plugin-run]').length>0;})()`), await val(`((()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));return g.length+' 组 / 基础按钮 '+base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0)+' 项 / 插件命令 '+document.querySelectorAll('#ribbon [data-plugin-run]').length;})())`));
   const ribbonFit = await val(`(()=>{const r=document.querySelector('#ribbon');const b=document.querySelector('[data-action="moreMenu"]');return JSON.stringify({sw:r.scrollWidth,cw:r.clientWidth,aiLeft:b?b.getBoundingClientRect().left:-1,aiRight:b?b.getBoundingClientRect().right:-1,vw:innerWidth,ox:getComputedStyle(r).overflowX})})()`);
   const rf = JSON.parse(ribbonFit);
   const ribbonOk = rf.sw <= rf.cw + 1 ? rf.aiRight <= rf.vw : (rf.vw < 1400 && rf.ox === 'auto');
@@ -231,15 +231,21 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('社交接口库卡片统计 9 接口 / 46 表 / 86 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:social"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('9 接口') && card.innerText.includes('46 表') && card.innerText.includes('86 路由');})()`));
   t('模版卡片有接口/表统计', await val(`document.querySelector('#modal').innerText.includes('接口 ·')`));
 
-  // 单接口库
+  // 单接口库 / 常用接口
   await val(`act('moreMenu')`);
   await wait(300);
-  t('更多菜单有接口库/存接口入口', await val(`!!document.querySelector('[data-more-action="ifaceLib"]') && !!document.querySelector('[data-more-action="saveIface"]')`));
+  t('更多菜单有接口库/存接口入口', await val(`!!document.querySelector('[data-more-action="ifaceLib"]') && !!document.querySelector('[data-more-action="saveIface"]') && !!document.querySelector('[data-more-action="favLib"]')`));
   await val(`closeModal(); act('ifaceLib')`);
   await wait(500);
   t('接口库内置接口不少于 63 个', await val(`document.querySelectorAll('[data-lib-row][data-kind="builtin"]').length >= 63`), await val(`document.querySelectorAll('[data-lib-row][data-kind="builtin"]').length`));
-  t('接口库搜索能过滤', await val(`(()=>{const q=document.querySelector('#libQ');q.value='账户';q.dispatchEvent(new Event('input'));const shown=Array.from(document.querySelectorAll('[data-lib-row]')).filter(x=>x.style.display!='none').length;const all=document.querySelectorAll('[data-lib-row]').length;q.value='';q.dispatchEvent(new Event('input'));return shown>0 && shown<all;})()`));
-  t('接口库有全部/内置/我的筛选', await val(`document.querySelectorAll('[data-lib-kind]').length === 3`));
+  t('接口库搜索能过滤', await val(`(()=>{const q=document.querySelector('#libQ');const before=document.querySelectorAll('[data-lib-row]').length;q.value='用户';q.dispatchEvent(new Event('input'));const shown=Array.from(document.querySelectorAll('[data-lib-row]')).filter(x=>x.style.display!='none').length;q.value='';q.dispatchEvent(new Event('input'));return shown>0 && shown<before;})()`), await val(`document.querySelectorAll('[data-lib-row]').length`));
+  t('接口库有全部/内置/我的筛选', await val(`document.querySelectorAll('[data-lib-kind]').length === 3 && !!document.querySelector('[data-lib-view="favorite"]')`));
+  await val(`closeModal(); showSaveIface()`);
+  await wait(300);
+  t('存为常用接口弹窗有分类与收藏开关', await val(`(()=>{const m=document.querySelector('#modal');return !!m.querySelector('#saveIfaceCat') && m.querySelector('#saveIfaceFav').checked && !!m.querySelector('#saveIfaceDesc');})()`));
+  await val(`closeModal(); act('favLib')`);
+  await wait(400);
+  t('常用接口页有搜索/分类/收藏切换', await val(`(()=>{const m=document.querySelector('#modal');return !!m.querySelector('#libQ') && !!m.querySelector('#libCat') && !!m.querySelector('[data-lib-view="favorite"]') && !!m.querySelector('[data-lib-view="all"]') && m.querySelector('#libTitle').textContent === '常用接口';})()`));
   await val(`closeModal()`);
 
   await val(`act('templates')`);
@@ -281,6 +287,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`(()=>{act('newIface'); return 'opened';})()`);
   await wait(500);
   t('新建接口打开创建引导且不提前创建', await val(`S.project.interfaces.length === ${guideBefore} && document.querySelector('#modal').innerText.includes('创建引导')`), await val(`S.project.interfaces.length + ' / ' + (document.querySelector('#modal') ? document.querySelector('#modal').innerText.split('\\n')[0] : '无弹窗')`));
+  t('创建引导第一步有常用接口入口', await val(`!!document.querySelector('.guide-quick') && !!document.querySelector('#guideName') && document.querySelector('.guide-quick').innerText.includes('从常用接口开始')`));
   await val(`document.querySelector('#guideClose').click()`);
   await wait(300);
   t('取消创建引导不改工程', await val(`S.project.interfaces.length === ${guideBefore}`), await val(`S.project.interfaces.length`));
