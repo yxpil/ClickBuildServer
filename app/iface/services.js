@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const store = require('../store');
 const platform = require('../platform');
@@ -333,8 +334,14 @@ async function startMysql() {
   if (!fs.existsSync(path.join(datadir, 'mysql'))) {
     fs.mkdirSync(datadir, { recursive: true });
     pushLog('mysql', '初始化数据目录…');
+    const initArgs = ['--datadir', datadir, '--basedir', mariadbRoot];
+    if (!platform.isWindows) {
+      // mariadb-install-db 默认把 datadir chown 给 mysql 用户；普通用户没有这个权限，
+      // 直接指定当前用户，初始化器就不会再尝试切换属主。
+      initArgs.push('--user', os.userInfo().username);
+    }
     const r = await new Promise((resolve) => {
-      const c = spawn(layout.installDb, ['--datadir', datadir, '--basedir', mariadbRoot], platform.baseSpawnOptions());
+      const c = spawn(layout.installDb, initArgs, platform.baseSpawnOptions());
       let out = '';
       c.stdout.on('data', (d) => { out += d; pushLog('mysql', d.toString()); });
       c.stderr.on('data', (d) => { out += d; pushLog('mysql', d.toString()); });
