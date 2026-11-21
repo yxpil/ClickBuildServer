@@ -109,10 +109,6 @@
         {
           "from": "runtime",
           "to": "runtime"
-        },
-        {
-          "from": "assets/logo.png",
-          "to": "logo.png"
         }
       ],
       "fileAssociations": [
@@ -194,10 +190,6 @@
         {
           "from": "runtime/node-linux",
           "to": "runtime/node"
-        },
-        {
-          "from": "assets/logo.png",
-          "to": "logo.png"
         }
       ],
       "fileAssociations": [
