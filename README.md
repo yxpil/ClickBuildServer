@@ -7,6 +7,8 @@
 
 ![ClickBuildServer 工作台界面](docs/screenshots/ui-final.png)
 
+> 文中截图均来自 1.1.65 安装版的实际界面。
+
 > WPS 式简约办公风的“服务器制造台”：**一个接口一条线，接口里挂多张表、多个库，每条路由写一段自己的 SQL 脚本**，点一下生成可运行的服务。
 >
 > 工作中间版本，接口与数据结构仍可能调整。
@@ -436,6 +438,8 @@ GitHub Actions 工作流在 `.github/workflows/`：
 过去 1.1.46–1.1.53 的 Release 都在最后一步失败：标签构建触发 electron-builder 自动上传，而 runner 没有 `GH_TOKEN`，日志为 `GitHub Personal Access Token is not set`。1.1.54 前的 `7d90b99` 已改为 `--publish never`，上传只交给 `action-gh-release`；本轮又把同样的保护写进版本校验、文件校验和显式 `GITHUB_TOKEN`，避免回归。
 
 `vendor/services` 不进 Git，CI 从 `services-v1` Release 的 `vendor-services.zip` 还原（约 139.5 MB）；本机构建用 `npm run vendor:services` 从旁边的 `ClickBuild` 目录收集，打包前 `npm run check:services` 会核对 MariaDB / Redis / RustFS 是否齐全。
+
+`main` 已启用分支保护：禁止 force push 和删除分支；合并 PR 前必须通过 `Test & build (Windows)` 状态检查。当前不强制走 PR，也不要求分支必须是最新提交，保留直接推送 `main` 的维护方式。
 
 本地等价命令：
 
