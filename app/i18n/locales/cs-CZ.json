@@ -1164,7 +1164,10 @@
     "在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。": "V rozevírací nabídce „Zrychlení“ každé tabulky na stránce „Struktura tabulky“ proveďte výběr; podporuje se globální vyhledávání. TTL, horní mez LRU i interval zapisování na disk lze přímo upravit v záhlaví tabulky.",
     "纯表模式（Redis / LRU / 定期落盘）只由 Node 运行时执行；Go / Java 原生运行时只支持“直连 MySQL”，遇到其他模式会拒绝启动，避免静默读写不一致。": "Čistý režim tabulky (Redis / LRU / periodické zapisování na disk) je prováděn pouze během běhu uzlu; nativní běhové prostředí Go / Java podporuje pouze „přímé připojení k MySQL“. Při použití jiného režimu odmítne spuštění, aby se zabránilo tiché nekonzistenci čtení a zápisu.",
     "存储加速模式": "Akcelerace ukládání",
-    "每次都读库，最稳，适合账务和必须实时的数据": "Vždy načítat z databáze – nejstabilnější řešení, vhodné pro účetní data a data vyžadující skutečný čas."
+    "每次都读库，最稳，适合账务和必须实时的数据": "Vždy načítat z databáze – nejstabilnější řešení, vhodné pro účetní data a data vyžadující skutečný čas.",
+    "停止网页服务和 MariaDB / Redis / RustFS": "Zastavit webové služby a MariaDB / Redis / RustFS",
+    "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Zastavením se ukončí webové služby a MariaDB / Redis / RustFS, avšak databáze nebudou odstraněny.",
+    "仍有服务未能停止": "Některé služby se nepodařilo zastavit"
   },
   "patterns": [
     {
@@ -1734,6 +1737,10 @@
     {
       "src": "支持 ${n} 种界面语言；切换后立即重载，不再占用顶栏。",
       "dst": "Podporovány jsou $1 uživatelská rozhraní; po přepnutí se aplikace okamžitě načte znovu a horní panel již nebude zabírat."
+    },
+    {
+      "src": "停止失败：${err}",
+      "dst": "Zastavení selhalo: $1"
     }
   ]
 }

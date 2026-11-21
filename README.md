@@ -120,6 +120,14 @@
 - `.yxpn` 工程包里同样带 `frontend/index.yxpp`，manifest 里有 `frontend` 元信息，换机器也能继续编辑。
 - 26 套内置案例全部预置 `.yxpp` 前端；其中 24 套是 PageStudio 原生 `appview` 业务应用（`project.app` + 业务运行时），打开就是真实的列表、表单、详情、后台工作流和行级动作，不是接口清单或请求调试器。案例的 `seed.sql` 只作为画布预览数据放在 `previewSeed`，导出页面不会带上它；商城、点餐、票务、博客、音乐 / 视频、工单、报销、会议、CRM、社交、聊天、预约等都已用真实数据库和真实上传链路逐项验收；问卷系统、活动报名保留各自的公开填写 / 报名页和管理员后台。
 
+## 停止按钮（1.1.64）
+
+- 工作台 Ribbon「运行」组的「停止」现在真正停掉网页服务和 MariaDB / Redis / RustFS，状态从 `3/3 运行` 变为 `0/3`，按钮回到「启动」；只停网页服务的入口仍在服务列表里单独保留。
+- 修掉“重启后点停止没反应”的根因：`stopOne('server')` 在进程内没有子进程句柄时，原先只识别 MariaDB / Redis / RustFS，生成服务直接返回 `already`。现在会先按持久 PID 标记查找，再按端口监听进程的便携 Node + `server.js` / `dev.js` 命令行确认归属；确认后从根进程 `taskkill /T`，热部署的 `node dev.js → server.js` 父子树会一起结束。
+- 重启时若首选端口上已有本应用上次启动的生成服务，`preparePorts()` 会认领该端口而不是把它当冲突避让；状态里的 PID 与工程目录来自持久标记，重启后也能看到真实监听进程。
+- 无法确认归属时不再静默成功：端口被其他程序占用会返回 `ok:false` 并提示，前端会显示失败 toast，不误杀别的 node 进程。
+- 新增 `tools/test-stop-server.js`：覆盖本进程启动后停止、重启后按标记停止孤儿、重启后认领端口、无标记孤儿、无标记热部署父子树、端口被别的程序占用时拒绝，共 6 组场景全部通过。中文 UI 冒烟 141/141。
+
 ## 多语言（1.1.63）
 
 - 界面语言扩到 **21 种**：`zh-CN`、`zh-TW`、`en-US`、`ja-JP`、`ko-KR`、`fr-FR`、`de-DE`、`es-ES`、`pt-BR`、`it-IT`、`ru-RU`、`ar-SA`、`nl-NL`、`pl-PL`、`tr-TR`、`th-TH`、`vi-VN`、`id-ID`、`hi-IN`、`cs-CZ`、`sv-SE`；阿拉伯语按 RTL 渲染。
@@ -152,10 +160,10 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.63.exe
+dist\ClickBuildServer-Setup-1.1.64.exe
 ```
 
-安装包 226,541,293 B（约 216 MB），构建时间 2026-11-21 13:41:01，SHA256 `08A6021B8F0DD86D59F42745A138D22488469494B3111FFF0378DDB4355F673E`。
+安装包 226,546,365 B（约 216 MB），构建时间 2026-11-21 14:10:07，SHA256 `DCA16C699481F427CFCE9E908F56179DEB2664CC70995464DA3EDD7E49955F18`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
@@ -460,7 +468,8 @@ npm run dist       # 发布安装包
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **138/138**（源码版 / 1.1.58 安装版） |
+| `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 / 1.1.64 安装版） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |

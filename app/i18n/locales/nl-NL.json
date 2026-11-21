@@ -1164,7 +1164,10 @@
     "在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。": "Selecteer de gewenste optie in het vervolgkeuzemenu “Versnellen” van elke tabel op de pagina “Tabelstructuur”. Wereldwijde zoekfunctie beschikbaar; TTL, LRU-limiet en opslagsinterval kunnen rechtstreeks in de tabelkop worden gewijzigd.",
     "纯表模式（Redis / LRU / 定期落盘）只由 Node 运行时执行；Go / Java 原生运行时只支持“直连 MySQL”，遇到其他模式会拒绝启动，避免静默读写不一致。": "De pure tabelmodus (Redis / LRU / periodiek opslaan) wordt uitsluitend uitgevoerd door de Node-runtime; native Go- en Java-runtimes ondersteunen alleen “directe MySQL-verbinding”. Andere modi worden geweigerd bij het opstarten om stilzwijgende inconsistenties in lees- en schrijfgegevens te voorkomen.",
     "存储加速模式": "Opslagversnellingsmodus",
-    "每次都读库，最稳，适合账务和必须实时的数据": "Leest telkens uit de database; het meest stabiel, geschikt voor boekhouding en gegevens die real-time moeten zijn."
+    "每次都读库，最稳，适合账务和必须实时的数据": "Leest telkens uit de database; het meest stabiel, geschikt voor boekhouding en gegevens die real-time moeten zijn.",
+    "停止网页服务和 MariaDB / Redis / RustFS": "Webdienst en MariaDB / Redis / RustFS stoppen",
+    "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Stoppen stopt de webdienst en MariaDB / Redis / RustFS, zonder de database te verwijderen.",
+    "仍有服务未能停止": "Er zijn nog steeds services die niet zijn gestopt"
   },
   "patterns": [
     {
@@ -1734,6 +1737,10 @@
     {
       "src": "支持 ${n} 种界面语言；切换后立即重载，不再占用顶栏。",
       "dst": "Ondersteunt $1 interface-talen; na overschakelen direct herladen, zonder bezetting van de bovenbalk."
+    },
+    {
+      "src": "停止失败：${err}",
+      "dst": "Stoppen mislukt: $1"
     }
   ]
 }

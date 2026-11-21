@@ -1103,7 +1103,7 @@ function renderRibbon() {
   </div><div class="lbl">脚本</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
-    ${rb(running ? 'stopServer' : 'launchWeb', running ? 'stop' : 'play', running ? '停止' : '启动', running ? '停止生成服务' : '生成当前工程、启动服务并打开网页主页')}
+    ${rb(running ? 'stopServer' : 'launchWeb', running ? 'stop' : 'play', running ? '停止' : '启动', running ? '停止网页服务和 MariaDB / Redis / RustFS' : '生成当前工程、启动服务并打开网页主页')}
     ${rb('home', 'console', '打开主页', '在浏览器打开当前工程的网页主页')}
     ${rb('monitor', 'console', '监控', '实时看请求日志与健康状态')}
     <div class="ribbon-status" title="数据库 / 缓存 / 对象存储运行状态"><span class="dot ${up ? 'on' : 'off'}"></span>${up}/${infra.length} 运行</div>
@@ -3432,7 +3432,7 @@ VALUES ({{body.username}}, HASH('sha256', {{body.password}}), MASK({{body.phone}
       <div class="hb-h3">启动链路</div>
       <div class="hb-p">Ribbon 的“启动”会依次做四件事：保存当前工程 → 生成服务文件 → 启动未运行的 MariaDB / Redis / RustFS → 启动网页服务并打开主页。第一次启动会比较慢，状态区会显示依赖启动进度。</div>
       <div class="hb-grid">
-        <div class="hb-card"><b>启动 / 停止</b><p>同一个按钮切换。停止只停网页服务，不删数据库。</p></div>
+        <div class="hb-card"><b>启动 / 停止</b><p>同一个按钮切换。停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。</p></div>
         <div class="hb-card"><b>打开主页</b><p>服务运行中才能打开；没启动会提示先启动。</p></div>
         <div class="hb-card"><b>更新部署</b><p>先保存并校验脚本，再启动依赖、重新生成、热重启服务；脚本有错会直接拦下。</p></div>
         <div class="hb-card"><b>监控</b><p>看请求日志、状态码、耗时和健康状态；排查 4xx / 5xx 先看这里。</p></div>
@@ -4183,7 +4183,14 @@ async function act(name, el) {
   }
   if (name === 'deployUpdate') { return deployUpdate(); }
   if (name === 'launchWeb' || name === 'startServer') { return launchWeb(); }
-  if (name === 'stopServer') { await api.stopServer(); S.services = await api.services(); renderRibbon(); renderSide(); renderWorkspace(); toast('已停止网页服务'); return; }
+  if (name === 'stopServer') {
+    const r = await api.stopService('');
+    S.services = await api.services();
+    renderRibbon(); renderSide(); renderWorkspace();
+    if (r && r.ok === false) return toast('停止失败：' + String(r.error || '仍有服务未能停止'), 7000);
+    toast('已停止');
+    return;
+  }
   if (name === 'startAll') { await api.startService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已启动三台服务'); return; }
   if (name === 'stopAll') { await api.stopService(''); S.services = await api.services(); renderRibbon(); renderSide(); toast('已停止'); return; }
   if (name === 'home' || name === 'console') {

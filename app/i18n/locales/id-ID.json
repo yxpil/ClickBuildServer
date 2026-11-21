@@ -1164,7 +1164,10 @@
     "在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。": "Pilih dari menu tarik-turun “Percepat” pada setiap tabel di halaman “Struktur Tabel”; pencarian global didukung. Batas TTL, LRU, dan interval penulisan ke disk dapat diubah langsung di header tabel.",
     "纯表模式（Redis / LRU / 定期落盘）只由 Node 运行时执行；Go / Java 原生运行时只支持“直连 MySQL”，遇到其他模式会拒绝启动，避免静默读写不一致。": "Mode tabel murni (Redis / LRU / penulisan disk berkala) hanya dieksekusi oleh runtime Node; runtime asli Go / Java hanya mendukung “Koneksi Langsung ke MySQL”. Mode lain akan ditolak saat startup untuk menghindari inkonsistensi baca-tulis yang tidak disadari.",
     "存储加速模式": "Mode Akselerasi Penyimpanan",
-    "每次都读库，最稳，适合账务和必须实时的数据": "Membaca dari basis data setiap kali, paling stabil, cocok untuk data akuntansi dan data yang harus real-time"
+    "每次都读库，最稳，适合账务和必须实时的数据": "Membaca dari basis data setiap kali, paling stabil, cocok untuk data akuntansi dan data yang harus real-time",
+    "停止网页服务和 MariaDB / Redis / RustFS": "Hentikan layanan web dan MariaDB / Redis / RustFS",
+    "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Menghentikan akan menghentikan layanan web dan MariaDB / Redis / RustFS, tanpa menghapus basis data.",
+    "仍有服务未能停止": "Masih ada layanan yang gagal dihentikan"
   },
   "patterns": [
     {
@@ -1734,6 +1737,10 @@
     {
       "src": "支持 ${n} 种界面语言；切换后立即重载，不再占用顶栏。",
       "dst": "Mendukung $1 bahasa antarmuka; setelah beralih, muat ulang segera dan tidak lagi menempati bilah atas."
+    },
+    {
+      "src": "停止失败：${err}",
+      "dst": "Gagal dihentikan: $1"
     }
   ]
 }

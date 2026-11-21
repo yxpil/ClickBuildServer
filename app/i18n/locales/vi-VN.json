@@ -1164,7 +1164,10 @@
     "在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。": "Chọn trong menu thả xuống “Tăng tốc” của mỗi bảng trên trang “Cấu trúc bảng”, có hỗ trợ tìm kiếm toàn cục; TTL, giới hạn LRU và khoảng thời gian ghi đĩa đều có thể chỉnh sửa trực tiếp ở phần đầu bảng.",
     "纯表模式（Redis / LRU / 定期落盘）只由 Node 运行时执行；Go / Java 原生运行时只支持“直连 MySQL”，遇到其他模式会拒绝启动，避免静默读写不一致。": "Chế độ chỉ bảng (Redis / LRU / ghi đĩa định kỳ) chỉ được thực thi bởi môi trường chạy Node; môi trường chạy gốc Go / Java chỉ hỗ trợ “kết nối trực tiếp MySQL”, sẽ từ chối khởi động nếu gặp các chế độ khác để tránh tình trạng đọc ghi không nhất quán một cách âm thầm.",
     "存储加速模式": "Chế độ tăng tốc lưu trữ",
-    "每次都读库，最稳，适合账务和必须实时的数据": "Luôn đọc từ cơ sở dữ liệu, ổn định nhất, phù hợp cho dữ liệu kế toán và dữ liệu yêu cầu thời gian thực bắt buộc"
+    "每次都读库，最稳，适合账务和必须实时的数据": "Luôn đọc từ cơ sở dữ liệu, ổn định nhất, phù hợp cho dữ liệu kế toán và dữ liệu yêu cầu thời gian thực bắt buộc",
+    "停止网页服务和 MariaDB / Redis / RustFS": "Ngừng dịch vụ web và MariaDB / Redis / RustFS",
+    "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Thao tác này sẽ ngừng dịch vụ web và MariaDB / Redis / RustFS mà không xóa cơ sở dữ liệu.",
+    "仍有服务未能停止": "Vẫn còn dịch vụ chưa thể ngừng"
   },
   "patterns": [
     {
@@ -1734,6 +1737,10 @@
     {
       "src": "支持 ${n} 种界面语言；切换后立即重载，不再占用顶栏。",
       "dst": "Hỗ trợ $1 ngôn ngữ giao diện; sau khi chuyển đổi, tải lại ngay và không còn chiếm dụng thanh trên cùng."
+    },
+    {
+      "src": "停止失败：${err}",
+      "dst": "Dừng thất bại: $1"
     }
   ]
 }

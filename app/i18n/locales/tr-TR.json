@@ -1164,7 +1164,10 @@
     "在“表结构”页每张表的“加速”下拉里选择，支持全局搜索；TTL、LRU 上限、刷盘间隔都在表头直接改。": "“Tablo yapısı” sayfasındaki her tablonun “Hızlandır” açılır menüsünden seçin; küresel arama desteklenir; TTL, LRU üst sınırı ve disk yazma aralığı doğrudan tablo başlığında değiştirilebilir.",
     "纯表模式（Redis / LRU / 定期落盘）只由 Node 运行时执行；Go / Java 原生运行时只支持“直连 MySQL”，遇到其他模式会拒绝启动，避免静默读写不一致。": "Salt tablo modu (Redis / LRU / periyodik disk yazma) yalnızca Node çalışma zamanı tarafından yürütülür; Go / Java yerel çalışma zamanları yalnızca “doğrudan MySQL bağlantısı”nı destekler; diğer modlar sessiz okuma/yazma tutarsızlığını önlemek için başlatmayı reddeder.",
     "存储加速模式": "Depolama hızlandırma modu",
-    "每次都读库，最稳，适合账务和必须实时的数据": "Her seferinde veritabanından okur; en kararlısıdır, muhasebe ve gerçek zamanlılık gerektiren veriler için uygundur."
+    "每次都读库，最稳，适合账务和必须实时的数据": "Her seferinde veritabanından okur; en kararlısıdır, muhasebe ve gerçek zamanlılık gerektiren veriler için uygundur.",
+    "停止网页服务和 MariaDB / Redis / RustFS": "Web hizmeti ile MariaDB / Redis / RustFS'i durdur",
+    "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Durdurma işlemi web hizmeti ile MariaDB / Redis / RustFS'i durdurur ancak veritabanını silmez.",
+    "仍有服务未能停止": "Hâlâ durdurulamayan hizmetler var"
   },
   "patterns": [
     {
@@ -1734,6 +1737,10 @@
     {
       "src": "支持 ${n} 种界面语言；切换后立即重载，不再占用顶栏。",
       "dst": "$1 arayüz dili destekleniyor; geçiş yapıldıktan sonra hemen yeniden yüklenir ve üst çubuğu işgal etmez."
+    },
+    {
+      "src": "停止失败：${err}",
+      "dst": "Durdurma başarısız: $1"
     }
   ]
 }

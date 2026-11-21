@@ -76,7 +76,11 @@ function spawnSvc(name, exe, args, opts) {
   child.on('error', (e) => pushLog(name, 'error: ' + e.message));
   child.on('close', (code) => {
     pushLog(name, `进程退出 code=${code}`);
-    if (s.child === child) { s.child = null; s.pid = null; }
+    if (s.child === child) {
+      s.child = null;
+      s.pid = null;
+      if (name === 'server') clearServerMarker(child.pid);
+    }
   });
   return { ok: true, pid: child.pid };
 }
@@ -92,6 +96,25 @@ function isPortOpen(port) {
   });
 }
 
+function processInfo(pid) {
+  try {
+    const ps = `$p=(Get-CimInstance Win32_Process -Filter "ProcessId=${Number(pid)}" -ErrorAction SilentlyContinue); if($p){$p | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine | ConvertTo-Json -Compress}`;
+    const raw = String(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 6000 }) || '').trim();
+    if (!raw || raw === 'null') return null;
+    const p = JSON.parse(raw);
+    const exePath = String(p.ExecutablePath || '');
+    return {
+      pid: Number(p.ProcessId || pid),
+      parentPid: Number(p.ParentProcessId || 0),
+      name: String(p.Name || (exePath ? path.basename(exePath) : '')),
+      path: exePath,
+      commandLine: String(p.CommandLine || ''),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 function listenerInfo(port) {
   try {
     const out = execFileSync('netstat.exe', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
@@ -102,20 +125,15 @@ function listenerInfo(port) {
     if (!line) return null;
     const pid = Number((line.match(/LISTENING\s+(\d+)\s*$/) || [])[1]);
     if (!pid) return null;
-    let exePath = '';
+    const info = processInfo(pid);
+    if (info) return info;
+    let name = '';
     try {
-      const ps = `$p=(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue); if($p){$p.ExecutablePath}`;
-      exePath = String(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 6000 }) || '').trim();
-    } catch (e) { /* 后面退回 tasklist 的进程名 */ }
-    let name = exePath ? path.basename(exePath) : '';
-    if (!name) {
-      try {
-        const rows = String(execFileSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 5000 }) || '');
-        const m = rows.match(/^"([^"]+)"/);
-        name = m ? m[1] : '';
-      } catch (e) { /* 忽略 */ }
-    }
-    return { pid, name, path: exePath };
+      const rows = String(execFileSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 5000 }) || '');
+      const m = rows.match(/^"([^"]+)"/);
+      name = m ? m[1] : '';
+    } catch (e) { /* 忽略 */ }
+    return { pid, name, path: '', commandLine: '' };
   } catch (e) {
     return null;
   }
@@ -126,6 +144,78 @@ function isBundledProcess(info, exeName) {
   if (path.basename(info.path).toLowerCase() !== exeName.toLowerCase()) return false;
   const root = path.resolve(bundledServicesRoot()).toLowerCase();
   return path.resolve(info.path).toLowerCase().startsWith(root);
+}
+
+function serverMarkerPath() {
+  return path.join(runtimeRoot(), 'server.json');
+}
+
+function readServerMarker() {
+  try {
+    const file = serverMarkerPath();
+    if (!fs.existsSync(file)) return null;
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return data && data.pid ? data : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeServerMarker(data) {
+  try {
+    fs.writeFileSync(serverMarkerPath(), JSON.stringify({ ...data, savedAt: new Date().toISOString() }, null, 2), 'utf8');
+  } catch (e) { /* 标记失败不影响启动 */ }
+}
+
+function clearServerMarker(pid) {
+  try {
+    const file = serverMarkerPath();
+    if (!fs.existsSync(file)) return;
+    if (pid) {
+      const cur = readServerMarker();
+      if (cur && Number(cur.pid) !== Number(pid)) return;
+    }
+    fs.unlinkSync(file);
+  } catch (e) { /* 忽略 */ }
+}
+
+// 生成服务由本应用启动。Node 用安装包独有的便携 node.exe 判定；
+// 其他运行时（Bun / Java / Go / Python）靠上次启动写入的 PID 标记 + 命令行入口判定。
+function isGeneratedServer(info, marker) {
+  if (!info || !info.pid || !info.path) return false;
+  const cmd = String(info.commandLine || '').toLowerCase();
+  const exe = path.basename(info.path).toLowerCase();
+  if (marker && Number(marker.pid) === Number(info.pid)) {
+    const entry = path.basename(String(marker.entry || '')).toLowerCase();
+    const markerExe = path.basename(String(marker.exe || '')).toLowerCase();
+    if (entry && cmd.includes(entry) && (!markerExe || markerExe === exe)) return true;
+  }
+  if (exe !== 'node.exe') return false;
+  const entryRe = /(?:^|[\s"'\\/])(?:server|dev)\.js(?:[\s"']|$)/i;
+  if (!entryRe.test(cmd)) return false;
+  const bundled = store.bundledNode();
+  if (!bundled) return false;
+  const bundledDir = path.resolve(path.dirname(bundled)).toLowerCase();
+  return path.resolve(info.path).toLowerCase().startsWith(bundledDir);
+}
+
+function findGeneratedServer(port) {
+  const marker = readServerMarker();
+  // 优先用上次启动记录的 PID：热部署时 node dev.js 会再拉起 server.js 子进程，
+  // 只杀监听子进程会留下 dev.js 继续复活服务，必须从记录的根进程整棵树结束。
+  if (marker && marker.pid) {
+    const proc = processInfo(marker.pid);
+    if (proc && isGeneratedServer(proc, marker)) return { info: proc, marker, killPid: proc.pid };
+  }
+  const info = port ? listenerInfo(port) : null;
+  if (!info || !isGeneratedServer(info, marker)) return null;
+  let root = info;
+  for (let i = 0; i < 4 && root.parentPid; i += 1) {
+    const parent = processInfo(root.parentPid);
+    if (!parent || !isGeneratedServer(parent, marker)) break;
+    root = parent;
+  }
+  return { info: root, listener: info, marker, killPid: root.pid };
 }
 
 function listBundledProcesses() {
@@ -209,6 +299,12 @@ async function preparePorts(wantOverride) {
       adoptedPid[item.key] = owner.pid;
       continue;
     }
+    if (item.key === 'http' && isGeneratedServer(owner, readServerMarker())) {
+      ports[item.key] = preferred;
+      adopted[item.key] = true;
+      adoptedPid[item.key] = owner.pid;
+      continue;
+    }
     const used = new Set(Object.entries(ports).filter(([k]) => k !== item.key).map(([, v]) => Number(v)));
     const free = await nextFreePort(preferred + 1, used);
     if (!free) throw new Error(`${item.label} 端口 ${preferred} 被占用，且后面 40 个端口也不可用`);
@@ -237,6 +333,8 @@ async function status() {
     rustfs: path.join(servicesRoot, 'RustFS', 'rustfs-windows-x86_64.exe'),
   };
   const missing = Object.entries(bin).filter(([, v]) => !fs.existsSync(v)).map(([k]) => k);
+  const srvMarker = readServerMarker();
+  const srvPid = state.server.pid || boot.adoptedPid.http || (httpOpen && srvMarker ? srvMarker.pid : null);
   return {
     servicesRoot,
     bundled: missing.length === 0,
@@ -250,7 +348,7 @@ async function status() {
       { id: 'mysql', name: 'MariaDB', port: ports.mysql, running: mysqlOpen, pid: state.mysql.pid || boot.adoptedPid.mysql || null, note: 'skip-grant-tables 本地测试实例', adopted: !!boot.adopted.mysql },
       { id: 'redis', name: 'Redis', port: ports.redis, running: redisOpen, pid: state.redis.pid || boot.adoptedPid.redis || null, note: 'Cygwin 构建，RedisService 托管', adopted: !!boot.adopted.redis },
       { id: 's3', name: 'RustFS', port: ports.s3, running: s3Open, pid: state.s3.pid || boot.adoptedPid.s3 || null, note: `S3 兼容，控制台 ${ports.s3Console}`, adopted: !!boot.adopted.s3 },
-      { id: 'server', name: '生成的服务', port: ports.http, running: httpOpen, pid: state.server.pid || null, dir: state.server.dir, hot: !!state.server.hot, runtime: state.server.runtime || 'node' },
+      { id: 'server', name: '生成的服务', port: ports.http, running: httpOpen, pid: srvPid, dir: state.server.dir || (httpOpen && srvMarker ? srvMarker.dir : ''), hot: !!state.server.hot, runtime: state.server.runtime || (httpOpen && srvMarker ? srvMarker.runtime : '') || 'node', adopted: !!boot.adopted.http },
     ],
   };
 }
@@ -361,16 +459,36 @@ function clearBootPort(name) {
   // 一旦首选端口上有别的程序（例如 18100 上的测试服务），就会误报“生成的服务正在运行”。
   if (name !== 'server') delete boot.ports[name];
   if (name === 's3') delete boot.ports.s3Console;
-  delete boot.adopted[name];
-  delete boot.adoptedPid[name];
+  const adoptKey = name === 'server' ? 'http' : name;
+  delete boot.adopted[adoptKey];
+  delete boot.adoptedPid[adoptKey];
   if (name === 's3') { delete boot.adopted.s3Console; delete boot.adoptedPid.s3Console; }
-  boot.conflicts = boot.conflicts.filter((c) => c.key !== name && !(name === 's3' && c.key === 's3Console'));
+  boot.conflicts = boot.conflicts.filter((c) => c.key !== adoptKey && !(name === 's3' && c.key === 's3Console'));
 }
 
 async function stopOne(name) {
   const s = state[name];
   if (!s || !s.child) {
     // 没有子进程句柄时，只有确认监听进程就是本安装包的服务才允许停，避免误伤别的程序。
+    if (name === 'server') {
+      const port = (boot.ports && boot.ports.http) || settings().ports.http || (readServerMarker() || {}).port;
+      const found = findGeneratedServer(port);
+      if (found) {
+        const killPid = found.killPid || found.info.pid;
+        await killTree(killPid);
+        await waitPidGone(killPid, 6000);
+        clearServerMarker();
+        clearBootPort('server');
+        pushLog('server', `已停止认领的生成服务 PID ${killPid}`);
+        return { ok: true, pid: killPid, adopted: true };
+      }
+      clearServerMarker();
+      clearBootPort('server');
+      if (port && await isPortOpen(port)) {
+        return { ok: false, error: `端口 ${port} 仍被其他程序占用，无法确认是本应用启动的生成服务` };
+      }
+      return { ok: true, already: true };
+    }
     const owners = { mysql: 'mariadbd.exe', redis: 'redis-server.exe', s3: 'rustfs-windows-x86_64.exe' };
     const port = boot.ports && boot.ports[name];
     const owner = port ? listenerInfo(port) : null;
@@ -395,6 +513,7 @@ async function stopOne(name) {
   });
   s.child = null;
   s.pid = null;
+  if (name === 'server') clearServerMarker(pid);
   clearBootPort(name);
   pushLog(name, '已停止');
   return { ok: true, pid };
@@ -482,6 +601,20 @@ function environment() {
 async function startServer(dir, opts) {
   const ports = await preparePorts();
   if (state.server.child && !state.server.child.killed) return { ok: true, already: true, pid: state.server.pid, hot: state.server.hot, runtime: state.server.runtime, port: ports.http };
+  if (boot.adopted.http) {
+    const marker = readServerMarker() || {};
+    return {
+      ok: true,
+      already: true,
+      adopted: true,
+      pid: boot.adoptedPid.http,
+      port: ports.http,
+      dir: marker.dir || dir,
+      hot: !!marker.hot,
+      runtime: marker.runtime || 'node',
+      entry: marker.entry || '',
+    };
+  }
   const o = opts || {};
   const runtime = o.runtime || 'node';
   const hot = !!o.hot;
@@ -589,6 +722,7 @@ async function startServer(dir, opts) {
   state.server.hot = hot;
   state.server.runtime = runtime;
   if (res.ok) {
+    writeServerMarker({ pid: res.pid, dir, entry, runtime, hot, port: ports.http, exe, args });
     const up = await waitPort(ports.http, 20000);
     if (!up) return { ...res, ok: false, port: ports.http, error: `生成的服务没有在 20 秒内监听 ${ports.http}` };
   }
@@ -638,12 +772,16 @@ async function startAll(progress) {
 }
 
 async function stopAll() {
-  for (const n of ['server', 'mysql', 'redis', 's3']) await stopOne(n);
-  boot.ports = null;
-  boot.conflicts = [];
+  const results = {};
+  for (const n of ['server', 'mysql', 'redis', 's3']) results[n] = await stopOne(n);
   boot.adopted = {};
   boot.adoptedPid = {};
-  return { ok: true };
+  const failed = Object.entries(results).filter(([, r]) => r && r.ok === false);
+  return {
+    ok: failed.length === 0,
+    results,
+    error: failed.length ? failed.map(([n, r]) => `${n}: ${r.error || '停止失败'}`).join('；') : '',
+  };
 }
 
 // 退出应用时用：先停掉本次启动的所有服务，再等端口真正释放。
