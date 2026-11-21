@@ -95,8 +95,6 @@ a.btn{color:var(--ink);text-decoration:none;cursor:pointer}
 .btn--sq{width:30px;padding:0;justify-content:center}
 .btn.is-disabled{opacity:.35;pointer-events:none}
 .btn--account{padding:0 9px}
-.lang-select{height:30px;max-width:96px;padding:0 6px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--ink);font-size:11px;cursor:pointer}
-.lang-select:hover{border-color:var(--ink)}
 .btn--account.is-authed{background:var(--ink);border-color:var(--ink);color:#fff}
 .btn--account.is-authed .ic{color:#fff}
 @media(max-width:1180px){#accountLabel{display:none}.btn--account{width:30px;padding:0;justify-content:center}}
@@ -1218,7 +1216,6 @@ body.cbs-embedded .tb-right{gap:6px}
 body.cbs-embedded .cbs-ops{display:flex;align-items:center;gap:4px;margin-right:6px;padding-right:8px;border-right:1px solid var(--line)}
 body.cbs-embedded .cbs-ops .btn{height:28px;padding:0 8px;font-size:11px}
 body.cbs-embedded .cbs-ops #cbsDeploy{background:var(--ink);border-color:var(--ink);color:#fff}
-body.cbs-embedded .lang-select{max-width:84px}
 body.cbs-embedded .shell{grid-template-columns:228px minmax(0,1fr) 292px;border-top:0}
 body.cbs-embedded .panel{border-right-color:var(--line-2)}
 body.cbs-embedded #btnTopMore,
@@ -1361,10 +1358,6 @@ body.cbs-embedded .cbs-site-only{display:none!important}
         <button class="btn btn--solid" id="cbsDeploy" title="更新部署当前工程">部署</button>
       </div>
       <button class="btn" id="btnGlobalSearch" data-icon="search" title="全局搜索 Ctrl+K" aria-haspopup="dialog" aria-expanded="false"><span>搜索</span></button>
-      <select class="lang-select" id="langSelect" data-i18n-skip title="界面语言（中文 / English）">
-        <option value="zh">中文</option>
-        <option value="en">English</option>
-      </select>
       <button class="btn btn--account" id="btnAccount" data-icon="user" title="登录网站账号"><span id="accountLabel">登录</span></button>
       <button class="btn btn--sq" id="btnSitePublish" data-icon="cloud" aria-label="保存到我的网站" title="登录网站账号，保存到用户空间并生成链接"></button>
       <button class="btn btn--sq" id="btnShareStudio" data-icon="link" aria-label="分享此工作站" title="分享此工作站的链接"></button>
@@ -21004,74 +20997,49 @@ function siteInit() {
 
 /* ===================== 界面多语言：复用网站 /api/ui-i18n ===================== */
 var STUDIO_LANG_KEY = 'ps_lang';
-var STUDIO_I18N_FALLBACK = {
-  en: {
-    '搜索': 'Search', '登录': 'Sign in', '模板': 'Templates', 'AI 排版': 'AI Layout', '工程': 'Project',
-    '导入 SVG': 'Import SVG', '预览': 'Preview', '更多': 'More', '保存并新建': 'Save & New',
-    '页面': 'Pages', '组件库': 'Components', '图层': 'Layers', '属性': 'Properties',
-    '添加': 'Add', '删除': 'Delete', '复制': 'Duplicate', '撤销': 'Undo', '重做': 'Redo',
-    '保存': 'Save', '取消': 'Cancel', '确定': 'OK', '关闭': 'Close', '文本': 'Text',
-    '图片': 'Image', '按钮': 'Button', '表格': 'Table', '统计图': 'Chart', '线条': 'Line',
-    '箭头': 'Arrow', '代码': 'Code', '模板中心': 'Template Center', '新建页面': 'New Page',
-    '删除页面': 'Delete Page', '画布': 'Canvas', '背景': 'Background', '颜色': 'Color',
-    '字体': 'Font', '字号': 'Size', '对齐': 'Align', '宽度': 'Width', '高度': 'Height',
-    '导出': 'Export', '导入': 'Import', '保存到我的网站': 'Save to My Site'
+var STUDIO_I18N_FALLBACK = { en: {} };
+var studioI18n = { lang: 'zh-CN', dir: 'ltr', dict: {}, patterns: [], re: [], applying: false, observer: null, timer: 0 };
+
+function studioI18nCompile(src) {
+  var s = String(src), out = '';
+  for (var i = 0; i < s.length; i++) {
+    if (s[i] === '$' && s[i + 1] === '{') {
+      var depth = 0, j = i + 1;
+      for (; j < s.length; j++) {
+        if (s[j] === '{') depth++;
+        else if (s[j] === '}') { depth--; if (depth === 0) break; }
+      }
+      out += '(.+?)'; i = j;
+    } else {
+      out += s[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
   }
-};
-Object.assign(STUDIO_I18N_FALLBACK.en, {
-  '基础元素': 'Basics', '文字排版': 'Typography', '按钮 / 表单': 'Buttons / Forms',
-  '页面组件': 'Page Components', '图片 / 媒体': 'Media', '图形 / 装饰': 'Shapes / Decor',
-  '数据 / 图表': 'Data / Charts', '文档 / 图形': 'Docs / Diagrams', '业务 / 行业图': 'Business / Industry',
-  '技术 / 架构图': 'Tech / Architecture', '交互 / 嵌入': 'Interactive / Embeds', '加载 / 占位': 'Loading / Placeholders',
-  '拖入画布': 'Drag to canvas', '返回组件分类': 'Back to categories', '组件分类': 'Component categories',
-  '标题 / 正文 / 列表 / 标签': 'Heading / Body / List / Label', '按钮 / 输入 / 登录': 'Button / Input / Sign in',
-  '指标 / 卡片 / 提示 / 步骤': 'KPI / Card / Alert / Steps', '图片 / 视频 / 音乐': 'Image / Video / Audio',
-  '线条 / 线段 / 箭头 / 图形': 'Line / Segment / Arrow / Shape', '图表 / 表格 / API': 'Chart / Table / API',
-  'Markdown / 流程图': 'Markdown / Flowchart', '组织 / 排期 / 分析 / 流程': 'Org / Gantt / Analysis / Flow',
-  '系统 / 状态 / 数据库': 'System / State / Database', '对话框 / 网页': 'Dialog / Web page',
-  '骨架屏 / 转圈 / 进度': 'Skeleton / Spinner / Progress', '页面骨架': 'Page skeleton',
-  '自定义页眉 / 页脚': 'Custom header / footer', '页眉': 'Header', '页脚': 'Footer',
-  '内容': 'Content', '布局': 'Layout', '外观': 'Appearance', '数据来源': 'Data source',
-  '图表类型': 'Chart type', '图表配色': 'Palette', '图表标题': 'Chart title', '系列名称': 'Series name',
-  '自定义数据': 'Custom data', '显示图例': 'Show legend', '显示网格线': 'Show grid',
-  '页面': 'Page', '图层': 'Layers', '未选中元素': 'Nothing selected', '从左侧拖入元素，或点击画布中的对象开始编辑。': 'Drag an element from the left, or click an object on the canvas to edit.',
-  '双击文字可直接改写内容': 'Double-click text to edit', '拖动四角手柄调整尺寸': 'Drag corner handles to resize',
-  'Shift / Ctrl + 点击可多选': 'Shift / Ctrl + click to multi-select', '空白处拖动可框选多个元素': 'Drag empty space to marquee-select',
-  'Alt + 点击可选中它的父容器': 'Alt + click to select its parent', '拖进容器即成为它的子元素': 'Drop into a container to nest it',
-  '背景': 'Background', '边框': 'Border', '圆角': 'Radius', '阴影': 'Shadow', '间距': 'Spacing',
-  '位置': 'Position', '尺寸': 'Size', '对齐': 'Align', '层级': 'Z-index', '锁定': 'Lock', '隐藏': 'Hide',
-  '删除': 'Delete', '复制': 'Duplicate', '上移': 'Move up', '下移': 'Move down', '保存': 'Save',
-  '取消': 'Cancel', '确定': 'OK', '关闭': 'Close', '添加': 'Add', '编辑': 'Edit', '更新': 'Update',
-  '导出代码': 'Export code', '保存并新建': 'Save & New', '清空当前页': 'Clear current page',
-  '分享此工作站': 'Share this workspace', '分享此工作站二维码': 'Workspace QR code',
-  '分享此工作站的链接': 'Share this workspace link', '扫码打开工作站': 'Scan to open workspace',
-  '在线网页设计工作台 · 组件、导出、发布': 'Online web design workspace · components, export, publish',
-  '自定义 JS': 'Custom JS', '访问密码': 'Access password', '分享卡片': 'Share card', '二维码': 'QR code',
-  '发布前合规抽检': 'Pre-publish compliance check', '保存到我的网站': 'Save to My Site',
-  '网站账号': 'Website account', '保存位置': 'Save location', '用户空间文件夹': 'User space folder',
-  '文件名': 'File name', '保存接口': 'Save API', '写入方式': 'Write mode', '公开访问前缀': 'Public URL prefix',
-  '链接模板': 'Link template', '发布访问密码（可选）': 'Access password (optional)',
-  '打开网站登录': 'Open site login', '检测登录状态': 'Check login status', '已登录': 'Signed in',
-  '未登录。先登录网站账号，再保存。': 'Not signed in. Sign in to the site before saving.',
-  '保存并生成链接': 'Save and generate link', '复制链接': 'Copy link', '打开': 'Open',
-  '搜索': 'Search', '登录': 'Sign in', '模板': 'Templates', '工程': 'Project', '预览': 'Preview', '更多': 'More',
-  '组件': 'Components', '图标': 'Icons', '资产': 'Assets', '页面风格': 'Page styles',
-  '· 双击文字可直接改写内容': '· Double-click text to edit', '· 拖动四角手柄调整尺寸': '· Drag corner handles to resize',
-  '· Shift / Ctrl + 点击可多选': '· Shift / Ctrl + click to multi-select', '· 空白处拖动可框选多个元素': '· Drag empty space to marquee-select',
-  '· Alt + 点击可选中它的父容器': '· Alt + click to select its parent', '· 拖进容器即成为它的子元素': '· Drop into a container to nest it',
-  '未选中': 'Nothing selected', '已保存到本地': 'Saved locally', '快捷键': 'Shortcuts',
-  '清空': 'Clear', '新页': 'New page', '标尺': 'Rulers', '全屏': 'Fullscreen', '本页底色': 'Page color',
-  '网页控制台': 'Web Console', '在线执行 JS': 'Run JS inline', '控制台标题': 'Console title',
-  '输入框占位文字': 'Input placeholder', '初始提示': 'Welcome message', '强调色': 'Accent color',
-  'AI 对话': 'AI Chat', 'AI 排版助手': 'AI Layout Assistant', '看当前画布截图 · 连续对话调整': 'Canvas screenshot · conversational editing',
-  '新对话': 'New chat', '配置': 'Settings', '发送': 'Send', '思考中…': 'Thinking…',
-  '附带截图': 'Attach screenshot', '允许改尺寸': 'Allow resize', '自动应用': 'Auto apply',
-  '刷新截图': 'Refresh shot', '整页': 'Whole page', '选中元素': 'Selection',
-  '描述你想怎么改': 'Describe the change', '干净一点': 'Cleaner', '标题突出': 'Stronger title',
-  '产品页': 'Product page', '检查重叠': 'Check overlaps', '接口设置': 'API settings',
-  '准备就绪。发送时会自动截取当前画布。': 'Ready. A canvas screenshot is captured when you send.'
-});
-var studioI18n = { lang: 'zh', dict: {}, applying: false, observer: null, timer: 0 };
+  return new RegExp('^' + out + '$');
+}
+
+function studioI18nSetPatterns(list) {
+  studioI18n.patterns = Array.isArray(list) ? list : [];
+  studioI18n.re = studioI18n.patterns
+    .filter(function (p) { return p && p.src && p.dst; })
+    .map(function (p) { return { re: studioI18nCompile(p.src), dst: String(p.dst) }; });
+}
+
+function studioI18nTranslate(value) {
+  var text = String(value == null ? '' : value);
+  if (!text || studioI18n.lang === 'zh-CN') return text;
+  if (Object.prototype.hasOwnProperty.call(studioI18n.dict, text)) return studioI18n.dict[text];
+  for (var i = 0; i < studioI18n.re.length; i++) {
+    var m = studioI18n.re[i].re.exec(text);
+    if (!m) continue;
+    var dst = studioI18n.re[i].dst;
+    return dst.replace(/\$(\d+)/g, function (all, n) {
+      var v = m[Number(n)];
+      if (v == null) return '';
+      return Object.prototype.hasOwnProperty.call(studioI18n.dict, v) ? studioI18n.dict[v] : v;
+    });
+  }
+  return text;
+}
 
 function studioI18nSkip(el) {
   if (!el) return true;
@@ -21109,12 +21077,13 @@ function studioI18nApplyAttrs(lang) {
       if (!raw || !raw.trim()) return;
       if (!el._psZhAttrs) el._psZhAttrs = {};
       if (el._psZhAttrs[attr] === undefined) el._psZhAttrs[attr] = raw;
-      if (lang === 'zh') {
+      if (lang === 'zh-CN') {
         if (el._psZhAttrs[attr] !== undefined) el.setAttribute(attr, el._psZhAttrs[attr]);
         return;
       }
-      var tr = studioI18n.dict[raw.trim()];
-      if (tr && tr !== raw.trim()) el.setAttribute(attr, raw.replace(raw.trim(), tr));
+      var source = el._psZhAttrs[attr] !== undefined ? el._psZhAttrs[attr] : raw;
+      var tr = studioI18nTranslate(source);
+      if (tr !== source) el.setAttribute(attr, tr);
     });
   });
 }
@@ -21122,21 +21091,22 @@ function studioI18nApplyAttrs(lang) {
 function studioI18nApply() {
   if (!document.body) return;
   studioI18n.applying = true;
-  var lang = studioI18n.lang || 'zh';
+  var lang = studioI18n.lang || 'zh-CN';
+  document.documentElement.setAttribute('lang', lang);
+  document.documentElement.setAttribute('dir', studioI18n.dir || (lang === 'ar-SA' ? 'rtl' : 'ltr'));
   studioI18nWalkText(document.body, function (node) {
     var raw = node.nodeValue;
     if (!raw || !raw.trim()) return;
-    if (lang === 'zh') {
+    if (lang === 'zh-CN') {
       if (node._psZh !== undefined) { node.nodeValue = node._psZh; delete node._psZh; }
       return;
     }
     if (node._psZh === undefined) node._psZh = raw;
-    var t = raw.trim();
-    var tr = studioI18n.dict[t];
-    if (tr && tr !== t) {
-      var at = raw.indexOf(t);
-      if (at >= 0) node.nodeValue = raw.slice(0, at) + tr + raw.slice(at + t.length);
-    }
+    var source = node._psZh;
+    var m = /^(\s*)([\s\S]*?)(\s*)$/.exec(source);
+    if (!m) return;
+    var tr = studioI18nTranslate(m[2]);
+    if (tr !== m[2]) node.nodeValue = m[1] + tr + m[3];
   });
   studioI18nApplyAttrs(lang);
   setTimeout(function () { studioI18n.applying = false; }, 0);
@@ -21147,43 +21117,56 @@ function studioI18nUrl(lang) {
   return String(base).replace(/\/+$/, '') + '/api/ui-i18n/' + encodeURIComponent(lang);
 }
 
-function studioI18nSetSelect(lang) {
-  var sel = $('langSelect');
-  if (sel && sel.value !== lang) sel.value = lang;
+function studioNormalizeLocale(value) {
+  var raw = String(value || '').replace('_', '-');
+  if (!raw) return 'zh-CN';
+  if (raw === 'zh' || /^zh-(cn|sg|hans)/i.test(raw)) return 'zh-CN';
+  if (/^zh-(tw|hk|mo|hant)/i.test(raw)) return 'zh-TW';
+  if (raw === 'en' || /^en/i.test(raw)) return 'en-US';
+  return raw;
 }
 
-function studioI18nLoad(lang) {
-  lang = lang || 'zh';
-  lang = lang === 'en' ? 'en' : 'zh';
-  studioI18n.lang = lang;
+function studioI18nLoad(locale, provided, dir, patterns) {
+  locale = studioNormalizeLocale(locale);
+  studioI18n.lang = locale;
+  studioI18n.dir = dir || (locale === 'ar-SA' ? 'rtl' : 'ltr');
   if (!CBS_EMBED) {
-    try { localStorage.setItem(STUDIO_LANG_KEY, lang); } catch (e) {}
+    try { localStorage.setItem(STUDIO_LANG_KEY, locale); } catch (e) {}
   }
-  studioI18nSetSelect(lang);
-  document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : lang);
-  if (lang === 'zh') {
+  document.documentElement.setAttribute('lang', locale);
+  document.documentElement.setAttribute('dir', studioI18n.dir);
+  if (locale === 'zh-CN') {
     studioI18n.dict = {};
+    studioI18nSetPatterns([]);
     studioI18nApply();
     return Promise.resolve();
   }
-  var fallbackDict = STUDIO_I18N_FALLBACK.en || {};
+  if (provided && typeof provided === 'object') {
+    studioI18n.dict = provided;
+    studioI18nSetPatterns(patterns);
+    studioI18nApply();
+    return Promise.resolve();
+  }
   if (CBS_EMBED) {
-    studioI18n.dict = fallbackDict;
+    studioI18n.dict = {};
+    studioI18nSetPatterns([]);
     studioI18nApply();
     return Promise.resolve();
   }
-  var cacheKey = 'ps_i18n_' + lang;
+  var cacheKey = 'ps_i18n_' + locale;
   var cached = null;
   try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (e) {}
-  studioI18n.dict = Object.assign({}, fallbackDict, (cached && cached.dict) || {});
+  studioI18n.dict = (cached && cached.dict) || {};
+  studioI18nSetPatterns((cached && cached.patterns) || []);
   studioI18nApply();
   function finish(data) {
-    var dict = Object.assign({}, fallbackDict, (data && data.dict) || {});
+    var dict = (data && data.dict) || {};
     studioI18n.dict = dict;
-    try { localStorage.setItem(cacheKey, JSON.stringify({ v: (data && data.version) || '', dict: dict })); } catch (e) {}
+    studioI18nSetPatterns((data && data.patterns) || []);
+    try { localStorage.setItem(cacheKey, JSON.stringify({ v: (data && data.version) || '', dict: dict, patterns: studioI18n.patterns })); } catch (e) {}
     studioI18nApply();
   }
-  return fetch(studioI18nUrl(lang), { credentials: 'include', headers: { 'Accept': 'application/json' } })
+  return fetch(studioI18nUrl(locale), { credentials: 'include', headers: { 'Accept': 'application/json' } })
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
       if (data && data.dict) finish(data);
@@ -21197,7 +21180,7 @@ function studioI18nLoad(lang) {
 function studioI18nStartObserver() {
   if (studioI18n.observer || !window.MutationObserver) return;
   studioI18n.observer = new MutationObserver(function (records) {
-    if (studioI18n.applying || studioI18n.lang === 'zh') return;
+    if (studioI18n.applying || studioI18n.lang === 'zh-CN') return;
     var relevant = false;
     records.forEach(function (r) {
       if (r.target && !studioI18nSkip(r.target.nodeType === 1 ? r.target : r.target.parentElement)) relevant = true;
@@ -21210,16 +21193,12 @@ function studioI18nStartObserver() {
 }
 
 function studioI18nInit() {
-  var saved = 'zh';
+  var saved = 'zh-CN';
   if (!CBS_EMBED) {
-    try { saved = localStorage.getItem(STUDIO_LANG_KEY) || 'zh'; } catch (e) {}
-  }
-  var sel = $('langSelect');
-  if (sel) {
-    sel.addEventListener('change', function () { studioI18nLoad(this.value); });
+    try { saved = studioNormalizeLocale(localStorage.getItem(STUDIO_LANG_KEY) || 'zh-CN'); } catch (e) {}
   }
   studioI18nStartObserver();
-  if (saved !== 'zh') studioI18nLoad(saved);
+  if (saved !== 'zh-CN') studioI18nLoad(saved);
 }
 
 /* ===================== 5. 初始化 ===================== */
@@ -21290,11 +21269,11 @@ setupGlobalSearch();
     if (st) st.textContent = '同步失败：' + String(message || '未知错误').slice(0, 30);
     try { toast('同步到当前工程失败：' + message); } catch (e) {}
   }
-  function applyProject(project, binding, lang) {
+  function applyProject(project, binding, lang, dict, dir, patterns) {
     if (!project || !project.page) return false;
     try {
       S.proj = normalizeProject(project);
-      if (lang) { try { studioI18nLoad(lang); } catch (e) {} }
+      if (lang) { try { studioI18nLoad(lang, dict, dir, patterns); } catch (e) {} }
       var pLabel = $('cbsProjectLabel');
       var pName = String(project.name || (S.proj && S.proj.name) || '');
       if (pLabel) pLabel.textContent = pName ? '当前工程：' + pName : '未绑定工程';
@@ -21327,7 +21306,7 @@ setupGlobalSearch();
     if (d.type === 'cbs:yxpp:load') {
       S.ifaces = Array.isArray(d.ifaces) ? d.ifaces : [];
       S.previewHtml = String(d.previewHtml || '');
-      applyProject(d.project, d.binding, d.lang);
+      applyProject(d.project, d.binding, d.lang, d.dict, d.dir, d.patterns);
       markSynced(d.at);
       return;
     }

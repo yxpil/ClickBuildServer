@@ -1,7 +1,15 @@
 'use strict';
 
 (() => {
-  let state = { locale: 'zh-CN', source: 'zh-CN', locales: [], system: 'zh-CN', dict: {}, patterns: [] };
+  let state = {
+    locale: 'zh-CN',
+    source: 'zh-CN',
+    dir: 'ltr',
+    locales: [],
+    system: 'zh-CN',
+    dict: {},
+    patterns: [],
+  };
   try {
     if (window.icb && window.icb.i18nSync) state = window.icb.i18nSync() || state;
   } catch (e) { /* 主进程还没准备好时保持中文 */ }
@@ -92,10 +100,13 @@
   }
 
   function apply(root) {
-    if (state.locale === state.source) return;
     const doc = root || document;
-    if (doc === document) document.documentElement.lang = state.locale;
-    if (doc === document && document.title) document.title = translate(document.title);
+    const dir = state.dir || 'ltr';
+    if (doc === document) {
+      document.documentElement.lang = state.locale;
+      document.documentElement.dir = dir;
+      if (document.title) document.title = translate(document.title);
+    }
     if (doc.body) translateElement(doc.body);
   }
 
@@ -124,92 +135,37 @@
     observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
   }
 
-  function initSelect() {
-    const sel = document.getElementById('langSel');
-    if (!sel) return;
-    const btn = document.getElementById('langBtn');
-    const pop = document.getElementById('langPop');
-    const label = document.getElementById('langLabel');
-    const menu = document.getElementById('langMenu');
-    const list = state.locales && state.locales.length ? state.locales : [{ id: 'zh-CN', label: '简体中文' }, { id: 'en-US', label: 'English' }];
-    const sync = () => {
-      sel.value = state.locale;
-      const current = list.find((x) => x.id === state.locale) || list[0];
-      if (label) label.textContent = current ? current.label : state.locale;
-      sel.title = state.locale === 'en-US' ? 'Language / 语言' : '语言 / Language';
-      if (btn) btn.title = sel.title;
-      if (pop) {
-        for (const item of pop.querySelectorAll('[data-locale]')) {
-          const on = item.dataset.locale === state.locale;
-          item.classList.toggle('on', on);
-          item.setAttribute('aria-selected', on ? 'true' : 'false');
-        }
-      }
-    };
-    sel.innerHTML = list.map((x) => `<option value="${x.id}">${x.label}</option>`).join('');
-    sync();
-    if (sel.dataset.bound === '1') return;
-    sel.dataset.bound = '1';
+  async function setLocale(next) {
+    if (!next || next === state.locale) return true;
+    if (!window.icb || !window.icb.setLocale) throw new Error('语言切换接口不可用');
+    await window.icb.setLocale(next);
+    location.reload();
+    return true;
+  }
 
-    const setOpen = (open) => {
-      if (!pop || !btn) return;
-      pop.classList.toggle('hidden', !open);
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-    const choose = (locale) => {
-      if (!locale || locale === state.locale) { setOpen(false); return; }
-      sel.value = locale;
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-      setOpen(false);
-    };
-
-    if (btn) btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(pop.classList.contains('hidden'));
-    });
-    if (pop) {
-      pop.addEventListener('click', (e) => {
-        const item = e.target.closest('[data-locale]');
-        if (!item) return;
-        e.preventDefault();
-        e.stopPropagation();
-        choose(item.dataset.locale);
-      });
-    }
-    document.addEventListener('click', (e) => {
-      if (menu && !menu.contains(e.target)) setOpen(false);
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { setOpen(false); if (btn) btn.focus(); }
-    });
-    sel.addEventListener('change', async () => {
-      const next = sel.value;
-      if (!window.icb || !window.icb.setLocale) return;
-      try {
-        await window.icb.setLocale(next);
-        location.reload();
-      } catch (e) { sel.value = state.locale; sync(); }
-    });
+  function currentLocale() {
+    return (state.locales || []).find((x) => x.id === state.locale) || null;
   }
 
   window.__i18n = {
     get locale() { return state.locale; },
     get source() { return state.source; },
+    get dir() { return state.dir || 'ltr'; },
     get locales() { return state.locales || []; },
+    get current() { return currentLocale(); },
     get dict() { return dict; },
     get patterns() { return rawPatterns; },
     translate,
     apply,
+    setLocale,
     refresh() {
       state = (window.icb && window.icb.i18nSync && window.icb.i18nSync()) || state;
       apply(document);
     },
   };
 
-  initSelect();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => { apply(document); watch(); initSelect(); });
+    document.addEventListener('DOMContentLoaded', () => { apply(document); watch(); });
   } else {
     apply(document);
     watch();

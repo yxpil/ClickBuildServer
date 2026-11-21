@@ -1,0 +1,19 @@
+﻿Warunki użytkowania i oświadczenie o wyłączeniu odpowiedzialności ClickBuildServer
+
+1. Licencja open source
+Niniejsze oprogramowanie jest udostępniane na licencji Apache, wersja 2.0. Pełny tekst licencji znajduje się w pliku LICENSE w katalogu instalacyjnym lub jest dostępny pod adresem:
+https://www.apache.org/licenses/LICENSE-2.0
+Zgodnie z licencją Apache 2.0 można korzystać z niniejszego oprogramowania oraz utworów pochodnych, modyfikować je, kopiować i rozpowszechniać pod warunkiem zachowania informacji o prawach autorskich, licencji oraz powiadomień NOTICE.
+
+2. Wyłącznie zgodne z prawem wykorzystanie
+Niniejsze oprogramowanie może być wykorzystywane wyłącznie w celach zgodnych z prawem. Nie wolno go wykorzystywać w celu naruszenia jakiegokolwiek obowiązującego prawa lub przepisów, w tym między innymi w celu uzyskiwania nieautoryzowanego dostępu do sieci, przeprowadzania ataków, kradzieży danych, oszustw, rozpowszechniania złośliwego oprogramowania, naruszania prywatności lub podejmowania jakiejkolwiek innej nielegalnej lub przestępczej działalności.
+Jesteś wyłącznym podmiotem odpowiedzialnym za zapewnienie, że Twoje wykorzystanie niniejszego oprogramowania, tworzone przez Ciebie usługi, przetwarzane przez Ciebie dane oraz publikowane przez Ciebie treści są zgodne z prawem i posiadają odpowiednie upoważnienie.
+
+3. Odpowiedzialność
+Przejmujesz pełną odpowiedzialność wynikającą z korzystania z niniejszego oprogramowania, w tym między innymi za utratę danych, przerwy w świadczeniu usług, straty biznesowe, roszczenia osób trzecich oraz odpowiedzialność prawną.
+W zakresie dozwolonym przez obowiązujące przepisy prawa niniejsze oprogramowanie jest dostarczane „TAK JAK JEST”, bez jakichkolwiek wyraźnych lub dorozumianych gwarancji. Autor, posiadacze praw autorskich oraz współtwórcy nie ponoszą żadnej odpowiedzialności za jakiekolwiek bezpośrednie lub pośrednie straty, szkody lub zobowiązania prawne wynikające z korzystania z niniejszego oprogramowania lub niemożności jego korzystania. Postanowienia dotyczące wyłączenia odpowiedzialności i ograniczenia odpowiedzialności zawarte w licencji Apache 2.0 również mają zastosowanie.
+
+4. Akceptacja
+Kontynuując instalację lub korzystając z niniejszego oprogramowania, potwierdzasz, że zapoznałeś się z niniejszymi warunkami, zrozumiałeś je i wyrażasz na nie zgodę. W przypadku braku zgody prosimy o przerwanie instalacji i usunięcie oprogramowania.
+
+Prawa autorskie © 2026 yxpil

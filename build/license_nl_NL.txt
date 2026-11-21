@@ -1,0 +1,19 @@
+﻿ClickBuildServer Gebruiksvoorwaarden en Disclaimer
+
+1. Open Source-licentie
+Deze software wordt uitgebracht onder de Apache License, Versie 2.0. De volledige licentietekst is opgenomen in het LICENSE-bestand in de installatiemap, of beschikbaar op:
+https://www.apache.org/licenses/LICENSE-2.0
+Onder voorbehoud van de Apache License 2.0 mag u deze software en afgeleide werken gebruiken, wijzigen, kopiëren en verspreiden, mits de auteursrecht-, licentie- en NOTICE-vermeldingen behouden blijven.
+
+2. Alleen rechtmatig gebruik
+Deze software mag uitsluitend voor rechtmatige doeleinden worden gebruikt. U mag deze niet gebruiken om enige toepasselijke wet- of regelgeving te schenden, inclusief maar niet beperkt tot ongeautoriseerde netwerkk toegang, aanvallen, diefstal van gegevens, fraude, verspreiding van kwaadaardige software, schending van de privacy, of enige andere illegale of criminele activiteit.
+U bent uitsluitend verantwoordelijk voor het waarborgen dat uw gebruik van deze software, de diensten die u creëert, de gegevens die u verwerkt en de inhoud die u publiceert rechtmatig en behoorlijk geautoriseerd zijn.
+
+3. Aansprakelijkheid
+U aanvaardt alle aansprakelijkheid die voortvloeit uit uw gebruik van deze software, inclusief maar niet beperkt tot gegevensverlies, onderbreking van diensten, bedrijfsverlies, aanspraken van derden en juridische aansprakelijkheid.
+Voor zover toegestaan door de toepasselijke wetgeving wordt deze software "AS IS" verstrekt, zonder enige uitdrukkelijke of stilzwijgende garantie. De auteur, de auteursrechthebbenden en de bijdragers aanvaarden geen aansprakelijkheid voor enig direct of indirect verlies, schade of juridische verantwoordelijkheid die voortvloeit uit het gebruik of het onvermogen om deze software te gebruiken. De disclaimer- en aansprakelijkheidsbeperkende bepalingen van de Apache License 2.0 zijn eveneens van toepassing.
+
+4. Aanvaarding
+Door de installatie voort te zetten of deze software te gebruiken, bevestigt u dat u deze voorwaarden hebt gelezen, begrepen en ermee instemt. Indien u het hier niet mee eens bent, stop dan de installatie en verwijder de software.
+
+Copyright © 2026 yxpil

@@ -1,0 +1,19 @@
+﻿Términos de uso y exención de responsabilidad de ClickBuildServer
+
+1. Licencia de código abierto
+Este software se distribuye bajo la Apache License, versión 2.0. El texto completo de la licencia se incluye en el archivo LICENSE del directorio de instalación, o está disponible en:
+https://www.apache.org/licenses/LICENSE-2.0
+Sujeto a la Apache License 2.0, podrá utilizar, modificar, copiar y distribuir este software y las obras derivadas, siempre que se conserven los avisos de derechos de autor, licencia y NOTICE.
+
+2. Uso exclusivamente lícito
+Este software solo podrá utilizarse con fines lícitos. No deberá utilizarlo para infringir ninguna ley o normativa aplicable, incluidos, entre otros, el acceso no autorizado a redes, los ataques, el robo de datos, el fraude, la distribución de software malicioso, la invasión de la privacidad o cualquier otra actividad ilegal o delictiva.
+Usted es el único responsable de garantizar que el uso que haga de este software, los servicios que cree, los datos que procese y el contenido que publique sean lícitos y cuenten con la autorización debida.
+
+3. Responsabilidad
+Usted asume toda la responsabilidad derivada del uso de este software, incluidos, entre otros, la pérdida de datos, la interrupción del servicio, la pérdida de negocio, las reclamaciones de terceros y la responsabilidad legal.
+En la máxima medida permitida por la legislación aplicable, este software se proporciona «TAL CUAL», sin garantía alguna, ya sea expresa o implícita. El autor, los titulares de los derechos de autor y los colaboradores no asumen responsabilidad alguna por ninguna pérdida, daño o responsabilidad legal directa o indirecta que se derive del uso o de la imposibilidad de usar este software. También se aplican las disposiciones de exención de responsabilidad y limitación de responsabilidad de la Apache License 2.0.
+
+4. Aceptación
+Al continuar con la instalación o utilizar este software, usted confirma que ha leído, comprendido y acepta estos términos. Si no los acepta, interrumpa la instalación y elimine el software.
+
+Copyright © 2026 yxpil

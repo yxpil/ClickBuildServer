@@ -1,6 +1,8 @@
 ; 可选组件页：使用文档与示例工程默认勾选，生产部署可取消，避免安装无关内容。
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
+!addincludedir "${PROJECT_DIR}\build"
+!include "installer-i18n.nsh"
 
 !ifndef BUILD_UNINSTALLER
 
@@ -20,21 +22,10 @@ Var AppLocale
 !macroend
 
 Function OptionalComponentsPage
-  ${If} $LANGUAGE == 2052
-    StrCpy $OptTitle "可选组件"
-    StrCpy $OptSubtitle "选择需要安装的附加内容；生产环境可以全部取消。"
-    StrCpy $OptDocsLabel "安装使用文档（README 与执行文档）"
-    StrCpy $OptSamplesLabel "安装示例工程（商城工程）"
-    StrCpy $OptNote "程序本体、便携运行时和内置服务始终安装。"
-  ${Else}
-    StrCpy $OptTitle "Optional Components"
-    StrCpy $OptSubtitle "Choose optional content to install. Production installs can clear all."
-    StrCpy $OptDocsLabel "Install usage documentation (README and execution guide)"
-    StrCpy $OptSamplesLabel "Install sample project (commerce project)"
-    StrCpy $OptNote "The app, portable runtime and bundled services are always installed."
-  ${EndIf}
+  !insertmacro SetOptionalPageStrings
 
-  !insertmacro MUI_HEADER_TEXT "$OptTitle" "$OptSubtitle"
+  ; 页头只显示标题，说明文字由下面的正文标签显示一次，避免同一句话重复两遍。
+  !insertmacro MUI_HEADER_TEXT "$OptTitle" ""
 
   nsDialogs::Create 1018
   Pop $0
@@ -65,16 +56,14 @@ Function OptionalComponentsPageLeave
 FunctionEnd
 
 !macro customInstall
-  ; 安装器的语言选择就是应用的首次语言；首次启动读取后写入 settings.json。
-  ${If} $LANGUAGE == 2052
-    StrCpy $AppLocale "zh-CN"
-  ${Else}
-    StrCpy $AppLocale "en-US"
+  ; 安装器选择的语言就是应用的首次语言；未知语言不写文件，交给应用按系统语言判断。
+  !insertmacro SetInstallerLocale
+  ${If} $AppLocale != ""
+    CreateDirectory "$APPDATA\click-build-server\clickbuild"
+    FileOpen $0 "$APPDATA\click-build-server\clickbuild\install-language.txt" w
+    FileWrite $0 $AppLocale
+    FileClose $0
   ${EndIf}
-  CreateDirectory "$APPDATA\click-build-server\clickbuild"
-  FileOpen $0 "$APPDATA\click-build-server\clickbuild\install-language.txt" w
-  FileWrite $0 $AppLocale
-  FileClose $0
 
   ${If} $OptDocsState == 1
     CreateDirectory "$INSTDIR\docs"

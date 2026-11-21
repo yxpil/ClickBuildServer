@@ -57,7 +57,6 @@
   header.appbar > .brand-word,
   header.appbar > .app-subtitle { flex: 0 0 auto; white-space: nowrap; }
   #viewSwitch, #viewSwitch button { flex: 0 0 auto; white-space: nowrap; min-width: max-content; }
-  #langMenu { flex: 0 0 auto; white-space: nowrap; }
   #winControls { flex: 0 0 auto; }
   header.appbar > .relative { min-width: 0; width: 300px; flex: 0 1 300px; }
   header.appbar > .relative #search { width: 100%; min-width: 0; box-sizing: border-box; }
@@ -76,7 +75,6 @@
     header.appbar > .btn { padding-left: 6px; padding-right: 6px; font-size: 11px; }
     header.appbar .searchbox { width: 200px; }
     header.appbar > .relative { width: 200px; flex-basis: 200px; }
-    .lang-btn { min-width: 80px; }
   }
   @media (max-width: 1120px) {
     header.appbar { gap: 6px; padding-left: 6px; }
@@ -84,7 +82,6 @@
     header.appbar > .btn { padding-left: 5px; padding-right: 5px; }
     header.appbar .searchbox { width: 170px; }
     header.appbar > .relative { width: 160px; flex-basis: 160px; }
-    .lang-btn { min-width: 80px; }
     #winControls .winbtn { width: 40px; }
   }
   @media (max-width: 1320px) {
@@ -393,73 +390,6 @@
   }
   header.appbar .btn.solid:hover,
   #appHeader .btn.solid:hover { background: var(--cb-accent-strong) !important; border-color: var(--cb-accent-strong) !important; }
-  #langMenu {
-    position: relative;
-    flex: 0 0 auto;
-    -webkit-app-region: no-drag;
-  }
-  .lang-btn {
-    height: 30px;
-    min-width: 104px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 9px 0 11px;
-    border: 1px solid var(--cb-line);
-    border-radius: 7px;
-    background: #fff;
-    color: var(--cb-text-2);
-    font: 11px/1 var(--cb-font);
-    cursor: pointer;
-  }
-  .lang-btn:hover { background: var(--cb-hover); border-color: #d5dbe5; color: var(--cb-text); }
-  .lang-btn[aria-expanded="true"] { border-color: var(--cb-accent); box-shadow: 0 0 0 3px rgba(47,107,220,.10); }
-  .lang-btn svg { flex: 0 0 auto; color: #7b8492; transition: transform .15s; }
-  .lang-btn[aria-expanded="true"] svg { transform: rotate(180deg); color: var(--cb-accent); }
-  .lang-pop {
-    position: absolute;
-    right: 0;
-    top: 36px;
-    z-index: 120;
-    width: 196px;
-    padding: 5px;
-    border: 1px solid var(--cb-line);
-    border-radius: 10px;
-    background: #fff;
-    box-shadow: 0 14px 36px rgba(32,36,43,.16);
-  }
-  .lang-item {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 30px minmax(0,1fr);
-    align-items: center;
-    gap: 8px;
-    padding: 8px 9px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: var(--cb-text);
-    text-align: left;
-    cursor: pointer;
-  }
-  .lang-item:hover { background: #f3f6fb; }
-  .lang-item.on { background: #edf4ff; }
-  .lang-item b {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 24px;
-    border-radius: 6px;
-    background: #eef2f8;
-    color: #677284;
-    font: 10px/1 var(--cb-font);
-  }
-  .lang-item.on b { background: var(--cb-accent); color: #fff; }
-  .lang-item span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-  .lang-item .lang-name { font: 12px/1.2 var(--cb-font); font-weight: 600; font-style: normal; color: var(--cb-text); }
-  .lang-item .lang-sub { font: 10px/1.2 var(--cb-font); font-style: normal; color: var(--cb-muted); }
-  #langSel { display: none !important; }
   #winControls { height: 52px !important; border-left: 1px solid var(--cb-line) !important; padding-right: 4px; }
   .winbtn { width: 44px; height: 50px; color: #5c6573; border-radius: 0; transition: background .12s, color .12s; }
   .winbtn:hover { background: #f2f4f7; color: #20242b; }
@@ -1091,17 +1021,6 @@
     <button class="btn thin" data-action="save">保存</button>
     <button class="btn thin" data-action="generate">生成服务</button>
     <button class="btn solid" data-action="deployUpdate">更新部署</button>
-    <div id="langMenu" class="no-drag" aria-label="语言 / Language">
-      <button id="langBtn" type="button" class="lang-btn" title="语言 / Language" aria-haspopup="listbox" aria-expanded="false">
-        <span id="langLabel">简体中文</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <div id="langPop" class="lang-pop hidden" role="listbox" aria-label="语言 / Language">
-        <button type="button" class="lang-item" data-locale="zh-CN" role="option"><b>中</b><span><i class="lang-name">简体中文</i><i class="lang-sub">Chinese (Simplified)</i></span></button>
-        <button type="button" class="lang-item" data-locale="en-US" role="option"><b>EN</b><span><i class="lang-name">English</i><i class="lang-sub">English (US)</i></span></button>
-      </div>
-      <select id="langSel" class="hidden" aria-hidden="true"></select>
-    </div>
     <div id="winControls" class="no-drag flex items-center h-12 border-l border-neutral-200">
       <button id="winMin" class="winbtn" title="最小化" aria-label="最小化"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg></button>
       <button id="winMax" class="winbtn" title="最大化" aria-label="最大化"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>

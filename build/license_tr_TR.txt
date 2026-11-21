@@ -1,0 +1,19 @@
+﻿ClickBuildServer Kullanım Koşulları ve Sorumluluk Reddi Beyanı
+
+1. Açık Kaynak Lisansı
+Bu yazılım, Apache Lisansı, Sürüm 2.0 kapsamında yayınlanmıştır. Lisansın tam metni, kurulum dizinindeki LICENSE dosyasında yer almaktadır veya şu adresten erişilebilir:
+https://www.apache.org/licenses/LICENSE-2.0
+Apache Lisansı 2.0'a tabi olarak, telif hakkı, lisans ve NOTICE bildirimlerinin korunması koşuluyla bu yazılımı ve türev eserleri kullanabilir, değiştirebilir, kopyalayabilir ve dağıtabilirsiniz.
+
+2. Yalnızca Yasal Kullanım
+Bu yazılım yalnızca yasal amaçlar için kullanılabilir. Yetkisiz ağ erişimi, saldırılar, veri hırsızlığı, dolandırıcılık, kötü amaçlı yazılım dağıtımı, özel hayatın gizliliğinin ihlali veya diğer yasa dışı veya suç teşkil eden faaliyetler de dahil olmak üzere, geçerli herhangi bir kanun veya düzenlemeyi ihlal etmek amacıyla kullanamazsınız.
+Bu yazılımın kullanımınızın, oluşturduğunuz hizmetlerin, işlediğiniz verilerin ve yayınladığınız içeriklerin yasal ve uygun şekilde yetkilendirilmiş olmasını sağlamak yalnızca sizin sorumluluğunuzdadır.
+
+3. Sorumluluk
+Veri kaybı, hizmet kesintisi, ticari kayıp, üçüncü taraf talepleri ve yasal sorumluluk da dahil olmak üzere, bu yazılımın kullanımından kaynaklanan tüm sorumluluğu üstlenirsiniz.
+Uygulanabilir kanunun izin verdiği azami ölçüde, bu yazılım "OLDUĞU GİBİ" olarak, herhangi bir açık veya zımni garanti olmaksızın sunulmaktadır. Yazar, telif hakkı sahipleri ve katkıda bulunanlar, bu yazılımın kullanılması veya kullanılamamasından kaynaklanan herhangi bir doğrudan veya dolaylı kayıp, hasar veya yasal sorumluluk için hiçbir sorumluluk kabul etmezler. Apache Lisansı 2.0'ın sorumluluk reddi ve sorumluluğun sınırlanmasına ilişkin hükümleri de geçerlidir.
+
+4. Kabul
+Kurulumu sürdürerek veya bu yazılımı kullanarak bu koşulları okuduğunuzu, anladığınızı ve kabul ettiğinizi teyit etmiş olursunuz. Kabul etmiyorsanız, lütfen kurulumu durdurun ve yazılımı silin.
+
+Telif Hakkı © 2026 yxpil

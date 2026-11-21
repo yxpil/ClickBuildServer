@@ -1167,6 +1167,7 @@ function showMoreMenu() {
       <div class="more-grid">
         ${item('ai', 'AI 生成', '用对话框生成接口工程')}
         ${item('settings', '设置', 'AI、模型参数与服务端口')}
+        ${item('language', '界面语言', '多国语言、切换后立即重载')}
         ${item('assoc', '关联 .yxpn', '设为默认打开方式')}
         ${item('newWindow', '新窗口', '同款无边框窗口，当前工程先保存')}
         ${item('grid', '表格视图', '回到接口总表')}
@@ -4003,7 +4004,7 @@ async function runPluginCommand(key) {
 }
 
 async function act(name, el) {
-  const it = activeIface();
+  const it = (S.project && Array.isArray(S.project.interfaces)) ? activeIface() : null;
   if (name === 'moreMenu') return showMoreMenu();
   if (name === 'save') return save();
   if (name === 'scriptGuide') return showScriptGuide();
@@ -4288,6 +4289,7 @@ async function act(name, el) {
   if (name === 'plugins') return showPlugins();
   if (name === 'monitor') return showMonitor();
   if (name === 'settings') return showSettings();
+  if (name === 'language') return showLanguagePicker();
   if (name === 'theme') return showTheme();
   if (name === 'newWindow') {
     if (!(await flushAndSave('新窗口'))) return;
@@ -5344,8 +5346,72 @@ const AI_PRESETS = {
   custom: null,
 };
 
+function showLanguagePicker() {
+  const list = (window.__i18n && window.__i18n.locales) || [];
+  const cur = (window.__i18n && window.__i18n.locale) || 'zh-CN';
+  const cards = (items) => items.map((x) => `
+    <button type="button" class="lang-card${x.id === cur ? ' on' : ''}" data-locale="${esc(x.id)}"
+      title="${esc(x.english)}"
+      style="display:flex;align-items:center;gap:10px;padding:10px 11px;border:1px solid ${x.id === cur ? '#20242b' : '#d9d9d9'};background:${x.id === cur ? '#f4f6fa' : '#fff'};border-radius:8px;text-align:left;cursor:pointer">
+      <span style="flex:none;width:34px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:${x.id === cur ? '#20242b' : '#eef1f5'};color:${x.id === cur ? '#fff' : '#5f6875'};font:600 11px/1 var(--cb-font)">${esc(x.short || x.id)}</span>
+      <span style="min-width:0;flex:1">
+        <b style="display:block;font:600 12px/1.3 var(--cb-font);color:#20242b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.label)}</b>
+        <span style="display:block;margin-top:2px;font:10px/1.3 var(--cb-font);color:#7b8492;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.english)} · ${esc(x.id)}</span>
+      </span>
+      ${x.id === cur ? '<span style="flex:none;font:10px/1 var(--cb-font);color:#20242b">当前</span>' : ''}
+    </button>`).join('');
+  modal(`<div class="p-4 w-[720px] max-w-[94vw] max-h-[88vh] flex flex-col">
+    <div class="flex items-start gap-3">
+      <div class="flex-1">
+        <div class="text-[13px] font-semibold">界面语言与地区</div>
+        <div class="text-[11px] text-neutral-500 mt-1">语言包由 Index-Translate 预先翻译；切换后立即重载，不改动工程数据。</div>
+      </div>
+      <button class="btn thin" id="langClose">关闭</button>
+    </div>
+    <div class="mt-3 relative">
+      <input id="langSearch" class="w-full border border-neutral-300 px-2 py-2 text-[12px]" placeholder="搜索语言 / 地区 / 代码" autocomplete="off">
+    </div>
+    <div id="langGrid" class="grid grid-cols-2 gap-2 mt-3 overflow-auto pr-1" style="min-height:220px;max-height:56vh">${cards(list)}</div>
+    <div class="mt-3 flex items-center gap-2 text-[10px] text-neutral-500">
+      <span id="langCount">${list.length} 种界面语言</span>
+      <span>·</span>
+      <span>安装器会按安装时选择的语言写入首次启动语言</span>
+    </div>
+  </div>`, (root) => {
+    const input = root.querySelector('#langSearch');
+    const grid = root.querySelector('#langGrid');
+    const count = root.querySelector('#langCount');
+    const filter = () => {
+      const q = String(input.value || '').trim().toLowerCase();
+      const hits = q ? list.filter((x) => `${x.label} ${x.english} ${x.id} ${x.short || ''}`.toLowerCase().includes(q)) : list;
+      grid.innerHTML = cards(hits) || '<div class="text-[11px] text-neutral-500 p-3">没有匹配的语言</div>';
+      count.textContent = `${hits.length} / ${list.length} 种界面语言`;
+      grid.querySelectorAll('[data-locale]').forEach((b) => {
+        b.onclick = () => chooseLanguage(b.dataset.locale, b);
+      });
+    };
+    const chooseLanguage = async (id, btn) => {
+      if (!id || id === cur) { closeModal(); return; }
+      if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+      try {
+        await window.__i18n.setLocale(id);
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        toast(`切换语言失败：${String((e && e.message) || e)}`, 5000);
+      }
+    };
+    input.addEventListener('input', filter);
+    root.querySelector('#langClose').onclick = closeModal;
+    grid.querySelectorAll('[data-locale]').forEach((b) => {
+      b.onclick = () => chooseLanguage(b.dataset.locale, b);
+    });
+    setTimeout(() => input.focus(), 30);
+  });
+}
+
 function showSettings() {
   const ai = aiDefaults();
+  const currentLang = (window.__i18n && window.__i18n.current) || { id: 'zh-CN', label: '简体中文', english: 'Chinese (Simplified)' };
   const ports = { http: 18100, mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, ...(S.settings.ports || {}) };
   const presetOf = (provider, endpoint) => {
     const e = String(endpoint || '').replace(/\/+$/, '');
@@ -5431,8 +5497,16 @@ function showSettings() {
         </section>
         <section class="border border-neutral-300 p-3 mt-3">
           <b class="text-[12px]">界面</b>
+          <div class="mt-2 flex items-center gap-2 p-2 border border-neutral-200 bg-neutral-50">
+            <span class="pill solid" style="min-width:34px;text-align:center">${esc(currentLang.short || '中')}</span>
+            <div style="min-width:0;flex:1">
+              <div class="text-[12px] font-semibold truncate">${esc(currentLang.label || currentLang.id)}</div>
+              <div class="text-[10px] text-neutral-500 truncate">${esc(currentLang.english || '')} · ${esc(currentLang.id)}</div>
+            </div>
+            <button class="btn thin" id="setLanguage">切换语言</button>
+          </div>
           <button class="btn thin w-full mt-2" id="setTheme">主题、页眉页脚与字体</button>
-          <div class="text-[10px] text-neutral-500 mt-2">语言在顶部语言菜单切换，选择后界面会立即重载。</div>
+          <div class="text-[10px] text-neutral-500 mt-2">支持 ${(window.__i18n && window.__i18n.locales ? window.__i18n.locales.length : 21)} 种界面语言；切换后立即重载，不再占用顶栏。</div>
         </section>
       </div>
     </div>
@@ -5525,6 +5599,7 @@ function showSettings() {
     };
 
     root.querySelector('#setTheme').onclick = () => { closeModal(); showTheme(); };
+    root.querySelector('#setLanguage').onclick = () => { closeModal(); showLanguagePicker(); };
     root.querySelector('#setClose').onclick = closeModal;
     root.querySelector('#setSave').onclick = async () => {
       const cfg = readAi();
@@ -6149,8 +6224,8 @@ function studioIfaces() {
 }
 async function studioLoadProject(project, binding) {
   if (!project) return;
-  const language = String((S.settings && S.settings.language) || 'zh-CN').toLowerCase();
-  const lang = language.startsWith('en') ? 'en' : 'zh';
+  const ui = window.__i18n || {};
+  const locale = String((S.settings && S.settings.language) || ui.locale || 'zh-CN');
   const ifaces = studioIfaces();
   let previewHtml = '';
   if (project.app && project.app.mode && project.previewSeed && project.previewSeed.sql) {
@@ -6159,7 +6234,18 @@ async function studioLoadProject(project, binding) {
       previewHtml = (got && got.html) || '';
     } catch (e) { previewHtml = ''; }
   }
-  postToStudio({ type: 'cbs:yxpp:load', project, binding: binding || 'bound', lang, ifaces, previewHtml, at: studioLastAt });
+  postToStudio({
+    type: 'cbs:yxpp:load',
+    project,
+    binding: binding || 'bound',
+    lang: locale,
+    dir: ui.dir || 'ltr',
+    dict: ui.dict || {},
+    patterns: ui.patterns || [],
+    ifaces,
+    previewHtml,
+    at: studioLastAt,
+  });
 }
 
 function captureStudioProject() {
@@ -6427,7 +6513,6 @@ function renderHubSections() {
 }
 
 function renderProjectHub() {
-  const langMenu = $('#langMenu');
   $('#projectHub').innerHTML = `<div class="hub-shell">
     <div class="hub-top">
       <div class="hub-brand"><img src="../assets/logo.png" alt="ClickBuild" width="26" height="26"><span class="hub-brand-word">ClickBuild</span><span>项目工作台</span></div>
@@ -6458,23 +6543,7 @@ function renderProjectHub() {
   $('#projectHub').querySelectorAll('[data-hub-win]').forEach((b) => {
     b.onclick = () => api.win(b.dataset.hubWin);
   });
-  placeLangMenu(true, langMenu);
   renderHubSections();
-}
-
-// 语言菜单在工程历史页也必须真实可见、可点：跟着页面顶部一起走，而不是藏在被覆盖的全局标题栏后面。
-function placeLangMenu(inHub, menu) {
-  const el = menu || $('#langMenu');
-  if (!el) return;
-  if (inHub) {
-    const top = document.querySelector('#projectHub .hub-top');
-    const firstWin = top && top.querySelector('.hub-win');
-    if (top) top.insertBefore(el, firstWin || null);
-    return;
-  }
-  const header = $('#appHeader');
-  const wins = $('#winControls');
-  if (header) header.insertBefore(el, wins || null);
 }
 
 async function showProjectHub() {
@@ -6490,7 +6559,6 @@ async function showProjectHub() {
 
 function hideProjectHub() {
   hideHubMenu();
-  placeLangMenu(false);
   $('#projectHub').classList.add('hidden');
 }
 

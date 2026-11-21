@@ -1,0 +1,19 @@
+﻿Termos de Uso e Isenção de Responsabilidade do ClickBuildServer
+
+1. Licença de Código Aberto
+Este software é disponibilizado sob a Apache License, Versão 2.0. O texto completo da licença está incluído no arquivo LICENSE no diretório de instalação, ou disponível em:
+https://www.apache.org/licenses/LICENSE-2.0
+Sujeito à Apache License 2.0, você pode usar, modificar, copiar e distribuir este software e obras derivadas, desde que os avisos de direitos autorais, de licença e de NOTICE sejam preservados.
+
+2. Uso Apenas para Fins Lícitos
+Este software só pode ser utilizado para fins lícitos. Você não deve utilizá-lo para violar qualquer lei ou regulamento aplicável, incluindo, mas não se limitando a, acesso não autorizado a redes, ataques, roubo de dados, fraude, distribuição de software malicioso, invasão de privacidade ou qualquer outra atividade ilegal ou criminosa.
+Você é o único responsável por garantir que o uso deste software, os serviços que você cria, os dados que você processa e o conteúdo que você publica sejam lícitos e devidamente autorizados.
+
+3. Responsabilidade
+Você assume toda a responsabilidade decorrente do uso deste software, incluindo, mas não se limitando a, perda de dados, interrupção de serviços, perdas comerciais, reivindicações de terceiros e responsabilidade legal.
+Na máxima extensão permitida pela lei aplicável, este software é fornecido "AS IS", sem quaisquer garantias expressas ou implícitas. O autor, os detentores dos direitos autorais e os colaboradores não assumem qualquer responsabilidade por qualquer perda, dano ou responsabilidade legal direta ou indireta decorrente do uso ou da incapacidade de usar este software. As disposições de isenção de responsabilidade e de limitação de responsabilidade da Apache License 2.0 também se aplicam.
+
+4. Aceitação
+Ao continuar a instalação ou ao usar este software, você confirma que leu, compreendeu e concorda com estes termos. Se não concordar, interrompa a instalação e exclua o software.
+
+Copyright © 2026 yxpil

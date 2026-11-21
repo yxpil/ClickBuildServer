@@ -1,0 +1,19 @@
+﻿Điều khoản Sử dụng và Tuyên bố Miễn trừ Trách nhiệm của ClickBuildServer
+
+1. Giấy phép Nguồn mở
+Phần mềm này được phát hành theo Giấy phép Apache, Phiên bản 2.0. Toàn văn giấy phép được đính kèm trong tệp LICENSE trong thư mục cài đặt, hoặc có sẵn tại:
+https://www.apache.org/licenses/LICENSE-2.0
+Tuân thủ Giấy phép Apache 2.0, bạn có thể sử dụng, sửa đổi, sao chép và phân phối phần mềm này cũng như các tác phẩm phái sinh, với điều kiện phải bảo toàn các thông báo về bản quyền, giấy phép và NOTICE.
+
+2. Chỉ sử dụng hợp pháp
+Phần mềm này chỉ có thể được sử dụng cho các mục đích hợp pháp. Bạn không được sử dụng phần mềm để vi phạm bất kỳ luật hoặc quy định nào có hiệu lực, bao gồm nhưng không giới hạn ở việc truy cập mạng trái phép, tấn công, trộm cắp dữ liệu, gian lận, phân phối phần mềm độc hại, xâm phạm quyền riêng tư, hoặc bất kỳ hoạt động bất hợp pháp hoặc tội phạm nào khác.
+Bạn hoàn toàn chịu trách nhiệm đảm bảo rằng việc bạn sử dụng phần mềm này, các dịch vụ bạn tạo ra, dữ liệu bạn xử lý và nội dung bạn công bố đều hợp pháp và được ủy quyền hợp lệ.
+
+3. Trách nhiệm
+Bạn chấp nhận mọi trách nhiệm phát sinh từ việc bạn sử dụng phần mềm này, bao gồm nhưng không giới hạn ở mất mát dữ liệu, gián đoạn dịch vụ, tổn thất kinh doanh, khiếu nại của bên thứ ba và trách nhiệm pháp lý.
+Trong phạm vi tối đa được pháp luật hiện hành cho phép, phần mềm này được cung cấp "NGUYÊN TRẠNG", không có bất kỳ sự bảo đảm nào, dù là rõ ràng hay ngụ ý. Tác giả, chủ sở hữu bản quyền và những người đóng góp không chấp nhận bất kỳ trách nhiệm nào đối với bất kỳ tổn thất, thiệt hại hoặc trách nhiệm pháp lý trực tiếp hay gián tiếp nào phát sinh từ việc sử dụng hoặc không thể sử dụng phần mềm này. Các quy định về tuyên bố miễn trừ trách nhiệm và giới hạn trách nhiệm của Giấy phép Apache 2.0 cũng được áp dụng.
+
+4. Chấp nhận
+Bằng cách tiếp tục cài đặt hoặc sử dụng phần mềm này, bạn xác nhận rằng bạn đã đọc, hiểu và đồng ý với các điều khoản này. Nếu bạn không đồng ý, vui lòng dừng quá trình cài đặt và xóa phần mềm.
+
+Bản quyền © 2026 yxpil

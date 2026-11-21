@@ -1,0 +1,19 @@
+﻿Conditions d'utilisation et clause de non-responsabilité de ClickBuildServer
+
+1. Licence open source
+Ce logiciel est publié sous la Licence Apache, version 2.0. Le texte intégral de la licence est inclus dans le fichier LICENSE du répertoire d'installation, ou disponible à l'adresse :
+https://www.apache.org/licenses/LICENSE-2.0
+Sous réserve de la Licence Apache 2.0, vous pouvez utiliser, modifier, copier et distribuer ce logiciel ainsi que les œuvres dérivées, à condition que les mentions relatives au droit d'auteur, à la licence et au NOTICE soient conservées.
+
+2. Utilisation uniquement licite
+Ce logiciel ne peut être utilisé qu'à des fins licites. Vous ne devez pas l'utiliser pour enfreindre une loi ou un règlement applicable, y compris, mais sans s'y limiter, l'accès non autorisé à un réseau, les attaques, le vol de données, la fraude, la distribution de logiciels malveillants, l'atteinte à la vie privée ou toute autre activité illégale ou criminelle.
+Il vous appartient exclusivement de vous assurer que votre utilisation de ce logiciel, les services que vous créez, les données que vous traitez et le contenu que vous publiez sont licites et dûment autorisés.
+
+3. Responsabilité
+Vous assumez l'entière responsabilité découlant de votre utilisation de ce logiciel, y compris, mais sans s'y limiter, la perte de données, l'interruption de service, la perte d'activité, les réclamations de tiers et la responsabilité légale.
+Dans la mesure maximale autorisée par la loi applicable, ce logiciel est fourni « EN L'ÉTAT », sans aucune garantie expresse ou implicite. L'auteur, les titulaires des droits d'auteur et les contributeurs n'acceptent aucune responsabilité pour toute perte, tout dommage ou toute responsabilité légale, directe ou indirecte, découlant de l'utilisation ou de l'impossibilité d'utiliser ce logiciel. Les dispositions de la Licence Apache 2.0 relatives à la clause de non-responsabilité et à la limitation de responsabilité s'appliquent également.
+
+4. Acceptation
+En poursuivant l'installation ou en utilisant ce logiciel, vous confirmez avoir lu, compris et accepté les présentes conditions. Si vous n'acceptez pas ces conditions, veuillez interrompre l'installation et supprimer le logiciel.
+
+Copyright © 2026 yxpil

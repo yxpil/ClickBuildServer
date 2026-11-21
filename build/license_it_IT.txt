@@ -1,0 +1,19 @@
+﻿ClickBuildServer Termini di Utilizzo e Clausola di Esclusione di Responsabilità
+
+1. Licenza Open Source
+Questo software è distribuito sotto la Apache License, Versione 2.0. Il testo completo della licenza è incluso nel file LICENSE nella directory di installazione, oppure è disponibile all'indirizzo:
+https://www.apache.org/licenses/LICENSE-2.0
+Fermo restando i termini della Apache License 2.0, è consentito utilizzare, modificare, copiare e distribuire questo software e le opere derivate, a condizione che le informative relative a copyright, licenza e NOTICE siano conservate.
+
+2. Utilizzo esclusivamente lecito
+Questo software può essere utilizzato solo per finalità lecite. Non è consentito utilizzarlo per violare alcuna legge o normativa applicabile, inclusi, a titolo esemplificativo ma non esaustivo, l'accesso non autorizzato a reti, attacchi, furto di dati, frode, distribuzione di software dannoso, violazione della privacy o qualsiasi altra attività illegale o criminale.
+Lei è l'unico responsabile di garantire che l'utilizzo di questo software, i servizi da lei creati, i dati da lei elaborati e i contenuti da lei pubblicati siano leciti e debitamente autorizzati.
+
+3. Responsabilità
+Lei si assume ogni responsabilità derivante dall'utilizzo di questo software, inclusi, a titolo esemplificativo ma non esaustivo, la perdita di dati, l'interruzione del servizio, la perdita di affari, le rivendicazioni di terzi e la responsabilità legale.
+Nella massima misura consentita dalla legge applicabile, questo software è fornito "COSÌ COM'È", senza alcuna garanzia, espressa o implicita. L'autore, i titolari del copyright e i collaboratori non accettano alcuna responsabilità per eventuali perdite, danni o responsabilità legali diretti o indiretti derivanti dall'utilizzo o dall'impossibilità di utilizzare questo software. Si applicano inoltre le disposizioni sulla clausola di esclusione di responsabilità e sulla limitazione di responsabilità della Apache License 2.0.
+
+4. Accettazione
+Proseguendo con l'installazione o utilizzando questo software, Lei conferma di aver letto, compreso e accettato i presenti termini. In caso contrario, interrompere l'installazione ed eliminare il software.
+
+Copyright © 2026 yxpil

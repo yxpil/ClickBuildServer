@@ -1,0 +1,19 @@
+﻿Podmínky použití a prohlášení o odpovědnosti pro ClickBuildServer
+
+1. Licence open source
+Tento software je vydán pod licencí Apache License, verze 2.0. Úplné znění licence je uvedeno v souboru LICENSE v instalačním adresáři nebo je k dispozici na adrese:
+https://www.apache.org/licenses/LICENSE-2.0
+Za podmínek stanovených v licenci Apache License 2.0 můžete tento software a odvozená díla používat, upravovat, kopírovat a šířit, pokud budou zachovány oznámení o autorském právu, licenci a souboru NOTICE.
+
+2. Pouze zákonné použití
+Tento software lze používat pouze k zákonným účelům. Nesmíte jej používat k porušení jakéhokoli platného zákona nebo předpisu, včetně, avšak nikoli výhradně, neoprávněného přístupu k síti, útoků, krádeže dat, podvodu, šíření škodlivého softwaru, zásahů do soukromí nebo jakékoli jiné protiprávní či trestné činnosti.
+Jste výhradně odpovědní za to, aby bylo vaše používání tohoto softwaru, vámi vytvářené služby, vámi zpracovávaná data a vámi zveřejňovaný obsah zákonné a řádně oprávněné.
+
+3. Odpovědnost
+Přebíráte veškerou odpovědnost vyplývající z používání tohoto softwaru, včetně, avšak nikoli výhradně, ztráty dat, přerušení služeb, obchodních ztrát, nároků třetích stran a právní odpovědnosti.
+V nejširším rozsahu povoleném platným zákonem je tento software poskytován „JAK JE“ bez jakýchkoli výslovných nebo implicitních záruk. Autor, držitelé autorských práv a přispěvatelé nepřijímají žádnou odpovědnost za jakoukoli přímou nebo nepřímou ztrátu, škodu nebo právní odpovědnost vyplývající z používání nebo nemožnosti používat tento software. Uplatňují se rovněž ustanovení licence Apache License 2.0 týkající se vyloučení záruk a omezení odpovědnosti.
+
+4. Přijetí podmínek
+Pokračováním v instalaci nebo používáním tohoto softwaru potvrzujete, že jste tyto podmínky přečetli, pochopili a souhlasíte s nimi. Pokud s nimi nesouhlasíte, ukončete prosím instalaci a software odstraňte.
+
+Autorské právo © 2026 yxpil

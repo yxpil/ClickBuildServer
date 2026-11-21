@@ -120,12 +120,15 @@
 - `.yxpn` 工程包里同样带 `frontend/index.yxpp`，manifest 里有 `frontend` 元信息，换机器也能继续编辑。
 - 26 套内置案例全部预置 `.yxpp` 前端；其中 24 套是 PageStudio 原生 `appview` 业务应用（`project.app` + 业务运行时），打开就是真实的列表、表单、详情、后台工作流和行级动作，不是接口清单或请求调试器。案例的 `seed.sql` 只作为画布预览数据放在 `previewSeed`，导出页面不会带上它；商城、点餐、票务、博客、音乐 / 视频、工单、报销、会议、CRM、社交、聊天、预约等都已用真实数据库和真实上传链路逐项验收；问卷系统、活动报名保留各自的公开填写 / 报名页和管理员后台。
 
-## 多语言（1.1.52）
+## 多语言（1.1.63）
 
-- 安装阶段决定首次语言：NSIS 语言选择页选中文或英文后，安装器把选择写入 `%APPDATA%\click-build-server\clickbuild\install-language.txt`；应用首次启动读取该标记、写入 `settings.json` 的 `language` 并删除标记。之后启动直接沿用保存的语言，不再按系统语言重新猜。
-- 桌面端内置 `zh-CN` / `en-US`。工作台与工程历史页的顶栏都有真实可点的语言菜单，选择后写入设置并立即重载；工程历史页语言菜单跟随页头移动，不再被全局标题栏遮挡。
-- 英文语言包不是手写文案：`tools/generate-i18n-en.js` 读取中文词条与句式，调用 B 站 Index-Translate 免费公网 API（`https://index-translate.bilibili.com/v1`，默认 `Index-Translate-35B-A3B`）生成 `app/i18n/locales/en-US.json`；占位符先保护再回填，失败重试并自动拆批。历史页、Ribbon、侧栏等界面缺失的中文串放在 `tools/i18n-extra-zh.json`，用 `node tools\generate-i18n-en.js --incremental` 补译。
-- 语言包离线存放：`app/i18n/locales/<locale>.json`，含精确词条与动态消息模式；主进程 `app/i18n/index.js` 负责安装期语言、读包和写设置，渲染层 `renderer/i18n.js` 翻译文本节点、`title` / `placeholder` / `aria-label` / `alt` 以及 MutationObserver 新增的节点。
+- 界面语言扩到 **21 种**：`zh-CN`、`zh-TW`、`en-US`、`ja-JP`、`ko-KR`、`fr-FR`、`de-DE`、`es-ES`、`pt-BR`、`it-IT`、`ru-RU`、`ar-SA`、`nl-NL`、`pl-PL`、`tr-TR`、`th-TH`、`vi-VN`、`id-ID`、`hi-IN`、`cs-CZ`、`sv-SE`；阿拉伯语按 RTL 渲染。
+- 常驻顶栏语言下拉已删除。切换入口只在「更多 → 界面语言」和设置中心「界面」区，打开独立选择器；工作台、工程历史页、前端工坊顶栏都不再长期占用语言控件。
+- 安装阶段决定首次语言：NSIS 语言选择页支持 19 种内置语言，安装器把选择写入 `%APPDATA%\click-build-server\clickbuild\install-language.txt`；应用首次启动读取该标记、写入 `settings.json` 的 `language` 并删除标记。旧安装包把非中文系统一律写成 `en-US` 的情况会被系统语言纠正；未知语言不写入，交给系统语言判断。
+- 所有语言包都不是手写文案：`tools/generate-i18n.js` 读取中文词条与句式，调用 B 站 Index-Translate 免费公网 API（`https://index-translate.bilibili.com/v1`，默认 `Index-Translate-35B-A3B`）生成 `app/i18n/locales/<locale>.json`；占位符先保护再回填，失败重试并自动拆批，进度可续跑。历史页、Ribbon、侧栏、语言选择器与前端工坊缺失的中文串放在 `tools/i18n-extra-zh.json`。
+- 重新生成单语或全部语言：`node tools\generate-i18n.js --locale ja-JP --incremental`、`node tools\generate-i18n.js --all --concurrency 4`；英文兼容脚本 `tools\generate-i18n-en.js` 只是转发到通用生成器。
+- 安装器的 19 种语言许可证正文同样不是手写：`node tools\translate-license.js` 用同一个 Index-Translate API 生成 `build/license_<locale>.txt`，长文本遇到网关 504 时自动切成段落逐段翻译再拼回，繁体中文从简体许可证转写。
+- 语言包离线存放：`app/i18n/locales/<locale>.json`，含精确词条与动态消息模式；主进程 `app/i18n/index.js` 负责安装期语言、读包和写设置，渲染层 `renderer/i18n.js` 翻译文本节点、`title` / `placeholder` / `aria-label` / `alt` 以及 MutationObserver 新增的节点；前端工坊由宿主传入同一套词条、句式与 `dir`。
 - 已覆盖工作台主界面、工程历史页、Ribbon、四步创建引导、AI / 监控 / 文档 / 插件 / 模版库 / 接口库、接口编辑器六个页签，以及前端工坊（含 iframe 标题、缩放与图标提示）。26 套模版、75 个内置接口的名称、说明和标签都已预翻译；用户自己的工程名、说明等业务数据保持原样。
 
 ## 工程历史预览（1.1.14）
@@ -149,10 +152,10 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.58.exe
+dist\ClickBuildServer-Setup-1.1.63.exe
 ```
 
-安装包 225,871,559 B（约 215 MB），构建时间 2026-11-21 06:40:10，SHA256 `B94385922B3E59820CC52D618366EF66AD756E67CAB23D8EF2E1D0B991F04EF5`。
+安装包 226,541,293 B（约 216 MB），构建时间 2026-11-21 13:41:01，SHA256 `08A6021B8F0DD86D59F42745A138D22488469494B3111FFF0378DDB4355F673E`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
@@ -456,7 +459,7 @@ npm run dist       # 发布安装包
 | `tools/test-filters.js`（过滤器运算符 / 参数化 / 通配符转义） | **15/15** |
 | `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
-| `tools/test-i18n.js`（中英词条 / 动态模式 / 安装器语言 / 安装期语言） | **24/24** |
+| `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **138/138**（源码版 / 1.1.58 安装版） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
@@ -484,7 +487,7 @@ npm run dist       # 发布安装包
 - 本项目采用 **Apache License 2.0** 发布，完整条款见仓库根目录 `LICENSE`，版权与归属声明见 `NOTICE`。
 - 仅限合法用途：禁止把本软件用于违反法律法规的活动，包括未授权访问、攻击、数据窃取、诈骗、传播恶意程序、侵犯隐私等。
 - 使用者对自己创建的服务、处理的数据和发布的内容承担全部责任；在适用法律允许的最大范围内，作者、版权持有人与贡献者不承担因使用本软件产生的任何损失或法律责任。
-- Windows 安装器会显示中文 / 英文语言选择页，并把选择写入应用首次启动语言；条款与免责声明会跟随安装器语言显示，继续安装即表示同意。
+- Windows 安装器提供 19 种语言选择页，并把选择写入应用首次启动语言；条款与免责声明跟随安装器语言显示，继续安装即表示同意。
 
 ## 文档
 

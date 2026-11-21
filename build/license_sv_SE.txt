@@ -1,0 +1,19 @@
+﻿ClickBuildServer Användarvillkor och ansvarsfriskrivning
+
+1. Öppen källkod-licens
+Denna programvara släpps under Apache License, Version 2.0. Hela licenstexten ingår i filen LICENSE i installationskatalogen, eller finns tillgänglig på:
+https://www.apache.org/licenses/LICENSE-2.0
+I enlighet med Apache License 2.0 får du använda, modifiera, kopiera och distribuera denna programvara och härledda verk, förutsatt att upphovsrätts-, licens- och NOTICE-ansvarsfriskrivningar bevaras.
+
+2. Endast laglig användning
+Denna programvara får endast användas för lagliga ändamål. Du får inte använda den för att bryta mot någon tillämplig lag eller förordning, inklusive men inte begränsat till obehörig nätverksåtkomst, attacker, datastöld, bedrägeri, distribution av skadlig programvara, intrång i privatlivet eller någon annan olaglig eller kriminell verksamhet.
+Du är ensam ansvarig för att säkerställa att din användning av denna programvara, de tjänster du skapar, den data du behandlar och det innehåll du publicerar är lagliga och behörigt auktoriserade.
+
+3. Ansvar
+Du tar allt ansvar som uppstår till följd av din användning av denna programvara, inklusive men inte begränsat till dataförlust, tjänsteavbrott, affärsförluster, anspråk från tredje part och juridiskt ansvar.
+I den utsträckning som tillämplig lag tillåter tillhandahålls denna programvara "I BEFINTLIGT SKICK", utan några uttryckliga eller underförstådda garantier. Författaren, upphovsrättsinnehavarna och bidragsgivarna accepterar inget ansvar för någon direkt eller indirekt förlust, skada eller juridiskt ansvar som uppstår till följd av användning av eller oförmåga att använda denna programvara. Ansvarsfriskrivningens och ansvarsbegränsningens bestämmelser i Apache License 2.0 är också tillämpliga.
+
+4. Godkännande
+Genom att fortsätta installationen eller använda denna programvara bekräftar du att du har läst, förstått och godkänner dessa villkor. Om du inte godkänner dem, avbryt installationen och radera programvaran.
+
+Copyright © 2026 yxpil
