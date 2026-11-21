@@ -192,7 +192,7 @@ npm run test:services:linux           # 真实启动 MariaDB / Redis / RustFS �
 npm run dist:linux                    # AppImage + deb
 ```
 
-产物在 `dist/ClickBuildServer-<version>-x86_64.AppImage` 与对应的 `.deb`。当前 1.1.65 本地最终产物：AppImage 308,332,581 B，SHA256 `3FF695F4C9CE1290A1B43968E8A0AB43ED257165EEE6EB11C08F4F1B36F936DE`；deb 200,015,860 B，SHA256 `1840C32B5B47E78DE7AF47E55BEEDC38B82865EE069EBFC4469EAB226E3E6517`。两者都在 WSL Debian 13 上真实启动过，AppImage 可 `--appimage-extract-and-run` 直接跑，deb 可 `dpkg -i` 安装到 `/opt/ClickBuildServer`。也可以只构建解包目录做快速验证：
+产物在 `dist/ClickBuildServer-<version>-x86_64.AppImage` 与对应的 `.deb`。当前 1.1.65 本地最终产物：AppImage 308,332,615 B，SHA256 `BD171398CD7621A13D9FE503DC1B4601A96DF25E2A0F5C57A7F26A38AD4CFD1A`；deb 200,012,794 B，SHA256 `F6705F31F833B3A21544EA012FF367CF7717D8CDF4C420159FADE8C60820B951`。两者都在 WSL Debian 13 上真实启动过，AppImage 可 `--appimage-extract-and-run` 直接跑，deb 可 `dpkg -i` 安装到 `/opt/ClickBuildServer`。也可以只构建解包目录做快速验证：
 
 ```bash
 npm run dist:linux:dir
