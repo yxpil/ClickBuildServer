@@ -130,8 +130,10 @@ function modal(html, mount, opts) {
   const o = opts || {};
   const width = Number(o.width) || 640;
   const maxHeight = o.maxHeight || '80vh';
+  const frameClass = o.plain ? 'bg-white border-0' : 'bg-white border border-neutral-900';
+  const frameStyle = `width:${width}px;max-width:96vw;max-height:${maxHeight}` + (o.plain ? ';border-radius:12px;box-shadow:0 24px 70px rgba(32,36,43,.22)' : '');
   box.classList.remove('hidden');
-  box.innerHTML = `<div class="bg-white border border-neutral-900 overflow-auto" style="width:${width}px;max-width:96vw;max-height:${maxHeight}">${html}</div>`;
+  box.innerHTML = `<div class="${frameClass} overflow-auto" style="${frameStyle}">${html}</div>`;
   if (mount) mount(box.firstElementChild);
   if (window.__i18n && window.__i18n.apply) window.__i18n.apply(document);
   return box;
@@ -244,27 +246,93 @@ function newIfaceGuide(initialCat) {
   };
   return new Promise((resolve) => {
     let done = false;
-    const shell = `<div class="flex flex-col text-[12px]" style="height:620px;max-height:82vh">
-      <div class="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-neutral-300 bg-white">
+    const shell = `<div class="guide-shell flex flex-col" style="height:600px;max-height:82vh">
+      <style>
+        .guide-shell{font-size:12px;color:var(--cb-text);background:#fff;border-radius:12px;overflow:hidden;font-family:var(--cb-font)}
+        .guide-head{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--cb-line);background:#fff}
+        .guide-head-mark{width:32px;height:32px;border-radius:9px;background:var(--cb-accent-soft);color:var(--cb-accent);display:flex;align-items:center;justify-content:center;flex:none}
+        .guide-head-mark svg{width:16px;height:16px}
+        .guide-title{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.35}
+        .guide-sub{font-size:11px;color:var(--cb-muted);margin-top:3px;line-height:1.45}
+        .guide-head-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+        .guide-head-chip{height:24px;padding:0 9px;border:1px solid var(--cb-line);border-radius:999px;background:#f8fafc;color:var(--cb-muted);font-size:10px;display:flex;align-items:center;letter-spacing:.04em}
+        .guide-main{flex:1;min-height:0;display:flex;background:#fff}
+        .guide-rail{width:190px;flex:none;padding:14px 12px;background:#f7f9fc;border-right:1px solid var(--cb-line);overflow:auto}
+        .guide-rail-note{font-size:10px;color:var(--cb-muted);padding:0 6px 10px;letter-spacing:.02em}
+        .guide-step{position:relative;display:flex;align-items:flex-start;gap:10px;padding:10px 10px;border:1px solid transparent;border-radius:8px;margin-bottom:4px;color:var(--cb-text-2);transition:background .15s,border-color .15s,box-shadow .15s}
+        .guide-step + .guide-step:before{content:"";position:absolute;left:26px;top:-5px;width:1px;height:4px;background:#dfe5ee}
+        .guide-step.is-active{background:#fff;border-color:#dbe6fb;box-shadow:0 1px 2px rgba(32,36,43,.05),inset 3px 0 0 var(--cb-accent)}
+        .guide-step.is-done{color:var(--cb-text)}
+        .guide-step-index{width:22px;height:22px;flex:none;border-radius:50%;border:1px solid #d7dde7;background:#fff;color:var(--cb-muted);display:flex;align-items:center;justify-content:center;font:600 10px/1 Consolas,monospace;margin-top:1px}
+        .guide-step.is-active .guide-step-index{background:var(--cb-accent);border-color:var(--cb-accent);color:#fff;box-shadow:0 0 0 3px rgba(47,107,220,.10)}
+        .guide-step.is-done .guide-step-index{background:var(--cb-accent-soft);border-color:#c9daf7;color:var(--cb-accent)}
+        .guide-step-title{font-size:12px;font-weight:600;line-height:1.4}
+        .guide-step.is-active .guide-step-title{color:var(--cb-text)}
+        .guide-step-hint{font-size:10px;color:var(--cb-muted);line-height:1.5;margin-top:2px}
+        .guide-body{flex:1;min-width:0;overflow:auto;padding:22px 24px 20px}
+        .guide-h{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.4}
+        .guide-p{font-size:11px;color:var(--cb-muted);line-height:1.65;margin-top:4px;margin-bottom:18px}
+        .guide-label{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;color:var(--cb-text);margin-bottom:6px}
+        .guide-req{color:#b52b2b;font-weight:600}
+        .guide-input,.guide-select,.guide-textarea{width:100%;min-height:34px;border:1px solid #dfe4ec;border-radius:7px;background:#fff;padding:6px 10px;font-size:12px;color:var(--cb-text);transition:border-color .15s,box-shadow .15s}
+        .guide-input:hover,.guide-select:hover,.guide-textarea:hover{border-color:#ccd4e0}
+        .guide-input:focus,.guide-select:focus,.guide-textarea:focus{border-color:var(--cb-accent);box-shadow:0 0 0 3px rgba(47,107,220,.10);outline:none}
+        .guide-textarea{min-height:120px;line-height:1.65;resize:vertical;padding:9px 10px}
+        .guide-help{font-size:10px;color:var(--cb-muted);line-height:1.6;margin-top:5px}
+        .guide-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+        .guide-field{margin-bottom:16px}
+        .guide-input-group{display:flex;align-items:stretch;border:1px solid #dfe4ec;border-radius:7px;overflow:hidden;background:#fff;transition:border-color .15s,box-shadow .15s}
+        .guide-input-group:focus-within{border-color:var(--cb-accent);box-shadow:0 0 0 3px rgba(47,107,220,.10)}
+        .guide-input-prefix{display:flex;align-items:center;padding:0 10px;background:#f7f9fc;border-right:1px solid var(--cb-line);color:var(--cb-muted);font:10px/1 Consolas,monospace;flex:none}
+        .guide-input-group input{flex:1;min-width:0;border:0;box-shadow:none!important;border-radius:0;padding:6px 10px;font:11px/1.5 Consolas,monospace}
+        .guide-note{border:1px solid var(--cb-line);background:#f8fafc;border-radius:8px;padding:10px 12px;color:var(--cb-text-2);font-size:11px;line-height:1.65}
+        .guide-note-blue{border-color:#dbe6fb;background:var(--cb-accent-soft);color:#35507a}
+        .guide-route-list{border:1px solid var(--cb-line);border-radius:9px;overflow:hidden;background:#fff}
+        .guide-route-item{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--cb-line-soft);transition:background .12s}
+        .guide-route-item:last-child{border-bottom:0}
+        .guide-route-item:hover{background:#f8fafc}
+        .guide-route-item input{width:14px;height:14px;accent-color:var(--cb-accent);flex:none}
+        .guide-route-path{font:10.5px/1.5 Consolas,monospace;color:var(--cb-muted);margin-left:8px}
+        .guide-route-desc{display:block;font-size:10px;color:var(--cb-muted);margin-top:2px}
+        .guide-chip{display:inline-flex;align-items:center;height:22px;padding:0 7px;border:1px solid var(--cb-line);border-radius:5px;background:#f8fafc;color:var(--cb-text-2);font:10px/1 Consolas,monospace}
+        .guide-preset{height:26px;border:1px solid var(--cb-line);border-radius:6px;background:#fff;color:var(--cb-text-2);font-size:10.5px;padding:0 8px}
+        .guide-preset:hover{background:var(--cb-accent-soft);border-color:#c9daf7;color:var(--cb-accent)}
+        .guide-review{border:1px solid var(--cb-line);border-radius:9px;overflow:hidden;background:#fff}
+        .guide-review-row{display:grid;grid-template-columns:120px minmax(0,1fr);border-bottom:1px solid var(--cb-line-soft)}
+        .guide-review-row:last-child{border-bottom:0}
+        .guide-review-k{padding:9px 12px;background:#f8fafc;color:var(--cb-muted);font-size:11px;border-right:1px solid var(--cb-line-soft)}
+        .guide-review-v{padding:9px 12px;font-size:12px;color:var(--cb-text);min-width:0;word-break:break-all}
+        .guide-foot{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--cb-line);background:#fafbfd}
+        .guide-foot-err{flex:1;min-width:0;color:#b52b2b;font-size:11px;line-height:1.45}
+        .guide-pos{height:26px;padding:0 9px;border:1px solid var(--cb-line);border-radius:999px;background:#fff;color:var(--cb-muted);font:10px/1 Consolas,monospace;display:flex;align-items:center;flex:none}
+        .guide-shell .btn{height:34px;border-radius:7px;font-size:12px}
+        .guide-shell .btn.solid{padding:0 16px}
+        .guide-shell .btn.thin{padding:0 13px}
+      </style>
+      <div class="guide-head">
+        <div class="guide-head-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h8M5 17h5"/><path d="M17 15v4M15 17h4"/></svg></div>
         <div>
-          <div class="text-[14px] font-semibold">新建接口 · 创建引导</div>
-          <div class="text-[11px] text-neutral-500 mt-0.5">先配置，最后确认；取消不会改动当前工程</div>
+          <div class="guide-title">新建接口 · 创建引导</div>
+          <div class="guide-sub">四步完成基础配置，最后确认才会写入工程</div>
         </div>
-        <button class="ml-auto btn thin" id="guideClose">关闭</button>
+        <div class="guide-head-right">
+          <span class="guide-head-chip">4 STEPS</span>
+          <button class="btn thin" id="guideClose">关闭</button>
+        </div>
       </div>
-      <div class="flex-1 min-h-0 flex">
-        <div id="guideRail" class="w-[176px] shrink-0 border-r border-neutral-300 bg-neutral-50"></div>
-        <div id="guideBody" class="flex-1 min-w-0 overflow-auto p-5"></div>
+      <div class="guide-main">
+        <aside id="guideRail" class="guide-rail"></aside>
+        <section id="guideBody" class="guide-body"></section>
       </div>
-      <div class="shrink-0 flex items-center gap-2 px-4 py-3 border-t border-neutral-300 bg-white">
-        <span id="guideErr" class="text-[11px] text-red-700 flex-1 min-w-0"></span>
-        <span id="guidePos" class="text-[11px] text-neutral-500 mono"></span>
+      <div class="guide-foot">
+        <span id="guideErr" class="guide-foot-err"></span>
+        <span id="guidePos" class="guide-pos mono"></span>
         <button class="btn thin" id="guidePrev">上一步</button>
         <button class="btn solid" id="guideNext">下一步</button>
         <button class="btn solid" id="guideCreate">确认创建</button>
       </div>
     </div>`;
-    modal(shell, mount, { width: 780, maxHeight: '84vh' });
+    modal(shell, mount, { width: 820, maxHeight: '86vh', plain: true });
 
     function mount(root) {
       const rail = root.querySelector('#guideRail');
@@ -342,15 +410,15 @@ function newIfaceGuide(initialCat) {
       }
 
       function renderRail() {
-        rail.innerHTML = GUIDE_STEPS.map((s, i) => {
+        rail.innerHTML = `<div class="guide-rail-note">创建流程</div>` + GUIDE_STEPS.map((s, i) => {
           const active = i === state.step;
           const passed = i < state.step;
-          return `<div class="px-3 py-3 border-b border-neutral-200 ${active ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-700'}">
-            <div class="flex items-center gap-2">
-              <span class="w-5 h-5 inline-flex items-center justify-center border ${active ? 'border-white' : 'border-neutral-400'} ${passed ? 'bg-neutral-200 text-neutral-900' : ''} text-[10px] mono">${passed ? '✓' : i + 1}</span>
-              <span class="font-semibold">${s.title}</span>
+          return `<div class="guide-step ${active ? 'is-active' : ''} ${passed ? 'is-done' : ''}">
+            <span class="guide-step-index">${passed ? '✓' : i + 1}</span>
+            <div class="min-w-0">
+              <div class="guide-step-title">${s.title}</div>
+              <div class="guide-step-hint">${s.hint}</div>
             </div>
-            <div class="mt-1 pl-7 text-[10px] ${active ? 'text-neutral-300' : 'text-neutral-500'}">${s.hint}</div>
           </div>`;
         }).join('');
       }
@@ -358,34 +426,39 @@ function newIfaceGuide(initialCat) {
       function fieldPreview() {
         const p = guideFields(state.fieldText);
         if (p.errors.length) return `<div class="text-[11px] text-red-700 mt-2">${esc(p.errors[0])}</div>`;
-        if (!p.fields.length) return `<div class="text-[11px] text-neutral-500 mt-2">不填业务字段：只保留 id、created_at、updated_at。</div>`;
-        return `<div class="mt-2 flex flex-wrap gap-1">${p.fields.map((f) => `<span class="px-1.5 py-0.5 border border-neutral-300 bg-neutral-50 mono text-[10px]">${esc(f.name)} · ${esc(f.type)}</span>`).join('')}</div>`;
+        if (!p.fields.length) return `<div class="guide-help mt-2">不填业务字段：只保留 id、created_at、updated_at。</div>`;
+        return `<div class="mt-2 flex flex-wrap gap-1">${p.fields.map((f) => `<span class="guide-chip">${esc(f.name)} · ${esc(f.type)}</span>`).join('')}</div>`;
       }
 
       function renderBody() {
         if (state.step === 0) {
           body.innerHTML = `
-            <div class="text-[13px] font-semibold">第一步 · 基础信息</div>
-            <div class="text-[11px] text-neutral-500 mt-1 mb-4">这些内容会出现在接口列表、文档和生成的路由前缀里。</div>
-            <label class="block mb-1 font-medium">接口名称 <span class="text-red-700">*</span></label>
-            <input id="guideName" class="w-full border border-neutral-900 px-2 py-1.5 mb-1" value="${esc(state.name)}" placeholder="例如：商品、订单、会员">
-            <div class="text-[10px] text-neutral-500 mb-4">当前工程里不能重名。</div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="guide-h">第一步 · 基础信息</div>
+            <div class="guide-p">这些内容会出现在接口列表、文档和生成的路由前缀里。</div>
+            <div class="guide-field">
+              <label class="guide-label">接口名称 <span class="guide-req">*</span></label>
+              <input id="guideName" class="guide-input" autocomplete="off" value="${esc(state.name)}" placeholder="例如：商品、订单、会员">
+              <div class="guide-help">当前工程里不能重名；名称确定后不建议再改。</div>
+            </div>
+            <div class="guide-grid2 guide-field">
               <div>
-                <label class="block mb-1 font-medium">分类</label>
-                <select id="guideCat" class="w-full border border-neutral-900 px-2 py-1.5">${cats.map((c) => `<option value="${esc(c.id)}" ${c.id === state.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+                <label class="guide-label">分类</label>
+                <select id="guideCat" class="guide-select">${cats.map((c) => `<option value="${esc(c.id)}" ${c.id === state.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
               </div>
               <div>
-                <label class="block mb-1 font-medium">路径前缀</label>
-                <div class="flex items-stretch border border-neutral-900">
-                  <span class="px-2 py-1.5 bg-neutral-100 text-neutral-500 border-r border-neutral-300 mono text-[11px]">/api</span>
-                  <input id="guidePrefix" class="flex-1 min-w-0 px-2 py-1.5 mono" value="${esc(state.prefix)}" placeholder="/v1/products">
+                <label class="guide-label">路径前缀</label>
+                <div class="guide-input-group">
+                  <span class="guide-input-prefix">/api</span>
+                  <input id="guidePrefix" autocomplete="off" value="${esc(state.prefix)}" placeholder="/v1/products">
                 </div>
+                <div class="guide-help">可留空；最终地址 = /api + 前缀 + 路由路径。</div>
               </div>
             </div>
-            <div class="text-[10px] text-neutral-500 mt-1 mb-4">前缀可留空；最终地址 = /api + 前缀 + 路由路径。</div>
-            <label class="block mb-1 font-medium">一句话说明</label>
-            <input id="guideComment" class="w-full border border-neutral-900 px-2 py-1.5" value="${esc(state.comment)}" placeholder="例如：商品的上架、库存与价格维护">
+            <div class="guide-field">
+              <label class="guide-label">一句话说明</label>
+              <input id="guideComment" class="guide-input" value="${esc(state.comment)}" placeholder="例如：商品的上架、库存与价格维护">
+            </div>
+            <div class="guide-note guide-note-blue">这里只做配置预览；点最后一步的「确认创建」之前，不会改动当前工程。</div>
           `;
           const name = body.querySelector('#guideName');
           name.focus();
@@ -395,25 +468,26 @@ function newIfaceGuide(initialCat) {
           body.querySelector('#guideCat').addEventListener('change', sync);
         } else if (state.step === 1) {
           body.innerHTML = `
-            <div class="text-[13px] font-semibold">第二步 · 主表</div>
-            <div class="text-[11px] text-neutral-500 mt-1 mb-4">接口会自动带上一张主表，表键固定为 main。</div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="guide-h">第二步 · 主表</div>
+            <div class="guide-p">接口会自动带上一张主表，表键固定为 main，创建后仍可继续加字段。</div>
+            <div class="guide-grid2 guide-field">
               <div>
-                <label class="block mb-1 font-medium">主表名</label>
-                <input id="guideTable" class="w-full border border-neutral-900 px-2 py-1.5 mono" value="${esc(state.tableName)}" placeholder="留空自动生成">
-                <div class="text-[10px] text-neutral-500 mt-1">表名要全局唯一，只能用字母、数字、下划线。</div>
+                <label class="guide-label">主表名</label>
+                <input id="guideTable" class="guide-input mono" autocomplete="off" value="${esc(state.tableName)}" placeholder="留空自动生成">
+                <div class="guide-help">表名全局唯一，只能使用字母、数字和下划线。</div>
               </div>
               <div>
-                <label class="block mb-1 font-medium">表注释</label>
-                <input id="guideTableComment" class="w-full border border-neutral-900 px-2 py-1.5" value="${esc(state.tableComment)}" placeholder="例如：商品主表">
+                <label class="guide-label">表注释</label>
+                <input id="guideTableComment" class="guide-input" value="${esc(state.tableComment)}" placeholder="例如：商品主表">
+                <div class="guide-help">会显示在表结构页和接口文档里。</div>
               </div>
             </div>
-            <div class="mt-4">
-              <label class="block mb-1 font-medium">初始业务字段</label>
-              <div class="text-[10px] text-neutral-500 mb-2">每行一个，格式：字段名 类型 注释。系统已自动加入 id、created_at、updated_at。</div>
-              <textarea id="guideFields" rows="7" class="w-full border border-neutral-900 px-2 py-1.5 mono" placeholder="title varchar 标题&#10;price decimal 价格">${esc(state.fieldText)}</textarea>
+            <div class="guide-field">
+              <label class="guide-label">初始业务字段</label>
+              <div class="guide-help" style="margin-top:-2px;margin-bottom:7px">每行一个，格式：字段名 类型 注释。系统已自动加入 id、created_at、updated_at。</div>
+              <textarea id="guideFields" rows="6" class="guide-textarea mono" placeholder="title varchar 标题&#10;price decimal 价格">${esc(state.fieldText)}</textarea>
               <div id="guideFieldPreview">${fieldPreview()}</div>
-              <div class="flex flex-wrap gap-1 mt-2">${GUIDE_PRESETS.map((p, i) => `<button type="button" class="btn thin" data-guide-preset="${i}">+ ${esc(p.comment)}</button>`).join('')}</div>
+              <div class="flex flex-wrap gap-1 mt-2">${GUIDE_PRESETS.map((p, i) => `<button type="button" class="guide-preset" data-guide-preset="${i}">+ ${esc(p.comment)}</button>`).join('')}</div>
             </div>
           `;
           const ta = body.querySelector('#guideFields');
@@ -437,30 +511,30 @@ function newIfaceGuide(initialCat) {
         } else if (state.step === 2) {
           const t = state.tableName || '主表名';
           body.innerHTML = `
-            <div class="text-[13px] font-semibold">第三步 · 路由</div>
-            <div class="text-[11px] text-neutral-500 mt-1 mb-4">选择要生成的基础路由，创建后仍可逐条修改脚本和路径。</div>
-            <div class="border border-neutral-300 divide-y divide-neutral-200">
-              ${GUIDE_ROUTE_DEFS.map((r) => `<label class="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-neutral-50">
+            <div class="guide-h">第三步 · 路由</div>
+            <div class="guide-p">选择要生成的基础路由，创建后仍可逐条修改脚本和路径。</div>
+            <div class="guide-route-list">
+              ${GUIDE_ROUTE_DEFS.map((r) => `<label class="guide-route-item">
                 <input type="checkbox" data-guide-route value="${r.key}" ${state.routeKinds.includes(r.key) ? 'checked' : ''}>
-                <span class="w-14 shrink-0 mono text-[10px] px-1 py-0.5 border border-neutral-400 text-center">${r.method}</span>
+                <span class="m-badge m-${r.method.toLowerCase()}">${r.method}</span>
                 <span class="flex-1 min-w-0">
                   <span class="font-medium">${r.name}</span>
-                  <span class="mono text-[11px] text-neutral-500 ml-2">${esc('/api' + guideBasePath(state.prefix) + routePath(r).replace(':table', t))}</span>
-                  <span class="block text-[10px] text-neutral-500 mt-0.5">${r.desc}</span>
+                  <span class="guide-route-path">${esc('/api' + guideBasePath(state.prefix) + routePath(r).replace(':table', t))}</span>
+                  <span class="guide-route-desc">${r.desc}</span>
                 </span>
               </label>`).join('')}
             </div>
-            <div class="grid grid-cols-2 gap-3 mt-4">
+            <div class="guide-grid2" style="margin-top:16px">
               <div>
-                <label class="block mb-1 font-medium">接口鉴权</label>
-                <select id="guideAuth" class="w-full border border-neutral-900 px-2 py-1.5">
+                <label class="guide-label">接口鉴权</label>
+                <select id="guideAuth" class="guide-select">
                   <option value="none" ${state.authMode === 'none' ? 'selected' : ''}>公开，不校验 token</option>
                   <option value="write" ${state.authMode === 'write' ? 'selected' : ''}>写操作需要 token</option>
                   <option value="all" ${state.authMode === 'all' ? 'selected' : ''}>全部需要 token</option>
                 </select>
               </div>
-              <div class="border border-neutral-300 bg-neutral-50 p-2 text-[11px] text-neutral-600">
-                已选 <b id="guideRouteCount">${state.routeKinds.length}</b> 条路由；列表与详情默认启用 60 秒缓存。
+              <div class="guide-note guide-note-blue" style="display:flex;align-items:center">
+                已选 <b id="guideRouteCount" style="margin:0 4px">${state.routeKinds.length}</b> 条路由；列表与详情默认启用 60 秒缓存。
               </div>
             </div>
           `;
@@ -478,20 +552,18 @@ function newIfaceGuide(initialCat) {
           const category = cats.find((c) => c.id === state.categoryId);
           const base = guideBasePath(state.prefix);
           body.innerHTML = `
-            <div class="text-[13px] font-semibold">第四步 · 确认创建</div>
-            <div class="text-[11px] text-neutral-500 mt-1 mb-4">下面只是预览，点「确认创建」之前不会写入工程。</div>
-            <div class="border border-neutral-900">
-              <div class="grid grid-cols-[120px_1fr] text-[12px]">
-                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">接口</div><div class="px-3 py-2 border-b border-neutral-300 font-medium">${esc(state.name)}</div>
-                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">分类</div><div class="px-3 py-2 border-b border-neutral-300">${esc(category ? category.name : state.categoryId)}</div>
-                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">路径前缀</div><div class="px-3 py-2 border-b border-neutral-300 mono">${esc(base || '（无）')}</div>
-                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">主表</div><div class="px-3 py-2 border-b border-neutral-300 mono">${esc(state.tableName || '自动生成')} · main</div>
-                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">业务字段</div><div class="px-3 py-2 border-b border-neutral-300 mono text-[11px]">${parsed.fields.length ? parsed.fields.map((f) => esc(f.name)).join(' / ') : '无（仅 id 与时间戳）'}</div>
-                <div class="px-3 py-2 bg-neutral-100 border-b border-r border-neutral-300 text-neutral-600">路由</div><div class="px-3 py-2 border-b border-neutral-300">${state.routeKinds.length} 条 · ${esc(authText)}</div>
-                <div class="px-3 py-2 bg-neutral-100 border-r border-neutral-300 text-neutral-600">示例地址</div><div class="px-3 py-2 mono text-[11px]">${esc('/api' + base + (state.routeKinds.includes('list') ? '/' + (state.tableName || '主表名') : '/...'))}</div>
-              </div>
+            <div class="guide-h">第四步 · 确认创建</div>
+            <div class="guide-p">下面只是预览，点「确认创建」之前不会写入工程。</div>
+            <div class="guide-review">
+              <div class="guide-review-row"><div class="guide-review-k">接口</div><div class="guide-review-v font-medium">${esc(state.name)}</div></div>
+              <div class="guide-review-row"><div class="guide-review-k">分类</div><div class="guide-review-v">${esc(category ? category.name : state.categoryId)}</div></div>
+              <div class="guide-review-row"><div class="guide-review-k">路径前缀</div><div class="guide-review-v mono">${esc(base || '（无）')}</div></div>
+              <div class="guide-review-row"><div class="guide-review-k">主表</div><div class="guide-review-v mono">${esc(state.tableName || '自动生成')} · main</div></div>
+              <div class="guide-review-row"><div class="guide-review-k">业务字段</div><div class="guide-review-v mono text-[11px]">${parsed.fields.length ? parsed.fields.map((f) => esc(f.name)).join(' / ') : '无（仅 id 与时间戳）'}</div></div>
+              <div class="guide-review-row"><div class="guide-review-k">路由</div><div class="guide-review-v">${state.routeKinds.length} 条 · ${esc(authText)}</div></div>
+              <div class="guide-review-row"><div class="guide-review-k">示例地址</div><div class="guide-review-v mono text-[11px]">${esc('/api' + base + (state.routeKinds.includes('list') ? '/' + (state.tableName || '主表名') : '/...'))}</div></div>
             </div>
-            <div class="mt-4 border border-neutral-300 bg-neutral-50 p-3 text-[11px] text-neutral-600">
+            <div class="guide-note guide-note-blue" style="margin-top:14px">
               创建后会自动打开接口编辑器；主表、字段、路由和文档都可以继续修改。取消或关闭窗口不会产生任何改动。
             </div>
           `;
