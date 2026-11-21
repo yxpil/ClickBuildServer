@@ -334,11 +334,11 @@ async function startMysql() {
   if (!fs.existsSync(path.join(datadir, 'mysql'))) {
     fs.mkdirSync(datadir, { recursive: true });
     pushLog('mysql', '初始化数据目录…');
-    const initArgs = ['--datadir', datadir, '--basedir', mariadbRoot];
+    const initArgs = ['--no-defaults', '--datadir', datadir, '--basedir', mariadbRoot];
     if (!platform.isWindows) {
-      // mariadb-install-db 默认把 datadir chown 给 mysql 用户；普通用户没有这个权限，
-      // 直接指定当前用户，初始化器就不会再尝试切换属主。
-      initArgs.push('--user', os.userInfo().username);
+      // 不读宿主机的 /etc/mysql 配置（CI 镜像里可能带 user=mysql），
+      // 并把属主指定为当前用户；普通用户没有 chown 给 mysql 的权限。
+      initArgs.push(`--user=${os.userInfo().username}`);
     }
     const r = await new Promise((resolve) => {
       const c = spawn(layout.installDb, initArgs, platform.baseSpawnOptions());
