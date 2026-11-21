@@ -160,12 +160,14 @@
 ### 直接安装（Windows）
 
 ```text
-dist\ClickBuildServer-Setup-1.1.64.exe
+dist\ClickBuildServer-Setup-1.1.65.exe
 ```
 
-本机构建安装包 226,546,347 B（约 216 MB），构建时间 2026-11-21 14:22:12，SHA256 `756D1BDA677E5BC77CD6E32BD7D02AF4882933A2821D997ECBC3AAFC1E96D65C`。GitHub Actions 发布的 `v1.1.64` 安装包为 226,550,112 B，SHA256 `BBFB7C8A74A0FE2C4F5436481BCC7AEBB3ABC8F7948F64B51E52BC53B4C0A10C`；Release 同时上传 `.blockmap` 与 `.sha256`。
+本机构建安装包 226,548,322 B（约 216 MB），构建时间 2026-11-21 14:53:10，SHA256 `CA65B4B6F9B099121A82D6C2BE78C2A82D665246FE7DAF088C41CDD152E67530`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
+
+1.1.65 是 CI/CD 发布收尾版，产品行为与 1.1.64 一致：CI 与 Release 统一走 `npm run test:ci` 的 10 套回归，补入停止按钮 6/6 与 21 语言包 158/158；发布构建固定 `--publish never`，不再让 electron-builder 在没有 `GH_TOKEN` 时自动上传；标签必须与 `package.json` 版本一致，安装包按精确文件名校验并同时上传 `.blockmap` 与 `.sha256`；上传 action 升级到 Node 24 的 `softprops/action-gh-release@v3.0.4`。本地 `test:ci` 10/10、1.1.65 安装版 UI 冒烟 141/141。
 
 1.1.55 把工作台的接口方法做成固定语义色：GET 绿、POST 蓝、PUT 琥珀、PATCH 紫、DELETE 红，路由列表、详情/更新/删除表、权限矩阵、缓存表与接口文档共用同一套徽标；选中路由的左侧色条、浅色底和脚本编辑区细边都跟着方法走。编辑器页签加分类色点，右侧表 / 路由统计改成浅蓝与浅绿胶囊，表标签选中态由黑底改为浅蓝胶囊；表结构页按字段类型给第一列加 3px 色条并给类型文字着色。颜色只做识别，不跟 WPS 强调色漂移；源码版与 1.1.56 安装版 UI 冒烟均为 136/136。1.1.54 把 API 测试从“手写”改成“跟工程一起生成”：`codegen` 每次生成服务、更新部署或导出工程，都会写出 `tests/api.test.js`、`tests/plan.json`、`tests/README.md`；测试页新增「自动测试」区，可单独点「生成测试」并看到接口 / 路由 / 用例 / 只读 / 写入 / 跳过计数。默认只生成安全用例：列表 2xx 且能找到 `rows` / `data`，详情 / 更新 / 删除用不存在 ID 断言脚本声明的 `RETURN 404`，鉴权路由不带 token 断言 401；上传、上游转发、对象表、抓取和自定义脚本跳过并写明原因。写入生命周期单独计数，默认跳过，只有 `CBS_WRITE_TESTS=1` 才新建→详情→更新→删除，并在 `finally` 里兜底删除；新建成功但响应没有 ID 时停止后续步骤，不编假 ID。真实「后端任务」工程（`basePath=/v1`）生成 5 个用例，只读 4/4、开启写入 5/5，测试数据清到 0 行；`test-testgen` 19/19，模版回归 194/194，多语言 24/24。1.1.53 是前一版的现场监控：底部状态条加入 CPU、内存、磁盘、服务运行数与进程内存，点开是资源占用分析面板，列本应用和每个内置服务的 PID / 内存 / 端口，并按阈值给出排查结论；资源采样全部现场读取，服务内存 `tasklist` 缓存 6 秒，系统指标跟随既有 4 秒轮询，不新增高频定时器。
 
@@ -470,7 +472,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 / 1.1.64 安装版） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 / 1.1.65 安装版） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
