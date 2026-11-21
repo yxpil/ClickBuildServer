@@ -46,16 +46,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Model, template and package tests
-        run: |
-          node tools/test-new-iface.js
-          node tools/test-templates.js --gen
-          node tools/test-pack.js
-          node tools/test-deploy.js
-          node tools/test-history.js
-          node tools/test-ai.js
-          node tools/test-kernel.js
-          node tools/test-kernel-sqlgen.js
+      - name: Regression tests
+        run: npm run test:ci
 
       - name: Build unpacked app
         run: npm run dist:dir

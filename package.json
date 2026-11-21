@@ -9,6 +9,7 @@
     "start": "electron .",
     "build:css": "tailwindcss -i renderer/wbench.src.css -o renderer/wbench.css --minify",
     "test:templates": "node tools/test-templates.js --gen",
+    "test:ci": "node tools/test-ci.js",
     "test:help": "node tools/test-help.js",
     "test:pack": "node tools/test-pack.js",
     "test:deploy": "node tools/test-deploy.js",

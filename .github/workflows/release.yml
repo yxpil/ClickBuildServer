@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Build & publish installer
@@ -19,6 +23,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne "v$version") {
+            throw "Tag $tag does not match package version v$version"
+          }
+          "Release version: $version" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -42,10 +56,7 @@ jobs:
         run: npm ci
 
       - name: Regression tests
-        run: |
-          node tools/test-new-iface.js
-          node tools/test-templates.js --gen
-          node tools/test-pack.js
+        run: npm run test:ci
 
       - name: Build NSIS installer
         run: npm run dist -- --publish never
@@ -53,22 +64,30 @@ jobs:
       - name: Verify installer
         shell: pwsh
         run: |
-          $exe = Get-ChildItem dist -Filter "ClickBuildServer-Setup-*.exe" | Select-Object -First 1
-          if (-not $exe) { throw "Missing installer in dist/" }
-          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $exe = Join-Path "dist" "ClickBuildServer-Setup-$version.exe"
+          $blockmap = "$exe.blockmap"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing installer: $exe" }
+          if (-not (Test-Path -LiteralPath $blockmap)) { throw "Missing blockmap: $blockmap" }
+          $file = Get-Item -LiteralPath $exe
+          $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+          $checksum = "$($file.FullName).sha256"
+          Set-Content -LiteralPath $checksum -Value "$hash  $($file.Name)" -Encoding ascii
           @(
             "### Installer",
             "",
-            "- File: ``$($exe.Name)``",
-            "- Size: $($exe.Length) bytes",
+            "- File: ``$($file.Name)``",
+            "- Size: $($file.Length) bytes",
             "- SHA256: ``$hash``"
           ) | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             dist/ClickBuildServer-Setup-*.exe
             dist/ClickBuildServer-Setup-*.exe.blockmap
+            dist/ClickBuildServer-Setup-*.exe.sha256
           generate_release_notes: true
           fail_on_unmatched_files: true

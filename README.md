@@ -163,7 +163,7 @@
 dist\ClickBuildServer-Setup-1.1.64.exe
 ```
 
-安装包 226,546,365 B（约 216 MB），构建时间 2026-11-21 14:10:07，SHA256 `DCA16C699481F427CFCE9E908F56179DEB2664CC70995464DA3EDD7E49955F18`。
+安装包 226,546,347 B（约 216 MB），构建时间 2026-11-21 14:22:12，SHA256 `756D1BDA677E5BC77CD6E32BD7D02AF4882933A2821D997ECBC3AAFC1E96D65C`。
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
@@ -428,8 +428,10 @@ module.exports.routes.push({
 
 GitHub Actions 工作流在 `.github/workflows/`：
 
-- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 上先还原 `vendor/services`，再 `npm ci` → 模型/模版/工程包测试 → `npm run dist:dir` 构建 unpacked 版，并校验 `dist/win-unpacked/ClickBuildServer.exe` 存在。
-- `release.yml`：推送 `v*` 标签触发；还原 `vendor/services`，跑同一套回归测试 → `npm run dist` 构建 NSIS 安装包 → 输出 SHA256 到 Actions Summary → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe` 与 `.blockmap`。
+- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 上先还原 `vendor/services`，再 `npm ci` → `npm run test:ci` 跑 10 套回归（含停止按钮与 21 语言包）→ `npm run dist:dir` 构建 unpacked 版，并校验 `dist/win-unpacked/ClickBuildServer.exe` 存在。
+- `release.yml`：推送 `v*` 标签触发；先校验标签与 `package.json` 版本一致，再还原 `vendor/services`、跑同一套 `test:ci` → `npm run dist -- --publish never` 构建 NSIS 安装包 → 校验精确文件名与 `.blockmap`、生成 `.sha256` → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe`、`.blockmap` 与 `.sha256`。发布任务不取消进行中的同标签构建，避免上传到一半被新任务打断。
+
+过去 1.1.46–1.1.53 的 Release 都在最后一步失败：标签构建触发 electron-builder 自动上传，而 runner 没有 `GH_TOKEN`，日志为 `GitHub Personal Access Token is not set`。1.1.54 前的 `7d90b99` 已改为 `--publish never`，上传只交给 `action-gh-release`；本轮又把同样的保护写进版本校验、文件校验和显式 `GITHUB_TOKEN`，避免回归。
 
 `vendor/services` 不进 Git，CI 从 `services-v1` Release 的 `vendor-services.zip` 还原（约 139.5 MB）；本机构建用 `npm run vendor:services` 从旁边的 `ClickBuild` 目录收集，打包前 `npm run check:services` 会核对 MariaDB / Redis / RustFS 是否齐全。
 
@@ -438,11 +440,9 @@ GitHub Actions 工作流在 `.github/workflows/`：
 ```powershell
 npm ci
 npm run vendor:services
-node tools/test-new-iface.js
-node tools/test-templates.js --gen
-node tools/test-pack.js
-npm run dist:dir   # CI 构建
-npm run dist       # 发布安装包
+npm run test:ci
+npm run dist:dir                    # CI 构建 unpacked
+npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 自动上传
 ```
 
 `test-help.js` 需要本机 MariaDB / Redis / RustFS（13306 / 16379 / 19000），因此放在本地真实验收，不放进无服务的 GitHub runner。
@@ -451,6 +451,7 @@ npm run dist       # 发布安装包
 
 | 套件 | 结果 |
 | --- | --- |
+| `npm run test:ci`（CI 顺序执行 10 套核心回归，含停止按钮 / 多语言） | **10/10** |
 | `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **194/194** |
 | `tools/test-plugins-v2.js`（命令 / 权限 / 钩子取消与改写 / 模版 / 脚手架 / 安装卸载 / 旧插件兼容） | **26/26** |
 | `tools/test-task-types.js`（三类任务常量 / 默认混合 / 落盘重读 / 非法回退 / 历史索引 / 复制保留） | **13/13** |
