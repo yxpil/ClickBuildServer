@@ -1,4 +1,5 @@
-﻿'use strict';
+﻿// 作者：yxpil
+'use strict';
 
 // 工程模版（案例）：内置主流业务工程 + 把当前工程存成自己的模版。
 // 内置案例是完整工程 JSON（app/iface/cases/<file>），和手工/AI 生成走同一套 normalize / validate。

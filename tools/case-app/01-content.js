@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 内容站模式：博客 / 小说 / 音乐 / 视频。真实写作、发布、阅读、评论、收藏。 */
 function contentRows() { return state.rows[UX.primary.iface] || []; }
 

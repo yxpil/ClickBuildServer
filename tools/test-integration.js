@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 const assert = require('assert');
 const spec = require('../app/iface/spec');

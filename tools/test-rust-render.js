@@ -1,3 +1,4 @@
+// 作者：yxpil
 // Rust 全栈渲染回归：生成一套真实 Rust 工程，确认无 Node 启动器，并用 cargo 编译。
 // 用法：node tools/test-rust-render.js [--no-build]
 const fs = require('fs');

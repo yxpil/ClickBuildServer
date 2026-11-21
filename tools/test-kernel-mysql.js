@@ -1,3 +1,4 @@
+// 作者：yxpil
 // 真实 MySQL/MariaDB 回归：初始化、增量 ALTER、反向工程。
 // 默认连本机 13306 root 空密码；可用 CBS_TEST_MYSQL_PORT/HOST/USER/PASSWORD 覆盖。
 const assert = require('assert');

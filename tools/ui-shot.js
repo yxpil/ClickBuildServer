@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 用 CDP 截渲染进程整页：node tools/ui-shot.js <out.png> [port] [可选JS] [目标页关键字]
 const fs = require('fs');

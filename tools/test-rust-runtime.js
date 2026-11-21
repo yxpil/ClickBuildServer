@@ -1,3 +1,4 @@
+// 作者：yxpil
 // Rust 全栈运行时回归：生成 -> 建库 -> cargo run -> 登录 -> 带 token 访问 /api/auth/me。
 const fs = require('fs');
 const os = require('os');

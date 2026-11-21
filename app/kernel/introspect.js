@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 反向工程：数据库元数据 -> 通用元模型。先做 MySQL/MariaDB 与 SQLite；

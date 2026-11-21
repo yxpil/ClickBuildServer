@@ -1,3 +1,4 @@
+// 作者：yxpil
 /** Tailwind 配置：只用黑白灰，接近 Win95 / Word 97 / Excel 97 的办公软件观感 */
 module.exports = {
   content: ['./renderer/wbench.html', './renderer/wbench.js'],

@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 用 B 站 Index-Translate 免费公网 API 预生成全部界面语言包。

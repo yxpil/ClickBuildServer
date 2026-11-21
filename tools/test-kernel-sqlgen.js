@@ -1,3 +1,4 @@
+// 作者：yxpil
 // 生成器 SQL 接线回归：旧 IR -> 元模型 -> MySQL/PostgreSQL/SQLite DDL。
 const assert = require('assert');
 const { DatabaseSync } = require('node:sqlite');

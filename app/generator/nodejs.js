@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 /**
  * Node.js 后端生成器（零框架、少依赖）

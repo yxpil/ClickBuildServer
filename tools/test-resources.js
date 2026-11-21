@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 资源面板的真实采样回归。必须用 Electron 跑：node tools/test-resources.js 拿不到 app.getAppMetrics。
 const assert = require('assert');

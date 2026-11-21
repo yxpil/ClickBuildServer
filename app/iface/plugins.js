@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 插件系统 v2：插件是 plugins/<id>/ 下的一个文件夹（plugin.json + 入口模块）。

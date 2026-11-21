@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 普通用户新建接口回归：中文名、自动建表、默认 main 表键、路由路径合法。
 const assert = require('assert');

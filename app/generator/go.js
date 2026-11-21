@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 const N = require('./naming');
 const { goMod, configGo, dbGo, cacheGo, idGo } = require('./goData');

@@ -1,3 +1,4 @@
+// 作者：yxpil
 // 内核回归：元模型、三种方言、SQLite 增量迁移、工程适配与反向工程桥。
 // MySQL/PG 的真实执行另见 test-kernel-mysql.js（需要本地 MariaDB）。
 const fs = require('fs');

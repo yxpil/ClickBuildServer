@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 兼容旧命令：英文包生成已并入 tools/generate-i18n.js 的多语言生成器。

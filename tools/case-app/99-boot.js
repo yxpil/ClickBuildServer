@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 启动与路由：按模式把视图分派到真实页面。 */
 function render() {
   if (!state.token && UX.auth && state.view !== 'home') {

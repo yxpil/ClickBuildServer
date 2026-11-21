@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 /**
  * 业务模块货架（Catalog）

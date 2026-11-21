@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 /** Go 生成器模板：auth / query / crud / filesource / customsql / storage / plugins */
 

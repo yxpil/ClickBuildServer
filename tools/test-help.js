@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 生成服务的帮助页回归：真实启动一台服务，检查 /help 内容以及 /docs、/console 入口。

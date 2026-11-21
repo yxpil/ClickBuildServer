@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 const RESERVED = new Set(['class', 'module', 'type', 'match', 'impl', 'fn', 'let', 'use', 'mod', 'crate', 'self', 'super', 'where', 'move', 'ref', 'pub', 'const', 'static', 'async', 'await', 'dyn', 'loop', 'trait', 'enum', 'struct', 'return', 'package', 'public', 'private', 'void', 'int', 'long', 'short', 'byte', 'new', 'if', 'else', 'for', 'while', 'switch', 'case', 'default']);

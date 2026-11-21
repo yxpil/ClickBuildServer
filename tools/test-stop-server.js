@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 停止按钮的真实后端回归：本进程启动、重启后的孤儿进程、以及端口被别的程序占用。
 const assert = require('assert');

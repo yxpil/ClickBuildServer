@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 全部案例前端（.yxpp）回归：26 套内置案例都必须带 PageStudio 工程与可运行 HTML，

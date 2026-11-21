@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// 作者：yxpil
 'use strict';
 
 // 内核命令行：工程 JSON -> 元模型 -> 方言 DDL / migration；数据库 -> 元模型 -> 工程。

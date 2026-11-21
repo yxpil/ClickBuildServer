@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 目录/预约模式：到店预约、课程报名、网课学习、医院挂号。 */
 function catalogRows() { return state.rows[UX.primary.iface] || []; }
 

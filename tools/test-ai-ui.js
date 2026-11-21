@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 真实 Ollama 的 UI 链路验收：打开 AI 弹窗 → 读取当前工程 → 追加接口 → 保存。

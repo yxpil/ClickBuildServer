@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 const N = require('./naming');
 

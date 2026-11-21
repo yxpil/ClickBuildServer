@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // AI 生成接口工程：支持本机 Ollama、OpenAI 兼容接口与本地模拟。

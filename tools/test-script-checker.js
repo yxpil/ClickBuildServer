@@ -1,3 +1,4 @@
+// 作者：yxpil
 // 脚本检查器回归：注释、跨行 SQL、行号定位、占位符与变量分析。
 const { checkScript } = require('../app/iface/script');
 

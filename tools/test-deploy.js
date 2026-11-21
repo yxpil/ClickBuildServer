@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 更新部署的生成目录清理验收：不启动 Electron、不连接数据库。

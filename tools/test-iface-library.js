@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// 作者：yxpil
 'use strict';
 // 接口库回归：内置条目、保存/收藏/分类/说明、改名、插入去重与二次插入路由避重、删除清理。
 const assert = require('node:assert/strict');

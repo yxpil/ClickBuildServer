@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 即时聊天模式：会话列表、消息流、发送、已读、未读数。 */
 
 function chatRows() { return state.rows['__chat'] || []; }

@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 不依赖 Electron 的自测：.yxpn 打包/回读、接口复制编号、AI 假接口、文档生成。

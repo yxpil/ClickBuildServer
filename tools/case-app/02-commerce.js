@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 交易模式：商城 / 活动票务 / 餐厅点餐。真实商品、购物车、库存、订单、票码、桌台。 */
 function cart() { return storeGet('cbs-cart:' + (CASE.code || 'case'), []); }
 function saveCart(v) { storeSet('cbs-cart:' + (CASE.code || 'case'), v); }

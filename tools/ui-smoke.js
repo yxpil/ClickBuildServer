@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 真实 UI 冒烟：通过 Chromium 远程调试协议驱动渲染进程，点按钮、填弹窗、读 DOM。

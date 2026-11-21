@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 生成扩展案例 JSON。案例本身是普通工程文件，运行时由 templates.js 直接读取。

@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 命令行生成入口：和界面里“生成服务”走同一套 codegen

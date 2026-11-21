@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 社交社区模式：动态流、点赞评论、好友、私聊、通知、资料。 */
 
 function socialIface(path, method) {

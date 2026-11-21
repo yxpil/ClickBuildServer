@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 用 Node 生成 ICO（避免 PowerShell 文本管道把二进制写成 UTF-8 替换字符）
 const fs = require('fs');

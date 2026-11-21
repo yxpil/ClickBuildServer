@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 通用元模型：只描述“业务世界”，不认识 ClickBuild 的接口、路由和脚本。

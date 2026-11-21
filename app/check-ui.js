@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 前端引用一致性检查：app.js 里用到的元素 id 必须在 index.html 里存在
 const fs = require('fs');

@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // Windows Defender 信任目录：把工程目录、内置运行时目录加进排除项，

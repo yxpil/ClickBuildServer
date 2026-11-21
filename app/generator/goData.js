@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 /** Go 生成器模板：internal 层各包（config/db/cache/id/auth/query/crud/filesource/customsql） */
 

@@ -1,3 +1,4 @@
+// 作者：yxpil
 // 生成器 SQL 接线 + 真实 MariaDB 回归：把生成出来的 MySQL 脚本整套执行。
 const assert = require('assert');
 const mysql = require('mysql2/promise');

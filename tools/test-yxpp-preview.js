@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 // 校验 24 套 app 案例的 .yxpp 画布预览：不是通用骨架，而是由 app-runtime 读取 project.app + seed 渲染的真实业务页面。
 const fs = require('fs');

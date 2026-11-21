@@ -1,3 +1,4 @@
+// 作者：yxpil
 /* 后台工作台模式：客户、报价、运单、工单、设备、审批。真实列表、详情、统计和动作。 */
 
 function deskMenu() { return (UX.menu || []); }

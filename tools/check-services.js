@@ -1,3 +1,4 @@
+// 作者：yxpil
 'use strict';
 
 // 打包前确认 vendor/services 完整；缺少就明确提示，避免打出没有数据库/缓存/对象存储的安装包。
