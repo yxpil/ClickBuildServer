@@ -5208,7 +5208,7 @@ function showSettings() {
         statusEl.textContent = `保存失败：${e.message || e}`;
       }
     };
-  });
+  }, { width: 860, maxHeight: '90vh' });
 }
 
 function showTheme() {
