@@ -163,17 +163,17 @@ async function main() {
     const bin = path.join(PROJ, 'bin');
     fs.mkdirSync(bin, { recursive: true });
     // go.mod 只列直接依赖，先 tidy 补齐 go.sum（生成物 README 里也这么写）
-    const tidy = spawnSync('go', ['mod', 'tidy'], { cwd: PROJ, encoding: 'utf8', shell: true });
+    const tidy = spawnSync('go', ['mod', 'tidy'], { cwd: PROJ, encoding: 'utf8', shell: process.platform === 'win32' });
     check('go mod tidy', tidy.status === 0, tidy.status === 0 ? '' : (tidy.stderr || '').trim().split('\n').slice(-2).join(' | '));
     if (tidy.status !== 0) return;
-    const out = path.join(bin, LANG === 'go' ? 'server.exe' : 'server');
+    const out = path.join(bin, process.platform === 'win32' ? 'server.exe' : 'server');
     // Go 工程是 main.go 在根目录（不是 cmd/server）
-    const b = spawnSync('go', ['build', '-o', out, '.'], { cwd: PROJ, encoding: 'utf8', shell: true });
+    const b = spawnSync('go', ['build', '-o', out, '.'], { cwd: PROJ, encoding: 'utf8', shell: process.platform === 'win32' });
     if (b.status !== 0) {
       check('Go 编译', false, (b.stderr || b.stdout || '').trim().split('\n').slice(-3).join(' | '));
       return;
     }
-    check('Go 编译', true, 'bin/server.exe');
+    check('Go 编译', true, `bin/${path.basename(out)}`);
     cmd = out;
     argv = [];
   } else {

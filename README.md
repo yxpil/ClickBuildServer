@@ -1,13 +1,13 @@
 # ClickBuildServer · 接口工作台
 
-> An interface-first backend service generator for Windows: multi-DB tables, scripted SQL, transactions, caching, RBAC, and one-click runnable services — an Electron desktop app with a built-in frontend studio and 26 built-in templates.
+> An interface-first backend service generator for Windows and Linux: multi-DB tables, scripted SQL, transactions, caching, RBAC, and one-click runnable services — an Electron desktop app with a built-in frontend studio and 26 built-in templates.
 
 [![CI](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml)
 [![Release](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml)
 
 ![ClickBuildServer 工作台界面](docs/screenshots/ui-final.png)
 
-> 文中截图均来自 1.1.65 安装版的实际界面。
+> Windows 截图来自 1.1.65 安装版；Linux 截图来自 1.1.65 AppImage 实机运行。
 
 > WPS 式简约办公风的“服务器制造台”：**一个接口一条线，接口里挂多张表、多个库，每条路由写一段自己的 SQL 脚本**，点一下生成可运行的服务。
 >
@@ -169,7 +169,40 @@ dist\ClickBuildServer-Setup-1.1.65.exe
 
 也可以从 GitHub Releases 下载最新版：[ClickBuildServer Releases](https://github.com/yxpil/ClickBuildServer/releases/latest)。
 
-1.1.65 是 CI/CD 发布收尾版，产品行为与 1.1.64 一致：CI 与 Release 统一走 `npm run test:ci` 的 10 套回归，补入停止按钮 6/6 与 21 语言包 158/158；发布构建固定 `--publish never`，不再让 electron-builder 在没有 `GH_TOKEN` 时自动上传；标签必须与 `package.json` 版本一致，安装包按精确文件名校验并同时上传 `.blockmap` 与 `.sha256`；上传 action 升级到 Node 24 的 `softprops/action-gh-release@v3.0.4`。本地 `test:ci` 10/10、1.1.65 安装版 UI 冒烟 141/141。
+### Linux（AppImage / deb）
+
+Linux 版与 Windows 共用同一套 Electron 主进程、生成器和界面，内置服务换成 Linux x86_64 原生构建：
+
+| 组件 | 版本 | 打包位置 |
+| --- | --- | --- |
+| Node | 25.2.1 | `resources/runtime/node/bin/node` |
+| MariaDB | 13.0.2（已 strip） | `resources/services/MariaDB/bin/mariadbd` |
+| Redis | 8.10.3（musl 静态编译） | `resources/services/Redis/redis-server` |
+| RustFS | 1.0.6 | `resources/services/RustFS/rustfs` |
+
+![Linux 版真实运行界面](docs/screenshots/linux-app.png)
+
+在 Linux / WSL 上构建：
+
+```bash
+sudo apt-get install -y build-essential musl-tools unzip curl pkg-config
+npm ci
+bash tools/vendor-services-linux.sh   # 下载并组装四个 Linux 二进制，产物不提交 Git
+npm run test:services:linux           # 真实启动 MariaDB / Redis / RustFS 再停止
+npm run dist:linux                    # AppImage + deb
+```
+
+产物在 `dist/ClickBuildServer-<version>-x86_64.AppImage` 与对应的 `.deb`。当前 1.1.65 本地最终产物：AppImage 308,332,543 B，SHA256 `2401C98465FBDB81F6E8E87529BEE056BDFD168FA938BAD875FDC292422763BF`；deb 199,968,910 B，SHA256 `38FAC62E47913D9FE6A70ED737ABFDF97091B0D3697373F87524967E6A262E48`。两者都在 WSL Debian 13 上真实启动过，AppImage 可 `--appimage-extract-and-run` 直接跑，deb 可 `dpkg -i` 安装到 `/opt/ClickBuildServer`。也可以只构建解包目录做快速验证：
+
+```bash
+npm run dist:linux:dir
+```
+
+AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist/linux-unpacked`，因为 electron-builder 的 AppImage / fpm 工具是 Linux 可执行文件。
+
+Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
+
+1.1.65 是双平台发布版：Windows 产品行为与 1.1.64 一致，同时新增 Linux x86_64 的 AppImage / deb，内置 MariaDB 13.0.2、Redis 8.10.3、RustFS 1.0.6 与 Node 25.2.1，并在 Linux 上真实跑通三台服务起停、生成服务 CRUD 与资源采样。CI 与 Release 统一走 `npm run test:ci` 的 10 套回归，补入停止按钮 6/6 与 21 语言包 158/158；发布构建固定 `--publish never`，不再让 electron-builder 在没有 `GH_TOKEN` 时自动上传；标签必须与 `package.json` 版本一致，安装包按精确文件名校验并同时上传 `.blockmap` 与 `.sha256`；上传 action 升级到 Node 24 的 `softprops/action-gh-release@v3.0.4`。本地 `test:ci` 10/10、1.1.65 安装版 UI 冒烟 141/141。
 
 1.1.55 把工作台的接口方法做成固定语义色：GET 绿、POST 蓝、PUT 琥珀、PATCH 紫、DELETE 红，路由列表、详情/更新/删除表、权限矩阵、缓存表与接口文档共用同一套徽标；选中路由的左侧色条、浅色底和脚本编辑区细边都跟着方法走。编辑器页签加分类色点，右侧表 / 路由统计改成浅蓝与浅绿胶囊，表标签选中态由黑底改为浅蓝胶囊；表结构页按字段类型给第一列加 3px 色条并给类型文字着色。颜色只做识别，不跟 WPS 强调色漂移；源码版与 1.1.56 安装版 UI 冒烟均为 136/136。1.1.54 把 API 测试从“手写”改成“跟工程一起生成”：`codegen` 每次生成服务、更新部署或导出工程，都会写出 `tests/api.test.js`、`tests/plan.json`、`tests/README.md`；测试页新增「自动测试」区，可单独点「生成测试」并看到接口 / 路由 / 用例 / 只读 / 写入 / 跳过计数。默认只生成安全用例：列表 2xx 且能找到 `rows` / `data`，详情 / 更新 / 删除用不存在 ID 断言脚本声明的 `RETURN 404`，鉴权路由不带 token 断言 401；上传、上游转发、对象表、抓取和自定义脚本跳过并写明原因。写入生命周期单独计数，默认跳过，只有 `CBS_WRITE_TESTS=1` 才新建→详情→更新→删除，并在 `finally` 里兜底删除；新建成功但响应没有 ID 时停止后续步骤，不编假 ID。真实「后端任务」工程（`basePath=/v1`）生成 5 个用例，只读 4/4、开启写入 5/5，测试数据清到 0 行；`test-testgen` 19/19，模版回归 194/194，多语言 24/24。1.1.53 是前一版的现场监控：底部状态条加入 CPU、内存、磁盘、服务运行数与进程内存，点开是资源占用分析面板，列本应用和每个内置服务的 PID / 内存 / 端口，并按阈值给出排查结论；资源采样全部现场读取，服务内存 `tasklist` 缓存 6 秒，系统指标跟随既有 4 秒轮询，不新增高频定时器。
 
@@ -209,7 +242,7 @@ dist\ClickBuildServer-Setup-1.1.65.exe
 
 1.1.18 把内置前端工坊从“官网单文件换皮嵌入”改成 ClickBuild 桌面端原生工作台：整块删除官网游戏逻辑子系统（约 15.8 万字符的样式、面板与 PSGameRuntime），内层顶栏不再显示官网品牌、账号、站点发布、分享、模板、工程、网页 AI 与导出代码入口，只保留“当前工程”上下文和设备、缩放、搜索、中英切换、响应式、撤销/重做、导入导出、同步、部署；官网“网站素材库”与云端筛选整组隐藏，资产面板改为“预设 · 本机项目”，全局搜索过滤官网命令；桌面端原 40px 工坊标题栏收进编辑器顶栏，导入/导出/同步/部署通过 `cbs:app:action` 桥接复用父窗口能力，整个前端只剩一条 46px 原生顶栏；语言由父窗口 `settings.json` 传入并在 `CBS_EMBED` 下使用内置词条，不再请求官网 `/api/ui-i18n`，也不写浏览器语言缓存；主题收紧为 228/292 三栏、纸面 `#F3F3F0`、24px 状态栏。1.1.17 内置前端工坊整体升级为 yxpil.com/studio 最新 `yxpilStudio` 单文件编辑器：左侧改为组件 / 图标 / 资产 / 页面风格，画布带刻度、标尺与多页标签，右栏图层与属性检查器，并保留响应式方案与游戏逻辑面板；桥接改为回传完整 `project` 与 `buildExport(css)` 导出的多页 HTML，父窗口据此生成 `.yxpp`，多页页面与导航不再丢页。嵌入态跳过浏览器工程草稿、网站账号、站点发布、共享工作站、模板中心、工程文件与网页 AI 等联网入口，品牌改为 `CLICKBUILD/FRONTEND`，只保留当前工程同步、预览、SVG 导入与代码导出。案例自带的可交互运行时 HTML 通过 `<!-- cbs:studio-export -->` 标记与编辑器导出页区分，设计编辑不会冲掉登录、路由试运行等脚本。新增多页工程持久化断言，源码版与安装版 `ui-smoke.js` 均 **103/103**。1.1.16 修复高 DPI 下最大化与 1080 窄窗口的标题栏裁切和换行：关闭按钮不再越界，品牌、工程名、搜索、保存/生成/更新、语言选择在 1080 宽仍单行可读；Ribbon 在 1480 默认窗口完整显示全部入口，1080 以下保留横向滚动兜底；工作台套用模版不再把当前工程改名并覆盖同名真实工程；UI 冒烟改用隔离工程并完整恢复用户设置，新增标题栏、Ribbon、窗口控制与数据清理断言。1.1.15 AI 生成接入本机 Ollama（原生 `/api/chat`，模型列表 / 连接测试 / 180 秒超时），同时支持 OpenAI 兼容与本地模拟；请求会携带工程名、分类、接口、表、字段、路由、前端与当前选中项，替换时保留工程名/前端/连接/主题/自定义函数，追加时跳过重复接口与表；HTTP 401/404/500、模型不存在、超时、坏 JSON、空响应不再静默回退，弹窗直接报错且不改动当前工程；新增模拟服务测试 `tools/test-ai.js` 与真实 Ollama 验收脚本。1.0.4 起，生成服务自带 `/help` 帮助页（快速入口、接口路由、请求约定、SQL 占位符、脚本语句、内置函数、curl 示例），并在 `/docs` 和 `/console` 页眉提供入口。1.0.5 统一了失败响应的顶层 `error` / `message`，并修正 7 条内置案例详情路由缺失 404 的问题。1.0.6 把 MariaDB / Redis / RustFS 一并打进安装包，服务路径只从安装资源解析，不再依赖任何用户目录。1.0.7 增加独立工程导出，带 `.idea` 与 Node 运行配置，IntelliJ IDEA 可直接打开。1.0.8 把生成服务改成模块化单体：一个接口一个 `src/modules/` 目录，自动加载，公共能力留在 `server.js`。1.0.9 重做多表切换栏：表多时横向滚动 + 快速下拉，表名/库/注释移到独立一行，不再挤掉右侧控件。1.0.10 补齐空白区域右键菜单、表/字段右键操作和快捷键；自动保存改静默，底栏显示未保存/保存中/已保存。生成服务新增全局 404/500 错误页、`dev.js` 热部署和 Node/Bun/Java/Go 启动选择；导出工程时可关闭错误页或 500 详情。1.1.0 新增「社交接口库」预置工程：9 个接口、86 条路由、18 张唯一表，覆盖账户、好友、私聊、群聊、动态、搜索、通知、收藏、文件、举报和统计；统一用 `onlyId` 标识用户，登录自动下发 HttpOnly cookie，所有表默认无主键。1.1.1 新增单接口库：22 套模版里的 63 个内置接口都能单独浏览、搜索、插入，编辑后的接口可命名存入本地接口库，自存接口重名直接拒绝；插入时接口名、表名、basePath 自动避重。1.1.2 补默认错误语义：新建接口的详情/更新/删除/附件路由对不存在的记录统一返回 404；路径存在但方法不对返回 405 并带 `Allow`；超过 64MB 的请求体返回 413；OpenAPI 补齐 404/405/413 等默认响应。1.1.3 给全部 22 套案例工程补齐完整的 `.yxpp` 前端：每套案例都带前端工程、可直接运行的案例控制台和按案例定制的导航/指标/分类/接口清单；套用模版即可切到前端模式，生成服务的 `/` 直接打开案例前端，支持登录、路由试运行、数据表格与 JSON 响应。1.1.4 把「新建接口」改成四步创建引导：先配接口名/分类/路径前缀，再定主表名与初始业务字段，随后选择基础路由与鉴权方式，最后预览确认；未点确认前不会写入工程，取消也不产生改动。1.1.5 重做前端工作台与启动链路：「启动」直接补齐依赖、生成当前工程、启动服务并打开 `/` 网页主页；前端工坊改用 yxpil.com/studio 最新页面并去掉旧站品牌、外部追踪与浏览器草稿，以当前工程为唯一数据源，编辑自动回写并 20 秒定时兜底，没有 `.yxpp` 时先给空白画布、首次编辑自动绑定。1.1.6 把生成服务控制台的「健康」改成「检查全部」：逐接口检查路由注册、表/字段存在性和脚本语法，返回通过/失败与错误详情；只做只读结构检查，不执行写请求，同时新增 `/_health/interfaces` 接口。1.1.7 给生成服务的列表查询加过滤器：`{{where}}` 支持 `__ne`、`__gte`、`__gt`、`__lte`、`__lt`、`__like`、`__regex`、`__iregex`、`__notregex`、`__contains`、`__startswith`、`__endswith`、`__in`、`__between`、`__isnull`、`__notnull`，`keywordRegex` 对搜索字段走 REGEXP；控制台新增过滤条件输入框，条件自动拼到请求上，字段名走白名单、值全部参数化。1.1.14 新增工程历史预览：启动先进入历史与模版选择页，选中工程后才进工作台；历史卡片支持大红叉删除、右键打开/复制/删除，文件丢失时保留条目并提示“找不到文件”；预览页可直接套用 24 套模版，新增音乐网站与小说网站。1.1.13 新增「更新部署」：顶部、服务组和前端工坊各有一个入口，点击后保存当前工程，重新生成后端路由、SQL、文档与前端页面，自动补齐依赖并重启生成服务；已删除接口的旧模块和编号 SQL 会同步清理，`src/modules/_` 自定义目录和用户 SQL 保留。1.1.12 安装器新增「可选组件」页，可勾选是否安装使用文档与示例工程，生产环境可全部取消；默认勾选，程序本体、运行时和内置服务始终安装。1.1.11 安装器新增中文 / 英文使用条款与免责声明页，明确仅限合法用途并由使用者自行承担责任；项目改为 Apache License 2.0，附完整 LICENSE 与 NOTICE。1.1.10 修复导出工程的 Java / Go 路由骨架：中文接口名不再统一生成 `IfaceItemItemRoute`，类名与文件名一致、Go 常量与函数按路由唯一命名，并加入 `go.mod` 便于编译检查。1.1.9 窗口右上角关闭按钮左移 6px，避免贴住屏幕边缘。1.1.8 增加桌面端中英双语：离线语言包覆盖工作台、创建引导、各弹窗、接口编辑器与前端工坊，22 套模版和 63 个内置接口的元数据一并预翻译；首次启动按系统语言选择，安装器也按 Windows 系统 UI 语言自动切换中英文。
 
-安装包已内置便携 Node（`resources\runtime\node\node.exe`）与三台本地服务（`resources\services\`），不依赖系统 Node，也不要求电脑上预先装数据库；安装时注册 `.yxpn` 文件关联。运行时数据只写用户数据目录，源码和配置里不写死盘符。
+安装包已内置便携 Node（Windows `resources/runtime/node/node.exe`，Linux `resources/runtime/node/bin/node`）与三台本地服务（`resources/services/`），不依赖系统 Node，也不要求电脑上预先装数据库；Windows 安装时注册 `.yxpn` 文件关联，Linux 通过 `.desktop` MIME 关联打开同两种工程包。运行时数据只写用户数据目录，Windows 为 `%APPDATA%\click-build-server`，Linux 安装版为 `~/.config/click-build-server`（源码脚本生成时回退 `~/.local/share/click-build-server`），源码和配置里不写死盘符。
 
 ### 从源码运行
 
@@ -224,7 +257,7 @@ npm start                 # Electron 界面
 npm run vendor:services
 ```
 
-脚本只收 MariaDB 必需 bin/lib/share、Redis 运行文件和 RustFS，产物约 432 MB，落在 `vendor/services`（不提交到 Git）。界面右侧“本地服务”里点启动，会拉起这三台内置服务：
+脚本只收 MariaDB 必需 bin/lib/share、Redis 运行文件和 RustFS，产物约 432 MB，落在 `vendor/services`（不提交到 Git）。Linux 用 `bash tools/vendor-services-linux.sh` 生成 `vendor/services-linux` 与 `runtime/node-linux`，合计约 484 MB。界面右侧“本地服务”里点启动，会拉起这三台内置服务：
 
 | 服务 | 默认端口 | 用途 |
 | --- | --- | --- |
@@ -240,6 +273,15 @@ $repo = (Resolve-Path '..\..\..').Path
 $env:NODE_PATH = Join-Path $repo 'node_modules'
 $env:RESET_DB='1'
 Join-Path $repo 'runtime\node\node.exe' server.js
+```
+
+Linux / WSL 等价命令：
+
+```bash
+cd generated/iface/接口工程
+export NODE_PATH="$(cd ../../.. && pwd)/node_modules"
+export RESET_DB=1
+../../../runtime/node-linux/bin/node server.js
 ```
 
 打开 <http://127.0.0.1:18100/> 是生成服务的控制台，`/docs` 是自动 API 文档，`/help` 是运行时帮助与脚本语法页。
@@ -432,12 +474,12 @@ module.exports.routes.push({
 
 GitHub Actions 工作流在 `.github/workflows/`：
 
-- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 上先还原 `vendor/services`，再 `npm ci` → `npm run test:ci` 跑 10 套回归（含停止按钮与 21 语言包）→ `npm run dist:dir` 构建 unpacked 版，并校验 `dist/win-unpacked/ClickBuildServer.exe` 存在。
+- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 先还原 `vendor/services`，再 `npm ci` → `npm run test:ci` 跑 10 套回归 → `npm run dist:dir` 构建 unpacked 版；Linux runner 先装 `build-essential / musl-tools / unzip`，用缓存的 `tools/vendor-services-linux.sh` 组装四个 Linux 二进制 → `npm run test:ci` → `npm run test:services:linux` 真实起停三台服务 → `npm run dist:linux:dir`，并校验 `dist/linux-unpacked/clickbuildserver`、内置 `mariadbd` 与 `runtime/node/bin/node` 都存在。
 - `release.yml`：推送 `v*` 标签触发；先校验标签与 `package.json` 版本一致，再还原 `vendor/services`、跑同一套 `test:ci` → `npm run dist -- --publish never` 构建 NSIS 安装包 → 校验精确文件名与 `.blockmap`、生成 `.sha256` → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe`、`.blockmap` 与 `.sha256`。发布任务不取消进行中的同标签构建，避免上传到一半被新任务打断。
 
 过去 1.1.46–1.1.53 的 Release 都在最后一步失败：标签构建触发 electron-builder 自动上传，而 runner 没有 `GH_TOKEN`，日志为 `GitHub Personal Access Token is not set`。1.1.54 前的 `7d90b99` 已改为 `--publish never`，上传只交给 `action-gh-release`；本轮又把同样的保护写进版本校验、文件校验和显式 `GITHUB_TOKEN`，避免回归。
 
-`vendor/services` 不进 Git，CI 从 `services-v1` Release 的 `vendor-services.zip` 还原（约 139.5 MB）；本机构建用 `npm run vendor:services` 从旁边的 `ClickBuild` 目录收集，打包前 `npm run check:services` 会核对 MariaDB / Redis / RustFS 是否齐全。
+`vendor/services` 不进 Git，CI 从 `services-v1` Release 的 `vendor-services.zip` 还原（约 139.5 MB）；本机构建用 `npm run vendor:services` 从旁边的 `ClickBuild` 目录收集，打包前 `npm run check:services` 会按平台核对 MariaDB / Redis / RustFS 与内置 Node 是否齐全。Linux 的 `vendor/services-linux` 与 `runtime/node-linux` 同样不进 Git，由 `tools/vendor-services-linux.sh` 从 Node / MariaDB / Redis / RustFS 上游固定版本下载并校验 SHA256，CI 缓存下载压缩包。
 
 `main` 已启用分支保护：禁止 force push 和删除分支；合并 PR 前必须通过 `Test & build (Windows)` 状态检查。当前不强制走 PR，也不要求分支必须是最新提交，保留直接推送 `main` 的维护方式。
 

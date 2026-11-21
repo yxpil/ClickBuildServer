@@ -1345,7 +1345,7 @@ function renderResPop() {
           <span class="res-svc-port">${x.port || '—'}</span>
         </div>`).join('') || `<div class="res-svc-row"><span></span><span class="res-svc-name">还没有运行中的服务</span><span class="res-svc-mem">—</span><span class="res-svc-port">—</span></div>`}
     </div>
-    <div class="res-foot">服务内存来自 tasklist 实测，约 6 秒缓存一次；CPU、内存、磁盘、网络每次采样实时读取。</div>`;
+    <div class="res-foot">服务内存来自系统进程实测，约 6 秒缓存一次；CPU、内存、磁盘、网络每次采样实时读取。</div>`;
   const close = $('#resClose');
   if (close) close.onclick = (e) => { e.stopPropagation(); toggleResPop(false); };
   const refresh = $('#resRefresh');
@@ -4736,6 +4736,7 @@ async function showIfaceLibraryEdit(id, back) {
 
 /* ---------------- 插件 / Defender ---------------- */
 async function showPlugins() {
+  const isWin = api.platform === 'win32';
   const r = await api.pluginSummary();
   if (!r.ok) return toast('读取插件失败');
   const tpls = (await api.pluginTemplates()).list || [];
@@ -4781,7 +4782,7 @@ async function showPlugins() {
     <div class="flex items-center gap-2 mt-3">
       <button class="btn thin" id="plLogs">查看日志</button>
       <button class="btn thin" id="plDocs">开发者文档</button>
-      <button class="btn thin" id="plTrust">加入 Defender 信任目录</button>
+      ${isWin ? '<button class="btn thin" id="plTrust">加入 Defender 信任目录</button>' : ''}
     </div>
     <div class="text-[11px] text-neutral-500 mt-2">插件在主进程的独立 vm 上下文里执行，默认没有 require / process / 文件系统；权限按 manifest 授予。只安装你信任的插件。</div>
     <div class="mono text-[11px] text-neutral-600 mt-2 flex gap-3">
@@ -4864,7 +4865,7 @@ async function showPlugins() {
         <pre class="monoarea text-[11px] border border-neutral-300 p-3 whitespace-pre-wrap">${esc(d.example || '')}</pre>
       </div>`, (rr) => { rr.querySelector('#plDocsClose').onclick = closeModal; });
     };
-    root.querySelector('#plTrust').onclick = async () => {
+    if (isWin) root.querySelector('#plTrust').onclick = async () => {
       root.querySelector('#plTrust').disabled = true;
       out.classList.remove('hidden');
       out.textContent = '正在写入排除项（可能需要管理员权限）…';

@@ -91,3 +91,63 @@ jobs:
             dist/ClickBuildServer-Setup-*.exe.sha256
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  release-linux:
+    name: Build & publish Linux packages
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential musl-tools unzip pkg-config
+
+      - name: Cache Linux service archives
+        uses: actions/cache@v4
+        with:
+          path: .cache/services-linux
+          key: services-linux-${{ hashFiles('tools/vendor-services-linux.sh') }}
+
+      - name: Assemble Linux services and runtime
+        run: bash tools/vendor-services-linux.sh
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regression tests
+        run: npm run test:ci
+
+      - name: Linux bundled services integration
+        run: npm run test:services:linux
+
+      - name: Build AppImage and deb
+        run: npm run dist:linux -- --publish never
+
+      - name: Generate Linux checksums
+        run: |
+          cd dist
+          sha256sum ClickBuildServer-*.AppImage *.deb > SHA256SUMS-linux.txt
+          cat SHA256SUMS-linux.txt | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Linux packages
+        uses: softprops/action-gh-release@v3.0.4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            dist/ClickBuildServer-*.AppImage
+            dist/*.deb
+            dist/SHA256SUMS-linux.txt
+          fail_on_unmatched_files: true

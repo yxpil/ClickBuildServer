@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const platform = require('./platform');
 
 let electronApp = null;
 try {
@@ -11,11 +12,10 @@ try {
   electronApp = electron && electron.app ? electron.app : null;
 } catch (e) { electronApp = null; }
 
-// 在 Electron 里用 userData；命令行生成时没有 app，就落到同一个 APPDATA 目录
+// 在 Electron 里用 userData；命令行生成时没有 app，就落到各系统的标准目录。
 function userDataDir() {
   if (electronApp && typeof electronApp.getPath === 'function') return electronApp.getPath('userData');
-  const roaming = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-  return path.join(roaming, 'click-build-server');
+  return platform.userDataFallback();
 }
 
 const slug = (s) => String(s || 'project')
@@ -49,8 +49,7 @@ function defaultGeneratedRoot() {
 }
 
 function bundledNode() {
-  const p = path.join(resourceRoot(), 'runtime', 'node', 'node.exe');
-  return fs.existsSync(p) ? p : '';
+  return platform.bundledNode(resourceRoot());
 }
 
 function root() {

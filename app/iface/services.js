@@ -4,8 +4,9 @@
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
-const { spawn, execFileSync, spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const store = require('../store');
+const platform = require('../platform');
 
 const PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
 
@@ -24,9 +25,10 @@ const boot = { ports: null, conflicts: [], adopted: {}, adoptedPid: {} };
 function bundledServicesRoot() {
   const candidates = [
     path.join(store.resourceRoot(), 'services'),
+    path.join(store.APP_ROOT, 'vendor', 'services-linux'),
     path.join(store.APP_ROOT, 'vendor', 'services'),
   ];
-  return candidates.find((dir) => fs.existsSync(path.join(dir, 'MariaDB', 'bin', 'mariadbd.exe'))) || candidates[0];
+  return candidates.find((dir) => fs.existsSync(platform.serviceLayout(dir).mariadbd)) || candidates[0];
 }
 
 function desiredPorts() {
@@ -65,7 +67,7 @@ function spawnSvc(name, exe, args, opts) {
   pushLog(name, `$ ${exe} ${args.join(' ')}`);
   let child;
   try {
-    child = spawn(exe, args, { windowsHide: true, ...(opts || {}) });
+    child = spawn(exe, args, platform.serviceSpawnOptions(opts));
   } catch (e) {
     pushLog(name, 'spawn 失败：' + e.message);
     return { ok: false, error: e.message };
@@ -98,53 +100,19 @@ function isPortOpen(port) {
 }
 
 function processInfo(pid) {
-  try {
-    const ps = `$p=(Get-CimInstance Win32_Process -Filter "ProcessId=${Number(pid)}" -ErrorAction SilentlyContinue); if($p){$p | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine | ConvertTo-Json -Compress}`;
-    const raw = String(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 6000 }) || '').trim();
-    if (!raw || raw === 'null') return null;
-    const p = JSON.parse(raw);
-    const exePath = String(p.ExecutablePath || '');
-    return {
-      pid: Number(p.ProcessId || pid),
-      parentPid: Number(p.ParentProcessId || 0),
-      name: String(p.Name || (exePath ? path.basename(exePath) : '')),
-      path: exePath,
-      commandLine: String(p.CommandLine || ''),
-    };
-  } catch (e) {
-    return null;
-  }
+  return platform.processInfo(pid);
 }
 
 function listenerInfo(port) {
-  try {
-    const out = execFileSync('netstat.exe', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
-    const line = String(out).split(/\r?\n/).find((l) => {
-      const m = l.match(/^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/);
-      return m && Number(m[1]) === Number(port);
-    });
-    if (!line) return null;
-    const pid = Number((line.match(/LISTENING\s+(\d+)\s*$/) || [])[1]);
-    if (!pid) return null;
-    const info = processInfo(pid);
-    if (info) return info;
-    let name = '';
-    try {
-      const rows = String(execFileSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 5000 }) || '');
-      const m = rows.match(/^"([^"]+)"/);
-      name = m ? m[1] : '';
-    } catch (e) { /* 忽略 */ }
-    return { pid, name, path: '', commandLine: '' };
-  } catch (e) {
-    return null;
-  }
+  return platform.listenerInfo(port);
 }
 
 function isBundledProcess(info, exeName) {
   if (!info || !info.path) return false;
-  if (path.basename(info.path).toLowerCase() !== exeName.toLowerCase()) return false;
-  const root = path.resolve(bundledServicesRoot()).toLowerCase();
-  return path.resolve(info.path).toLowerCase().startsWith(root);
+  const base = path.basename(info.path);
+  const want = platform.isWindows ? String(exeName).toLowerCase() : String(exeName);
+  if ((platform.isWindows ? base.toLowerCase() : base) !== want) return false;
+  return platform.isUnder(info.path, bundledServicesRoot());
 }
 
 function serverMarkerPath() {
@@ -185,19 +153,20 @@ function clearServerMarker(pid) {
 function isGeneratedServer(info, marker) {
   if (!info || !info.pid || !info.path) return false;
   const cmd = String(info.commandLine || '').toLowerCase();
-  const exe = path.basename(info.path).toLowerCase();
+  const exePath = String(info.path);
+  const exe = path.basename(exePath);
+  const norm = (x) => (platform.isWindows ? String(x).toLowerCase() : String(x));
   if (marker && Number(marker.pid) === Number(info.pid)) {
     const entry = path.basename(String(marker.entry || '')).toLowerCase();
-    const markerExe = path.basename(String(marker.exe || '')).toLowerCase();
-    if (entry && cmd.includes(entry) && (!markerExe || markerExe === exe)) return true;
+    const markerExe = path.basename(String(marker.exe || ''));
+    if (entry && cmd.includes(entry) && (!markerExe || norm(markerExe) === norm(exe))) return true;
   }
-  if (exe !== 'node.exe') return false;
-  const entryRe = /(?:^|[\s"'\\/])(?:server|dev)\.js(?:[\s"']|$)/i;
-  if (!entryRe.test(cmd)) return false;
   const bundled = store.bundledNode();
   if (!bundled) return false;
-  const bundledDir = path.resolve(path.dirname(bundled)).toLowerCase();
-  return path.resolve(info.path).toLowerCase().startsWith(bundledDir);
+  if (norm(exe) !== norm(path.basename(bundled))) return false;
+  const entryRe = /(?:^|[\s"'\\/])(?:server|dev)\.js(?:[\s"']|$)/i;
+  if (!entryRe.test(cmd)) return false;
+  return platform.isUnder(exePath, path.dirname(bundled));
 }
 
 function findGeneratedServer(port) {
@@ -220,28 +189,11 @@ function findGeneratedServer(port) {
 }
 
 function listBundledProcesses() {
-  try {
-    const ps = [
-      "$names=@('mariadbd.exe','redis-server.exe','rustfs-windows-x86_64.exe')",
-      "Get-CimInstance Win32_Process | Where-Object { $names -contains $_.Name } | ForEach-Object { \"$($_.ProcessId)|$($_.ExecutablePath)\" }",
-    ].join('; ');
-    const out = String(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 12000 }) || '');
-    const root = path.resolve(bundledServicesRoot()).toLowerCase();
-    return out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-      const [pidText, ...rest] = line.split('|');
-      return { pid: Number(pidText), path: rest.join('|') };
-    }).filter((x) => x.pid && x.path && path.resolve(x.path).toLowerCase().startsWith(root));
-  } catch (e) {
-    return [];
-  }
+  return platform.listBundledProcesses(bundledServicesRoot()).filter((x) => x.pid !== process.pid);
 }
 
 async function killTree(pid) {
-  await new Promise((resolve) => {
-    const k = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
-    k.on('close', () => resolve());
-    k.on('error', () => resolve());
-  });
+  await platform.killTree(pid);
 }
 
 async function waitPidGone(pid, timeoutMs) {
@@ -283,11 +235,12 @@ async function preparePorts(wantOverride) {
   const conflicts = [];
   const adopted = {};
   const adoptedPid = {};
+  const owners = platform.ownerNames(bundledServicesRoot());
   const targets = [
-    { key: 'mysql', owner: 'mariadbd.exe', label: 'MariaDB' },
-    { key: 'redis', owner: 'redis-server.exe', label: 'Redis' },
-    { key: 's3', owner: 'rustfs-windows-x86_64.exe', label: 'RustFS' },
-    { key: 's3Console', owner: 'rustfs-windows-x86_64.exe', label: 'RustFS 控制台' },
+    { key: 'mysql', owner: owners.mysql, label: 'MariaDB' },
+    { key: 'redis', owner: owners.redis, label: 'Redis' },
+    { key: 's3', owner: owners.s3, label: 'RustFS' },
+    { key: 's3Console', owner: owners.s3Console, label: 'RustFS 控制台' },
     { key: 'http', owner: '', label: '生成的服务' },
   ];
   for (const item of targets) {
@@ -327,11 +280,12 @@ async function status() {
     isPortOpen(ports.s3),
     isPortOpen(ports.http),
   ]);
+  const layout = platform.serviceLayout(servicesRoot);
   const bin = {
-    mariadbd: path.join(servicesRoot, 'MariaDB', 'bin', 'mariadbd.exe'),
-    installDb: path.join(servicesRoot, 'MariaDB', 'bin', 'mariadb-install-db.exe'),
-    redis: path.join(servicesRoot, 'Redis', 'redis-server.exe'),
-    rustfs: path.join(servicesRoot, 'RustFS', 'rustfs-windows-x86_64.exe'),
+    mariadbd: layout.mariadbd,
+    installDb: layout.installDb,
+    redis: layout.redis,
+    rustfs: layout.rustfs,
   };
   const missing = Object.entries(bin).filter(([, v]) => !fs.existsSync(v)).map(([k]) => k);
   const srvMarker = readServerMarker();
@@ -347,7 +301,7 @@ async function status() {
     binaries: Object.fromEntries(Object.entries(bin).map(([k, v]) => [k, { path: v, exists: fs.existsSync(v) }])),
     items: [
       { id: 'mysql', name: 'MariaDB', port: ports.mysql, running: mysqlOpen, pid: state.mysql.pid || boot.adoptedPid.mysql || null, note: 'skip-grant-tables 本地测试实例', adopted: !!boot.adopted.mysql },
-      { id: 'redis', name: 'Redis', port: ports.redis, running: redisOpen, pid: state.redis.pid || boot.adoptedPid.redis || null, note: 'Cygwin 构建，RedisService 托管', adopted: !!boot.adopted.redis },
+      { id: 'redis', name: 'Redis', port: ports.redis, running: redisOpen, pid: state.redis.pid || boot.adoptedPid.redis || null, note: platform.isWindows ? 'Cygwin 构建，RedisService 托管' : '原生 redis-server 托管', adopted: !!boot.adopted.redis },
       { id: 's3', name: 'RustFS', port: ports.s3, running: s3Open, pid: state.s3.pid || boot.adoptedPid.s3 || null, note: `S3 兼容，控制台 ${ports.s3Console}`, adopted: !!boot.adopted.s3 },
       { id: 'server', name: '生成的服务', port: ports.http, running: httpOpen, pid: srvPid, dir: state.server.dir || (httpOpen && srvMarker ? srvMarker.dir : ''), hot: !!state.server.hot, runtime: state.server.runtime || (httpOpen && srvMarker ? srvMarker.runtime : '') || 'node', adopted: !!boot.adopted.http },
     ],
@@ -372,16 +326,15 @@ async function startMysql() {
   const ports = await preparePorts();
   const servicesRoot = bundledServicesRoot();
   if (boot.adopted.mysql) return { ok: true, already: true, adopted: true, port: ports.mysql };
-  const bin = path.join(servicesRoot, 'MariaDB', 'bin');
+  const layout = platform.serviceLayout(servicesRoot);
+  const mariadbRoot = path.join(servicesRoot, 'MariaDB');
   const datadir = path.join(runtimeRoot(), 'mariadb');
-  const installDb = path.join(bin, 'mariadb-install-db.exe');
-  const mariadbd = path.join(bin, 'mariadbd.exe');
-  if (!fs.existsSync(mariadbd)) return { ok: false, error: `找不到 ${mariadbd}` };
+  if (!fs.existsSync(layout.mariadbd)) return { ok: false, error: `找不到 ${layout.mariadbd}` };
   if (!fs.existsSync(path.join(datadir, 'mysql'))) {
     fs.mkdirSync(datadir, { recursive: true });
     pushLog('mysql', '初始化数据目录…');
     const r = await new Promise((resolve) => {
-      const c = spawn(installDb, ['--datadir', datadir], { windowsHide: true });
+      const c = spawn(layout.installDb, ['--datadir', datadir, '--basedir', mariadbRoot], platform.baseSpawnOptions());
       let out = '';
       c.stdout.on('data', (d) => { out += d; pushLog('mysql', d.toString()); });
       c.stderr.on('data', (d) => { out += d; pushLog('mysql', d.toString()); });
@@ -389,10 +342,12 @@ async function startMysql() {
       c.on('error', (e) => resolve({ code: -1, out: e.message }));
     });
     if (r.code !== 0) return { ok: false, error: '数据目录初始化失败：' + r.out.slice(-600) };
-    // 初始化器会在数据目录写 my.ini，里面带绝对路径；运行时用 --no-defaults，不需要它。
-    try { fs.rmSync(path.join(datadir, 'my.ini'), { force: true }); } catch (e) { /* 忽略 */ }
+    // 初始化器会写带绝对路径的 my.ini / my.cnf；运行时用 --no-defaults，不需要它。
+    for (const name of ['my.ini', 'my.cnf']) {
+      try { fs.rmSync(path.join(datadir, name), { force: true }); } catch (e) { /* 忽略 */ }
+    }
   }
-  const res = spawnSvc('mysql', mariadbd, [
+  const args = [
     '--no-defaults',
     '--datadir', datadir,
     '--port', String(ports.mysql),
@@ -400,11 +355,21 @@ async function startMysql() {
     '--skip-grant-tables',
     '--skip-name-resolve',
     '--innodb-buffer-pool-size=64M',
-    '--console',
-  ]);
+  ];
+  if (platform.isWindows) {
+    args.push('--console');
+  } else {
+    args.push('--lc-messages-dir', path.join(mariadbRoot, 'share'));
+  }
+  const res = spawnSvc('mysql', layout.mariadbd, args, {
+    env: {
+      ...process.env,
+      ...(platform.isWindows ? {} : { LD_LIBRARY_PATH: [path.join(mariadbRoot, 'lib'), process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter) }),
+    },
+  });
   if (res.ok) {
-    const up = await waitPort(ports.mysql, 20000);
-    if (!up) return { ...res, ok: false, port: ports.mysql, error: `MariaDB 没有在 20 秒内监听 ${ports.mysql}` };
+    const up = await waitPort(ports.mysql, 30000);
+    if (!up) return { ...res, ok: false, port: ports.mysql, error: `MariaDB 没有在 30 秒内监听 ${ports.mysql}` };
   }
   return { ...res, port: ports.mysql };
 }
@@ -418,13 +383,13 @@ async function startRedis() {
   const ports = await preparePorts();
   const servicesRoot = bundledServicesRoot();
   if (boot.adopted.redis) return { ok: true, already: true, adopted: true, port: ports.redis };
-  const exe = path.join(servicesRoot, 'Redis', 'redis-server.exe');
+  const exe = platform.serviceLayout(servicesRoot).redis;
   if (!fs.existsSync(exe)) return { ok: false, error: `找不到 ${exe}` };
   const dir = path.join(runtimeRoot(), 'redis');
   fs.mkdirSync(dir, { recursive: true });
-  // 这个构建是 Cygwin 版，--dir 只认 /cygdrive/... 形式；RedisService 包装器会先退出，
-  // 直接托管 redis-server.exe 才能拿到稳定的进程句柄用于停止。
-  const res = spawnSvc('redis', exe, ['--port', String(ports.redis), '--dir', cygPath(dir)]);
+  // Windows 版是 Cygwin 构建，--dir 只认 /cygdrive/... 形式；Linux/macOS 直接用绝对路径。
+  const dirArg = platform.isWindows ? cygPath(dir) : dir;
+  const res = spawnSvc('redis', exe, ['--port', String(ports.redis), '--dir', dirArg, '--daemonize', 'no']);
   if (res.ok) {
     const up = await waitPort(ports.redis, 12000);
     if (!up) return { ...res, ok: false, port: ports.redis, error: `Redis 没有在 12 秒内监听 ${ports.redis}` };
@@ -436,7 +401,7 @@ async function startS3() {
   const ports = await preparePorts();
   const servicesRoot = bundledServicesRoot();
   if (boot.adopted.s3) return { ok: true, already: true, adopted: true, port: ports.s3 };
-  const exe = path.join(servicesRoot, 'RustFS', 'rustfs-windows-x86_64.exe');
+  const exe = platform.serviceLayout(servicesRoot).rustfs;
   if (!fs.existsSync(exe)) return { ok: false, error: `找不到 ${exe}` };
   const dir = path.join(runtimeRoot(), 'rustfs');
   fs.mkdirSync(dir, { recursive: true });
@@ -490,15 +455,11 @@ async function stopOne(name) {
       }
       return { ok: true, already: true };
     }
-    const owners = { mysql: 'mariadbd.exe', redis: 'redis-server.exe', s3: 'rustfs-windows-x86_64.exe' };
+    const owners = platform.ownerNames(bundledServicesRoot());
     const port = boot.ports && boot.ports[name];
     const owner = port ? listenerInfo(port) : null;
     if (owners[name] && owner && isBundledProcess(owner, owners[name])) {
-      await new Promise((resolve) => {
-        const k = spawn('taskkill', ['/PID', String(owner.pid), '/T', '/F'], { windowsHide: true });
-        k.on('close', () => resolve());
-        k.on('error', () => resolve());
-      });
+      await killTree(owner.pid);
       clearBootPort(name);
       pushLog(name, '已停止认领的进程');
       return { ok: true, pid: owner.pid, adopted: true };
@@ -507,11 +468,7 @@ async function stopOne(name) {
     return { ok: true, already: true };
   }
   const pid = s.child.pid;
-  await new Promise((resolve) => {
-    const k = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
-    k.on('close', () => resolve());
-    k.on('error', () => resolve());
-  });
+  await killTree(pid);
   s.child = null;
   s.pid = null;
   if (name === 'server') clearServerMarker(pid);
@@ -530,22 +487,17 @@ function nodeBin() {
 }
 
 function which(cmd) {
-  try {
-    const out = execFileSync('where.exe', [cmd], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-    return String(out).split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || '';
-  } catch (e) {
-    return '';
-  }
+  return platform.which(cmd);
 }
 
 function probe(exe, args) {
   if (!exe) return '';
   try {
     // .cmd 不能直接 spawn（Windows 会 EINVAL）；用 cmd /c 按 PATH 里的命令名执行
-    const isCmd = /\.(cmd|bat)$/i.test(exe);
+    const isCmd = platform.isWindows && /\.(cmd|bat)$/i.test(exe);
     const cmd = isCmd ? 'cmd.exe' : exe;
     const cmdArgs = isCmd ? ['/d', '/c', [path.basename(exe, path.extname(exe)), ...args].join(' ')] : args;
-    const r = spawnSync(cmd, cmdArgs, { encoding: 'utf8', windowsHide: true, timeout: 8000 });
+    const r = spawnSync(cmd, cmdArgs, platform.baseSpawnOptions({ encoding: 'utf8', timeout: 8000 }));
     const text = String((r.stdout || '') + (r.stderr || ''));
     return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || '';
   } catch (e) {
@@ -573,7 +525,7 @@ function runtimes() {
   const python = which('python.exe') || which('python') || which('python3.exe') || which('python3');
   return [
     // 显示真正用来跑服务的 node.exe 版本，而不是 Electron 内置的 process.version
-    { id: 'node', name: 'Node', version: probe(node, ['--version']) || process.version, path: node, available: fs.existsSync(node) || node === 'node', native: true, note: '内置 Node.js，直接运行 server.js' },
+    { id: 'node', name: 'Node', version: probe(node, ['--version']) || process.version, path: node, available: fs.existsSync(node) || node === 'node', native: true, note: platform.isWindows ? '内置 Node.js，直接运行 server.js' : '内置 Linux Node.js，直接运行 server.js' },
     { id: 'bun', name: 'Bun', version: shortVersion(probe(bun, ['--version'])), path: bun, available: !!bun, native: true, note: '需要系统已安装 Bun，兼容 Node API' },
     { id: 'java', name: 'Java', version: shortVersion(probe(java, ['-version'])), path: java, available: !!(java && javac), native: true, note: javac ? 'Java 原生服务：javac 编译 native/java 后直连 MySQL，不调用 Node' : '只找到 java，没有 javac；请安装完整 JDK 17+' },
     { id: 'go', name: 'Go', version: shortVersion(probe(go, ['version'])), path: go, available: !!go, native: true, note: 'Go 原生服务：go build 后直接运行 native/go，不调用 Node' },
@@ -645,7 +597,7 @@ async function startServer(dir, opts) {
         return { ok: false, error: 'Java 编译失败：' + String(built.stderr || built.stdout || '').trim().split(/\r?\n/).slice(-4).join(' | ') };
       }
       exe = which('java.exe') || which('java');
-      args = ['-cp', 'bin;lib/*', 'icb.Main'];
+      args = ['-cp', ['bin', 'lib/*'].join(path.delimiter), 'icb.Main'];
       cwd = nativeDir;
     } else {
       return { ok: false, error: '生成目录缺少 native/java，请重新生成服务' };
@@ -657,10 +609,10 @@ async function startServer(dir, opts) {
     if (!fs.existsSync(path.join(nativeDir, 'service.json'))) return { ok: false, error: '生成目录缺少 native/go/service.json，请重新生成服务' };
     const binDir = path.join(nativeDir, 'bin');
     fs.mkdirSync(binDir, { recursive: true });
-    const outExe = path.join(binDir, process.platform === 'win32' ? 'server.exe' : 'server');
+    const outExe = path.join(binDir, platform.exeName('server'));
     const goEnv = { ...process.env, GOPROXY: process.env.GOPROXY || 'https://goproxy.cn,direct' };
     if (!fs.existsSync(path.join(nativeDir, 'go.sum'))) {
-      const tidy = spawnSync(exe, ['mod', 'tidy'], { cwd: nativeDir, encoding: 'utf8', shell: /\.(cmd|bat)$/i.test(exe), env: goEnv, timeout: 180000 });
+      const tidy = spawnSync(exe, ['mod', 'tidy'], { cwd: nativeDir, encoding: 'utf8', shell: platform.isWindows && /\.(cmd|bat)$/i.test(exe), env: goEnv, timeout: 180000 });
       if (tidy.status !== 0) {
         return { ok: false, error: 'Go 依赖准备失败：' + String(tidy.stderr || tidy.stdout || '').trim().split(/\r?\n/).slice(-3).join(' | ') };
       }
@@ -668,7 +620,7 @@ async function startServer(dir, opts) {
     const built = spawnSync(exe, ['build', '-o', outExe, '.'], {
       cwd: nativeDir,
       encoding: 'utf8',
-      shell: /\.(cmd|bat)$/i.test(exe),
+      shell: platform.isWindows && /\.(cmd|bat)$/i.test(exe),
       env: goEnv,
       timeout: 180000,
     });
@@ -693,11 +645,11 @@ async function startServer(dir, opts) {
     cwd = nativeDir;
   }
   const nativeRun = runtime === 'go' || runtime === 'python' || (runtime === 'java' && cwd !== dir);
-  const entry = runtime === 'go' ? 'native/go/bin/server' : runtime === 'python' ? 'native/python/app.py' : args[args.length - 1];
+  const entry = runtime === 'go' ? `native/go/bin/${platform.exeName('server')}` : runtime === 'python' ? 'native/python/app.py' : args[args.length - 1];
   if (!nativeRun && !fs.existsSync(path.join(dir, entry))) return { ok: false, error: `生成目录里找不到 ${entry}` };
   const res = spawnSvc('server', exe, args, {
     cwd,
-    shell: /\.(cmd|bat)$/i.test(exe),
+    shell: platform.isWindows && /\.(cmd|bat)$/i.test(exe),
     env: {
       ...process.env,
       PORT: String(ports.http),

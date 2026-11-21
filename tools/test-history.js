@@ -9,6 +9,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'clickbuild-history-'));
 process.env.APPDATA = tmp;
+process.env.XDG_DATA_HOME = tmp;
 
 const projects = require(path.join(root, 'app/iface/project-store'));
 const spec = require(path.join(root, 'app/iface/spec'));
@@ -40,7 +41,7 @@ t('复制后文件可读', !!projects.load('历史测试A 副本'));
 t('复制后列表 3 个', projects.list().length === 3, projects.list().map((x) => x.name));
 
 // 模拟外部删除文件，历史索引仍要保留一条“找不到文件”。
-const fileA = path.join(projects.root(), '历史测试A.json');
+const fileA = projects.list().find((x) => x.name === '历史测试A').file;
 fs.unlinkSync(fileA);
 list = projects.list();
 const lost = list.find((x) => x.name === '历史测试A');
@@ -48,8 +49,7 @@ t('外部删除后历史仍显示', !!lost, list.map((x) => x.name));
 t('缺失工程标记找不到文件', lost && lost.missing === true, lost);
 
 const missingName = '不存在工程X';
-projects.save({ ...a, name: missingName });
-const fileX = path.join(projects.root(), `${missingName}.json`);
+const fileX = projects.save({ ...a, name: missingName });
 fs.unlinkSync(fileX);
 projects.list();
 const rm = projects.remove(missingName);

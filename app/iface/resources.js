@@ -2,13 +2,15 @@
 'use strict';
 
 // 底部状态条的硬件/进程资源采样。这里只读，不启动、不停止任何服务。
-// 采样策略：系统 CPU/内存/磁盘/网络每次调用都取；tasklist 全量扫描较重，按 PID 集合缓存 6 秒。
+// 采样策略：系统 CPU/内存/磁盘/网络每次调用都取；进程内存全量扫描较重，按 PID 集合缓存 6 秒。
+// Windows 用 tasklist，Linux/macOS 用 /proc/<pid>/status。
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { app } = require('electron');
 const store = require('../store');
+const platform = require('../platform');
 
 let prevCpu = null;
 let prevNet = null;
@@ -52,14 +54,14 @@ function sampleMemory() {
 
 function sampleDisk() {
   try {
-    const root = path.parse(store.root()).root || 'C:\\';
+    const root = path.parse(store.root()).root || (platform.isWindows ? 'C:\\' : '/');
     const st = fs.statfsSync(root);
     const total = Number(st.bsize) * Number(st.blocks);
     const free = Number(st.bsize) * Number(st.bavail);
     const used = total - free;
     return {
       root,
-      label: root.replace(/\\$/, ''),
+      label: platform.isWindows ? root.replace(/\\$/, '') : root,
       total,
       free,
       used,
@@ -72,21 +74,30 @@ function sampleDisk() {
 
 function sampleNet() {
   try {
-    const out = String(execFileSync('netstat.exe', ['-e'], { encoding: 'utf8', windowsHide: true, timeout: 4000 }) || '');
-    // netstat 的表头会跟随系统语言（中文系统是“字节”），不能按 Bytes 匹配；
-    // 第一行“两个数字列”就是累计收/发字节。
-    let m = null;
-    for (const line of out.split(/\r?\n/)) {
-      m = line.match(/^[^\d]*([\d,]+)\s+([\d,]+)\s*$/);
-      if (m) break;
+    let rx = 0;
+    let tx = 0;
+    if (platform.isWindows) {
+      const out = String(execFileSync('netstat.exe', ['-e'], { encoding: 'utf8', windowsHide: true, timeout: 4000 }) || '');
+      // netstat 的表头会跟随系统语言（中文系统是“字节”），不能按 Bytes 匹配；
+      // 第一行“两个数字列”就是累计收/发字节。
+      let m = null;
+      for (const line of out.split(/\r?\n/)) {
+        m = line.match(/^[^\d]*([\d,]+)\s+([\d,]+)\s*$/);
+        if (m) break;
+      }
+      if (!m) {
+        const alt = out.match(/^\s*Bytes\s+(\d+)\s+(\d+)\s*$/mi);
+        if (!alt) return null;
+        m = alt;
+      }
+      rx = Number(String(m[1]).replace(/,/g, ''));
+      tx = Number(String(m[2]).replace(/,/g, ''));
+    } else {
+      const totals = platform.networkTotals();
+      if (!totals) return null;
+      rx = totals.rx;
+      tx = totals.tx;
     }
-    if (!m) {
-      const alt = out.match(/^\s*Bytes\s+(\d+)\s+(\d+)\s*$/mi);
-      if (!alt) return null;
-      m = alt;
-    }
-    const rx = Number(String(m[1]).replace(/,/g, ''));
-    const tx = Number(String(m[2]).replace(/,/g, ''));
     const now = Date.now();
     let rxRate = 0;
     let txRate = 0;
@@ -141,8 +152,12 @@ function serviceMemory(pids) {
   let map = new Map();
   if (pids.length) {
     try {
-      const out = execFileSync('tasklist.exe', ['/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 6000 });
-      map = parseTasklist(out);
+      if (platform.isWindows) {
+        const out = execFileSync('tasklist.exe', ['/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 6000 });
+        map = parseTasklist(out);
+      } else {
+        map = platform.processMemoryMap(pids);
+      }
     } catch (e) {
       map = new Map();
     }
@@ -178,8 +193,8 @@ function analyze(s) {
   if (s.memory.percent >= 90) { bump('bad'); notes.push(`内存占用过高：${s.memory.percent.toFixed(1)}%，MariaDB 缓冲池和生成服务堆内存是主要排查对象。`); }
   else if (s.memory.percent >= 80) { bump('warn'); notes.push(`内存偏高：${s.memory.percent.toFixed(1)}%，优先看服务进程合计与生成服务运行时。`); }
   if (s.disk) {
-    if (s.disk.free < 3 * 1024 ** 3 || s.disk.percent >= 97) { bump('bad'); notes.push(`磁盘空间紧张：${s.disk.label} 盘剩余 ${fmt(s.disk.free)}，已用 ${s.disk.percent.toFixed(0)}%。`); }
-    else if (s.disk.free < 10 * 1024 ** 3 || s.disk.percent >= 90) { bump('warn'); notes.push(`磁盘使用偏高：${s.disk.label} 盘已用 ${s.disk.percent.toFixed(0)}%，可用 ${fmt(s.disk.free)}。`); }
+    if (s.disk.free < 3 * 1024 ** 3 || s.disk.percent >= 97) { bump('bad'); notes.push(`磁盘空间紧张：${s.disk.label} 剩余 ${fmt(s.disk.free)}，已用 ${s.disk.percent.toFixed(0)}%。`); }
+    else if (s.disk.free < 10 * 1024 ** 3 || s.disk.percent >= 90) { bump('warn'); notes.push(`磁盘使用偏高：${s.disk.label} 已用 ${s.disk.percent.toFixed(0)}%，可用 ${fmt(s.disk.free)}。`); }
   }
   const running = s.services.filter((x) => x.running).length;
   const off = s.services.filter((x) => !x.running).map((x) => x.name).filter(Boolean);

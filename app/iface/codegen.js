@@ -9,8 +9,11 @@ const docs = require('./docs');
 const native = require('./native');
 const fe = require('./frontend');
 const testgen = require('./testgen');
+const platform = require('../platform');
 
 const DEFAULT_PORTS = { mysql: 13306, redis: 16379, s3: 19000, s3Console: 19001, http: 18100 };
+// Java 的 classpath 分隔符跟平台走：Windows 是 ;，Linux/macOS 是 :。
+const JAVA_RUN = `java -cp "${['bin', 'lib/*'].join(path.delimiter)}" icb.Main`;
 
 // 导出工程的主配置文件。键名和运行时的环境变量一一对应，
 // Node / Python / Go / Java 都优先读 process.env，再读 config.json，最后用内置默认值。
@@ -591,7 +594,7 @@ function generate(project, options) {
     '',
     '```bash',
     'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java',
-    'java -cp "bin;lib/*" icb.Main',
+    JAVA_RUN,
     '```',
     '',
     `默认端口与接口前缀读工程根目录 \`config.json\`（键名 \`PORT\` / \`API_PREFIX\`），数据库读 \`MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DB\`；系统环境变量可覆盖配置文件。`,
@@ -737,6 +740,7 @@ process.on('SIGTERM', stop);
 start();
 `);
 
+  if (platform.isWindows) {
   add('daemon/start.ps1', `# 前台守护：Ctrl+C 结束
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -754,6 +758,7 @@ schtasks /Create /TN $TaskName /TR $cmd /SC ONLOGON /RL LIMITED /F
 if ($LASTEXITCODE -ne 0) { throw 'schtasks 创建失败，可改用 daemon\\start.ps1 手动前台启动' }
 Write-Host "已创建登录自启任务：$TaskName"
 `);
+  }
   }
 
   if (wantNode) {
@@ -791,13 +796,17 @@ Write-Host "已创建登录自启任务：$TaskName"
     '',
     '- Node：`node server.js`，热部署 `node dev.js`',
     '- Bun：`bun server.js`，热部署 `bun dev.js`',
-    '- Java 原生（需 JDK 17+）：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
+    '- Java 原生（需 JDK 17+）：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && ' + JAVA_RUN + '`',
     '- Go 原生（需 Go 1.21+）：`cd native/go && go mod tidy && go run .`；`export/go/` 下的 Go 路由骨架已带 `go.mod`，可 `go build ./export/go` 做编译检查',
     '',
     '## 守护进程',
     '',
-    '- 前台守护：`powershell -ExecutionPolicy Bypass -File daemon/start.ps1`（崩溃自动重启，日志 `daemon/daemon.log`）',
-    '- 登录自启：`powershell -ExecutionPolicy Bypass -File daemon/install-service.ps1`（创建计划任务，名字可传参）',
+    '- 前台守护：`node daemon/watchdog.js`（崩溃自动重启，日志 `daemon/daemon.log`）',
+    ...(platform.isWindows ? [
+      '- 登录自启：`powershell -ExecutionPolicy Bypass -File daemon/install-service.ps1`（创建计划任务，名字可传参）',
+    ] : [
+      '- 登录自启：把 `node daemon/watchdog.js` 交给 systemd 用户服务、tmux 或 screen 常驻；守护脚本本身跨平台。',
+    ]),
   ].join('\n'));
   } else {
   add('README.md', [
@@ -813,7 +822,7 @@ Write-Host "已创建登录自启任务：$TaskName"
     '',
     ...({
       go: ['```bash', 'cd native/go', 'go mod tidy', 'go run .', '```', '', '需要 Go 1.21+；可直接 `go build` 生成独立二进制。'],
-      java: ['```bash', 'cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', 'java -cp "bin;lib/*" icb.Main', '```', '', '需要 JDK 17+。'],
+      java: ['```bash', 'cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', JAVA_RUN, '```', '', '需要 JDK 17+。'],
       python: ['```bash', 'cd native/python', 'python -m venv .venv', '.venv\\Scripts\\activate', 'pip install -r requirements.txt', 'python app.py', '```', '', 'Linux/macOS 用 `source .venv/bin/activate`。'],
     }[runtime] || []),
     '',
@@ -841,7 +850,7 @@ Write-Host "已创建登录自启任务：$TaskName"
       node: ['```bash', 'npm install', 'node server.js', '```', '', '热部署：`node dev.js`。'],
       bun: ['```bash', 'bun install', 'bun server.js', '```', '', '热部署：`bun dev.js`。'],
       go: ['```bash', 'cd native/go', 'go mod tidy', 'go run .', '```', '', '编译后可直接运行二进制，不依赖 Node。'],
-      java: ['```bash', 'cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', 'java -cp "bin;lib/*" icb.Main', '```', '', '需要 JDK 17+，不依赖 Node。'],
+      java: ['```bash', 'cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', JAVA_RUN, '```', '', '需要 JDK 17+，不依赖 Node。'],
       python: ['```bash', 'cd native/python', 'python -m venv .venv', '.venv\\Scripts\\activate', 'pip install -r requirements.txt', 'python app.py', '```', '', 'Linux/macOS 用 `source .venv/bin/activate`，不依赖 Node。'],
     }[runtime] || []),
     '',
@@ -853,7 +862,7 @@ Write-Host "已创建登录自启任务：$TaskName"
       '- Node.js：`node server.js` / 热部署 `node dev.js`',
       '- Bun：`bun server.js` / 热部署 `bun dev.js`',
       '- Go：`cd native/go && go mod tidy && go run .`',
-      '- Java：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main`',
+      '- Java：`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && ' + JAVA_RUN + '`',
       '- Python：`cd native/python && pip install -r requirements.txt && python app.py`',
       '',
     );

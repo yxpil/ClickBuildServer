@@ -12,6 +12,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'icb-i18n-'));
 process.env.APPDATA = tmp;
+process.env.XDG_DATA_HOME = tmp;
 
 const { SOURCE, LOCALES } = require(path.join(root, 'app/i18n/catalog'));
 const i18n = require(path.join(root, 'app/i18n'));

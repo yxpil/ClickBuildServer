@@ -59,3 +59,62 @@ jobs:
           if (-not (Test-Path $exe)) { throw "Missing build output: $exe" }
           $item = Get-Item $exe
           "Built: $($item.FullName) ($([math]::Round($item.Length / 1MB, 1)) MB)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+  test-build-linux:
+    name: Test & build (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential musl-tools unzip pkg-config
+
+      - name: Cache Linux service archives
+        uses: actions/cache@v4
+        with:
+          path: .cache/services-linux
+          key: services-linux-${{ hashFiles('tools/vendor-services-linux.sh') }}
+
+      - name: Assemble Linux services and runtime
+        run: bash tools/vendor-services-linux.sh
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regression tests
+        run: npm run test:ci
+
+      - name: Linux bundled services integration
+        run: npm run test:services:linux
+
+      - name: Build unpacked Linux app
+        run: npm run dist:linux:dir
+
+      - name: Verify Linux build output
+        run: |
+          APP=dist/linux-unpacked/clickbuildserver
+          MDB=dist/linux-unpacked/resources/services/MariaDB/bin/mariadbd
+          NODE=dist/linux-unpacked/resources/runtime/node/bin/node
+          test -x "$APP" || { echo "Missing $APP"; exit 1; }
+          test -x "$MDB" || { echo "Missing $MDB"; exit 1; }
+          test -x "$NODE" || { echo "Missing $NODE"; exit 1; }
+          {
+            echo "### Linux unpacked build"
+            echo ""
+            echo "- App: \`$APP\` ($(du -h "$APP" | cut -f1))"
+            echo "- MariaDB: \`$MDB\` ($(du -h "$MDB" | cut -f1))"
+            echo "- Node: \`$NODE\` ($(du -h "$NODE" | cut -f1))"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

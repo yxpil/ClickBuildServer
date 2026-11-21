@@ -6,6 +6,8 @@ out/
 coverage/
 .cache/
 vendor/services/
+vendor/services-linux/
+runtime/node-linux/
 
 # 生成出来的示例工程 / 压缩包
 *.zip
@@ -20,6 +22,7 @@ vendor/services/
 # 运行时产物
 uploads/
 storage/
+data/
 *.log
 *.sqlite
 *.db

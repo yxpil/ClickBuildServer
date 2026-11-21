@@ -10,6 +10,7 @@ const plain = (v) => (v === undefined || typeof v === 'function' ? v : JSON.pars
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args.map(plain));
 
 contextBridge.exposeInMainWorld('icb', {
+  platform: process.platform,
   win: (action) => invoke('win:action', action),
   onWinState: (cb) => {
     const fn = (e, state) => cb(state);

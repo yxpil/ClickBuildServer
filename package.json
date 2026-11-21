@@ -24,9 +24,14 @@
     "test:e2e": "node tools/e2e.js http://127.0.0.1:18100",
     "test:e2e:crossdb": "node tools/e2e-crossdb.js http://127.0.0.1:18300",
     "vendor:services": "node tools/vendor-services.js",
+    "vendor:services:linux": "bash tools/vendor-services-linux.sh",
     "check:services": "node tools/check-services.js",
+    "smoke:linux": "bash tools/linux-smoke.sh",
+    "test:services:linux": "node tools/test-services-linux.js",
     "dist": "node tools/check-services.js && electron-builder --win nsis",
     "dist:dir": "node tools/check-services.js && electron-builder --win --dir",
+    "dist:linux": "node tools/check-services.js && electron-builder --linux",
+    "dist:linux:dir": "node tools/check-services.js && electron-builder --linux --dir",
     "test:ai": "node tools/test-ai.js",
     "test:ai:ollama": "node tools/test-ai-ollama.js",
     "test:export:single": "node tools/test-export-single-runtime.js",
@@ -77,14 +82,6 @@
     ],
     "extraResources": [
       {
-        "from": "vendor/services",
-        "to": "services"
-      },
-      {
-        "from": "runtime",
-        "to": "runtime"
-      },
-      {
         "from": "assets/logo.png",
         "to": "logo.png"
       }
@@ -103,24 +100,38 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "ClickBuildServer-Setup-${version}.${ext}"
+      "artifactName": "ClickBuildServer-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "vendor/services",
+          "to": "services"
+        },
+        {
+          "from": "runtime",
+          "to": "runtime"
+        },
+        {
+          "from": "assets/logo.png",
+          "to": "logo.png"
+        }
+      ],
+      "fileAssociations": [
+        {
+          "ext": "yxpn",
+          "name": "ClickBuild 接口工程包",
+          "description": "ClickBuild 接口工程包",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        },
+        {
+          "ext": "yxpp",
+          "name": "ClickBuild 前端工程",
+          "description": "ClickBuild 前端工程",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        }
+      ]
     },
-    "fileAssociations": [
-      {
-        "ext": "yxpn",
-        "name": "ClickBuild 接口工程包",
-        "description": "ClickBuild 接口工程包",
-        "icon": "build/icon.ico",
-        "role": "Editor"
-      },
-      {
-        "ext": "yxpp",
-        "name": "ClickBuild 前端工程",
-        "description": "ClickBuild 前端工程",
-        "icon": "build/icon.ico",
-        "role": "Editor"
-      }
-    ],
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -152,6 +163,79 @@
       "multiLanguageInstaller": true,
       "displayLanguageSelector": true,
       "include": "build/installer.nsh"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "executableName": "clickbuildserver",
+      "artifactName": "ClickBuildServer-${version}-${arch}.${ext}",
+      "maintainer": "yxpil <yxpil@users.noreply.github.com>",
+      "synopsis": "可视化接口生成与本地服务编排工具",
+      "description": "ClickBuildServer 用可视化方式定义接口与数据表，生成 Node / Python / Go / Java / Rust 服务，并在本机编排 MariaDB、Redis、RustFS 与内置 Node 运行时。",
+      "extraResources": [
+        {
+          "from": "vendor/services-linux",
+          "to": "services"
+        },
+        {
+          "from": "runtime/node-linux",
+          "to": "runtime/node"
+        },
+        {
+          "from": "assets/logo.png",
+          "to": "logo.png"
+        }
+      ],
+      "fileAssociations": [
+        {
+          "ext": "yxpn",
+          "name": "ClickBuild 接口工程包",
+          "mimeType": "application/x-clickbuild-yxpn",
+          "role": "Editor",
+          "icon": "build/icon.png"
+        },
+        {
+          "ext": "yxpp",
+          "name": "ClickBuild 前端工程",
+          "mimeType": "application/x-clickbuild-yxpp",
+          "role": "Editor",
+          "icon": "build/icon.png"
+        }
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0 | libgtk-3-0t64",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0 | libatspi2.0-0t64",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libxkbcommon0",
+        "libxcomposite1",
+        "libxdamage1",
+        "libxrandr2",
+        "libasound2 | libasound2t64",
+        "libcups2 | libcups2t64"
+      ]
     }
   }
 }

@@ -11,6 +11,7 @@ const os = require('os');
 const { execFileSync, spawn } = require('child_process');
 const spec = require('./spec');
 const codegen = require('./codegen');
+const platform = require('../platform');
 
 function safeName(text) {
   return String(text || '接口工程').replace(/[\\/:*?"<>|]/g, '_').replace(/^\s+|\s+$/g, '') || '接口工程';
@@ -35,7 +36,7 @@ function readme(projectName, runtime, runtimeOnly) {
 这个目录是 ClickBuild 导出的 **${runtimeName}** 工程，只包含这一套服务端实现，已经带 \`.idea\` 配置。
 
 1. IDEA 菜单 **File → Open**，选择本目录（${projectName}）。
-2. 首次打开如提示选择 Node 解释器，指向系统 \`node.exe\`；IDEA Ultimate 已内置 JavaScript / Node.js 插件。
+2. 首次打开如提示选择 Node 解释器，指向系统 \`node\`；IDEA Ultimate 已内置 JavaScript / Node.js 插件。
 3. 终端执行：
 
 \`\`\`bash
@@ -51,7 +52,7 @@ ${runtime === 'bun' ? 'bun install\nbun server.js' : 'npm install\nnpm start'}
   if (runtimeOnly && runtime !== 'node' && runtime !== 'bun') {
     const cmds = {
       go: ['cd native/go', 'go mod tidy', 'go run .'],
-      java: ['cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', 'java -cp "bin;lib/*" icb.Main'],
+      java: ['cd native/java', 'javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java', `java -cp "bin${path.delimiter}lib/*" icb.Main`],
       python: ['cd native/python', 'python -m venv .venv', 'pip install -r requirements.txt', 'python app.py'],
     }[runtime] || [];
     return `# 用 IntelliJ IDEA 打开
@@ -76,7 +77,7 @@ ${cmds.join('\n')}
 这个目录是 ClickBuild 导出的完整工程，已经带 \`.idea\` 配置。
 
 1. IDEA 菜单 **File → Open**，选择本目录（${projectName}）。
-2. 首次打开如提示选择 Node 解释器，指向系统 \`node.exe\`；IDEA Ultimate 已内置 JavaScript / Node.js 插件。
+2. 首次打开如提示选择 Node 解释器，指向系统 \`node\`；IDEA Ultimate 已内置 JavaScript / Node.js 插件。
 3. 终端执行：
 
 \`\`\`bash
@@ -93,7 +94,7 @@ npm start
 
 - Node：\`node server.js\`；热部署：\`node dev.js\`（监听 src/public/sql/interfaces.json 自动重启）。
 - Bun：\`bun server.js\`；热部署：\`bun dev.js\`。
-- Java 原生（JDK 17+）：\`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin;lib/*" icb.Main\`。
+- Java 原生（JDK 17+）：\`cd native/java && javac -encoding UTF-8 -cp "lib/*" -d bin src/icb/*.java && java -cp "bin${path.delimiter}lib/*" icb.Main\`。
 - Go 原生（Go 1.21+）：\`cd native/go && go mod tidy && go run .\`；\`export/go/\` 路由骨架可 \`go build ./export/go\` 编译检查。
 
 ## 错误页
@@ -136,33 +137,65 @@ function ideaCandidates() {
   const env = process.env;
   const push = (p) => { if (p && fs.existsSync(p)) out.push(p); };
   if (env.IDEA_HOME) {
-    push(path.join(env.IDEA_HOME, 'bin', 'idea64.exe'));
-    push(path.join(env.IDEA_HOME, 'bin', 'idea.exe'));
+    if (platform.isWindows) {
+      push(path.join(env.IDEA_HOME, 'bin', 'idea64.exe'));
+      push(path.join(env.IDEA_HOME, 'bin', 'idea.exe'));
+    } else {
+      push(path.join(env.IDEA_HOME, 'bin', 'idea.sh'));
+    }
   }
-  const roots = [
+  const roots = platform.isWindows ? [
     env.ProgramFiles && path.join(env.ProgramFiles, 'JetBrains'),
     env['ProgramFiles(x86)'] && path.join(env['ProgramFiles(x86)'], 'JetBrains'),
     env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs'),
     env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'JetBrains', 'Toolbox', 'apps'),
-  ].filter(Boolean);
-  for (const root of roots) {
+  ].filter(Boolean) : [
+    path.join(os.homedir(), '.local', 'share', 'JetBrains', 'Toolbox', 'apps'),
+    '/opt',
+    '/usr/local',
+    path.join(os.homedir(), 'Applications'),
+  ];
+  const walk = (dir, depth) => {
+    if (depth < 0) return;
+    if (platform.isWindows) {
+      push(path.join(dir, 'bin', 'idea64.exe'));
+      push(path.join(dir, 'bin', 'idea.exe'));
+    } else {
+      push(path.join(dir, 'bin', 'idea.sh'));
+    }
+    let subs = [];
+    try { subs = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const ent of subs) {
+      if (!ent.isDirectory()) continue;
+      if (['bin', 'lib', 'plugins', 'jbr', 'node_modules'].includes(ent.name)) continue;
+      walk(path.join(dir, ent.name), depth - 1);
+    }
+  };
+  const scan = (root) => {
     let names = [];
-    try { names = fs.readdirSync(root); } catch (e) { continue; }
+    try { names = fs.readdirSync(root); } catch (e) { return; }
     for (const name of names) {
-      if (!/^IntelliJ IDEA/i.test(name) && !/^IDEA/i.test(name)) continue;
-      push(path.join(root, name, 'bin', 'idea64.exe'));
-      push(path.join(root, name, 'bin', 'idea.exe'));
+      if (!/^IntelliJ IDEA/i.test(name) && !/^IDEA/i.test(name) && !/intellij-idea/i.test(name)) continue;
+      walk(path.join(root, name), 3);
+    }
+  };
+  for (const root of roots) scan(root);
+  if (platform.isWindows) {
+    try {
+      const where = execFileSync('where.exe', ['idea64.exe'], { encoding: 'utf8', windowsHide: true });
+      String(where).split(/\r?\n/).map((s) => s.trim()).filter(Boolean).forEach(push);
+    } catch (e) { /* 没装或不在 PATH */ }
+  } else {
+    for (const name of ['idea', 'idea.sh']) {
+      const hit = platform.which(name);
+      if (hit) push(hit);
     }
   }
-  try {
-    const where = execFileSync('where.exe', ['idea64.exe'], { encoding: 'utf8', windowsHide: true });
-    String(where).split(/\r?\n/).map((s) => s.trim()).filter(Boolean).forEach(push);
-  } catch (e) { /* 没装或不在 PATH */ }
   return [...new Set(out)];
 }
 
 function openInIdea(dir) {
-  if (process.platform !== 'win32') return { ok: false, error: '目前只处理 Windows 上的 IDEA' };
+  if (!platform.isWindows && !platform.isLinux) return { ok: false, error: '当前系统暂不支持自动打开 IDEA' };
   if (!dir || !fs.existsSync(dir)) return { ok: false, error: '工程目录不存在' };
   const exe = ideaCandidates()[0];
   if (!exe) return { ok: false, error: '没有找到 IntelliJ IDEA，可先打开目录再手动 File → Open', dir };
