@@ -9,6 +9,7 @@ const tests = [
   ['tools/test-guide-templates.js'],
   ['tools/test-script-dsl.js'],
   ['tools/test-table-import.js'],
+  ['tools/test-formtable.js'],
   ['tools/test-templates.js', '--gen'],
   ['tools/test-pack.js'],
   ['tools/test-deploy.js'],

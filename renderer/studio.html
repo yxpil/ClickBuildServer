@@ -410,6 +410,13 @@ a.btn{color:var(--ink);text-decoration:none;cursor:pointer}
 .ps-form-row{display:flex;flex-direction:column;gap:4px;flex:0 0 auto}
 .ps-form-label{font-size:10px;letter-spacing:.02em}
 .ps-form-fake{display:flex;align-items:center;padding:0 10px;border:1px solid #D4D4CE;background:#fff;color:#8A8A84;overflow:hidden;white-space:nowrap}
+.ps-ft-body{width:100%;height:100%;display:flex;flex-direction:column;gap:8px;overflow:auto;box-sizing:border-box}
+.ps-ft-wrap{width:100%;overflow:auto;border:1px solid #D4D4CE;border-radius:4px;background:#fff}
+.ps-ft-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.ps-ft-table th{font:600 9px/1.3 var(--mono);letter-spacing:.04em;color:#5F5F5A;text-align:left;padding:6px 8px;background:#F7F7F4;border-bottom:1px solid #D4D4CE;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps-ft-table td{padding:4px 8px;border-bottom:1px solid #EDEDE7;vertical-align:middle}
+.ps-ft-table tr:last-child td{border-bottom:0}
+.ps-ft-cell{display:flex;align-items:center;height:24px;padding:0 6px;border:1px solid #DEDED7;border-radius:3px;background:#fff;color:#A2A29B;font-size:9px;overflow:hidden;white-space:nowrap}
 .ps-auth-body{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
 .ps-auth-kicker{font:9px/1.4 var(--mono);letter-spacing:.08em;color:var(--ink-3);text-transform:none}
 .ps-auth-title{font:700 21px/1.22 var(--sans);color:var(--ink);margin:2px 0 0}
@@ -1370,6 +1377,7 @@ body.cbs-embedded .cbs-site-only{display:none!important}
       <button class="btn tb-secondary" id="btnNewProject" data-icon="file" title="先保存当前工程，再新建空白画布">保存并新建</button>
       <button class="btn" id="btnTemplates" data-icon="layers" title="模板中心：简历 / 网页 / 个人主页 / 落地页"><span>模板</span><b class="btn-count" id="tplCount">0</b></button>
       <button class="btn btn--sq" id="btnAiLayout" data-icon="sparkle" title="AI 对话：看当前画布截图，连续调整页面" aria-label="AI 对话"></button>
+      <button class="btn tb-secondary" id="btnIfaceForm" data-icon="table" title="选择后端接口，自动生成表单或表格录入"><span>接口表单</span></button>
       <button class="btn" id="btnProjectFile" data-icon="folder" title="导入 / 导出工程文件">工程</button>
       <button class="btn tb-secondary" id="btnImportSvg" data-icon="upload" title="导入 SVG">导入 SVG</button>
       <button class="btn tb-secondary" id="btnPreviewPage" data-icon="external" title="预览网页">预览</button>
@@ -1380,6 +1388,7 @@ body.cbs-embedded .cbs-site-only{display:none!important}
           <button class="tb-more-item" data-more="btnNewProject" role="menuitem" type="button"><span data-icon="file"></span><span><b>保存并新建</b><em>备份当前工程后新建空白画布</em></span></button>
           <button class="tb-more-item" data-more="btnClearPage" role="menuitem" type="button"><span data-icon="eraser"></span><span><b>清空当前页</b><em>只删除当前页元素，保留尺寸、底色和页面代码，可撤销</em></span></button>
           <button class="tb-more-item" data-more="btnAiLayout" role="menuitem" type="button"><span data-icon="sparkle"></span><span><b>AI 对话</b><em>看画布截图，连续调整页面</em></span></button>
+          <button class="tb-more-item" data-more="btnIfaceForm" role="menuitem" type="button"><span data-icon="table"></span><span><b>接口表单</b><em>选后端接口，自动生成表单 / 表格录入</em></span></button>
           <button class="tb-more-item" data-more="btnImportSvg" role="menuitem" type="button"><span data-icon="upload"></span><span><b>导入 SVG</b><em>矢量图直接拖入画布</em></span></button>
           <button class="tb-more-item" data-more="btnPreviewPage" role="menuitem" type="button"><span data-icon="external"></span><span><b>预览网页</b><em>全页预览当前工程</em></span></button>
           <button class="tb-more-item" data-more="btnSitePublish" role="menuitem" type="button"><span data-icon="cloud"></span><span><b>保存到网站</b><em>登录网站账号，保存到个人空间并生成链接</em></span></button>
@@ -2035,6 +2044,54 @@ body.cbs-embedded .cbs-site-only{display:none!important}
       <span class="grow"></span>
       <button class="btn" id="btnPageSetupCancel" type="button">取消</button>
       <button class="btn btn--solid" id="btnPageSetupApply" type="button">应用页面设置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 从后端接口生成表单 ===== -->
+<div class="modal" id="ifaceFormModal" role="dialog" aria-modal="true" aria-labelledby="ifaceFormTitle">
+  <div class="dialog" style="width:min(700px,94vw)">
+    <div class="dialog-head">
+      <h2 id="ifaceFormTitle">从接口生成表单</h2>
+      <span class="sub">选择后端接口与写入路由，自动映射字段</span>
+      <button class="btn btn--sq" id="btnCloseIfaceForm" data-icon="close" style="margin-left:auto" title="关闭"></button>
+    </div>
+    <div class="dialog-body" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label class="page-setup-field">后端接口
+          <select id="ifaceFormIface" class="inp"></select>
+        </label>
+        <label class="page-setup-field">提交路由
+          <select id="ifaceFormRoute" class="inp"></select>
+        </label>
+        <label class="page-setup-field">生成形态
+          <select id="ifaceFormKind" class="inp">
+            <option value="form">普通表单</option>
+            <option value="formtable">表格录入（多行）</option>
+          </select>
+        </label>
+        <label class="page-setup-field">提交按钮名字
+          <input id="ifaceFormSubmit" class="inp" type="text" value="提交" placeholder="例如：保存记录">
+        </label>
+        <label class="page-setup-field" id="ifaceFormRowsField">录入行数
+          <input id="ifaceFormRows" class="inp" type="number" min="1" max="20" step="1" value="1">
+        </label>
+        <label class="page-setup-check" style="align-self:end;padding-bottom:6px"><input id="ifaceFormSilent" type="checkbox"> 静默提交 <span class="sub" style="font-family:var(--mono);font-size:10px">（不显示提交中 / 成功提示，失败仍提示）</span></label>
+      </div>
+      <div id="ifaceFormPath" class="hint" style="font-family:var(--mono);font-size:10px;color:var(--ink-3);word-break:break-all">—</div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <b style="font-size:12px">将生成的字段</b><span id="ifaceFormCount" class="hint" style="margin:0">0 个</span>
+        </div>
+        <div id="ifaceFormFields" style="max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:8px;background:#FCFCF9;display:flex;flex-wrap:wrap;gap:6px"></div>
+        <div class="hint" style="margin-top:6px">字段来自写入路由的 body 参数；没有 body 时读取主表可写字段。自动跳过 id / 创建时间 / 隐藏字段，必填字段会追加 required。</div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <span id="ifaceFormStatus">—</span>
+      <span class="grow"></span>
+      <button class="btn" id="btnIfaceFormCancel" type="button">取消</button>
+      <button class="btn btn--solid" id="btnIfaceFormInsert" type="button">插入表单</button>
     </div>
   </div>
 </div>
@@ -3619,6 +3676,7 @@ var TYPES = {
   input:   { label: '输入框', glyph: 'IN', icon: 'input' },
   search:  { label: '搜索框', glyph: 'SR', icon: 'search' },
   form:    { label: '表单',   glyph: 'FM', icon: 'list' },
+  formtable:{ label: '表格表单', glyph: 'FT', icon: 'table' },
   auth:    { label: '登录注册', glyph: 'AU', icon: 'user' },
   kpi:     { label: '数据指标', glyph: 'KPI', icon: 'chart' },
   card:    { label: '内容卡片', glyph: 'CARD', icon: 'box' },
@@ -3680,7 +3738,7 @@ var TYPES = {
   js:      { label: 'JS 脚本', glyph: 'JS', icon: 'code' },
   webconsole: { label: '网页控制台', glyph: '>_', icon: 'code' }
 };
-var TYPE_ORDER = ['heading', 'text', 'button', 'link', 'badge', 'image', 'gif', 'video', 'audio', 'carousel', 'icon', 'shape', 'divider', 'spacer', 'skeleton', 'spinner', 'loadingbar', 'loadingdots', 'input', 'search', 'form', 'auth', 'kpi', 'card', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar', 'appview', 'api', 'apiimg', 'chart', 'pie', 'csv', 'table', 'markdown', 'flowchart', 'sequence', 'mindmap', 'orgchart', 'gantt', 'timeline', 'state', 'uml', 'er', 'quadrant', 'funnel', 'pyramid', 'matrix', 'fishbone', 'venn', 'swimlane', 'topology', 'architecture', 'list', 'box', 'code', 'math', 'wasm', 'plugin', 'embed', 'dialog', 'subpage', 'html', 'js', 'webconsole'];
+var TYPE_ORDER = ['heading', 'text', 'button', 'link', 'badge', 'image', 'gif', 'video', 'audio', 'carousel', 'icon', 'shape', 'divider', 'spacer', 'skeleton', 'spinner', 'loadingbar', 'loadingdots', 'input', 'search', 'form', 'formtable', 'auth', 'kpi', 'card', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar', 'appview', 'api', 'apiimg', 'chart', 'pie', 'csv', 'table', 'markdown', 'flowchart', 'sequence', 'mindmap', 'orgchart', 'gantt', 'timeline', 'state', 'uml', 'er', 'quadrant', 'funnel', 'pyramid', 'matrix', 'fishbone', 'venn', 'swimlane', 'topology', 'architecture', 'list', 'box', 'code', 'math', 'wasm', 'plugin', 'embed', 'dialog', 'subpage', 'html', 'js', 'webconsole'];
 var UI_TYPES = ['kpi', 'card', 'floatcard', 'floaticon', 'floatheader', 'funcgraph', 'alert', 'steps', 'progress', 'rating', 'avatar', 'tabs', 'accordion', 'pricing', 'breadcrumb', 'pagination', 'switch', 'textarea', 'select', 'chatbox', 'sidebar', 'appview'];
 var DIAGRAM_KEYS = ['flowchart', 'sequence', 'mindmap', 'orgchart', 'gantt', 'timeline', 'pie', 'state', 'uml', 'er', 'quadrant', 'funnel', 'pyramid', 'matrix', 'fishbone', 'venn', 'swimlane', 'topology', 'architecture'];
 var DIAGRAM_LABELS = { flowchart: '流程图', sequence: '时序图', mindmap: '脑图', orgchart: '组织架构', gantt: '甘特图', timeline: '时间线', pie: '饼图', state: '状态图', uml: 'UML 类图', er: 'ER 图', quadrant: '四象限', funnel: '漏斗图', pyramid: '金字塔', matrix: '矩阵图', fishbone: '鱼骨图', venn: '维恩图', swimlane: '泳道图', topology: '网络拓扑', architecture: '架构图' };
@@ -3725,6 +3783,7 @@ var TOOL_CATS = [
     { type: 'input', label: '输入框', hint: '单行输入', w: 300, h: 44 },
     { type: 'search', label: '搜索框', hint: '带按钮搜索', w: 420, h: 50 },
     { type: 'form', label: '表单', hint: '字段 / 提交', w: 420, h: 360 },
+    { type: 'formtable', label: '表格表单', hint: '自定义字段 / 多行录入', w: 760, h: 320 },
     { type: 'auth', label: '登录注册', hint: '账号表单', w: 420, h: 460 }
   ] },
   { id: 'ui', label: '页面组件', hint: '指标 / 卡片 / 提示 / 步骤', icon: 'box', items: [
@@ -3946,9 +4005,11 @@ function DEF(type) {
     case 'search':
       return { w: 420, h: 50, props: { placeholder: '搜索内容…', button: '搜索', action: '', name: 'q', size: 13, color: '#3A3A36', btnBg: '#0B0B0B', btnColor: '#FFFFFF', radius: 4 }, style: { background: 'transparent' } };
     case 'form':
-      return { w: 420, h: 360, props: { fields: '姓名|text|请输入姓名\n邮箱|email|you@example.com\n留言|textarea|想说的话', submit: '提交', action: '', method: 'post', submitMode: 'native', success: '提交成功', redirect: '', custom: '', size: 13, labelColor: '#5F5F5A', inputBg: '#FFFFFF', submitBg: '#0B0B0B', submitColor: '#FFFFFF', radius: 4 }, style: { background: '#FFFFFF', border: 1, borderColor: '#D4D4CE', radius: 4, padding: 18 } };
+      return { w: 420, h: 360, props: { fields: '姓名|text|请输入姓名\n邮箱|email|you@example.com\n留言|textarea|想说的话', submit: '提交', action: '', method: 'post', submitMode: 'native', success: '提交成功', redirect: '', custom: '', silent: false, size: 13, labelColor: '#5F5F5A', inputBg: '#FFFFFF', submitBg: '#0B0B0B', submitColor: '#FFFFFF', radius: 4 }, style: { background: '#FFFFFF', border: 1, borderColor: '#D4D4CE', radius: 4, padding: 18 } };
+    case 'formtable':
+      return { w: 760, h: 320, props: { fields: '姓名|text|请输入姓名|name\n邮箱|email|you@example.com|email\n金额|text|0.00|amount', rows: 1, submit: '提交', action: '', method: 'post', submitMode: 'json', success: '提交成功', redirect: '', custom: '', silent: false, size: 13, labelColor: '#5F5F5A', inputBg: '#FFFFFF', submitBg: '#0B0B0B', submitColor: '#FFFFFF', borderColor: '#D4D4CE', headBg: '#F7F7F4', stripeBg: '#FAFAF7', stripe: true, padding: 8, radius: 4 }, style: { background: '#FFFFFF', border: 1, borderColor: '#D4D4CE', radius: 4, padding: 14 } };
     case 'auth':
-      return { w: 420, h: 460, props: { mode: 'login', title: '欢迎回来', subtitle: '登录你的账号，继续编辑这个页面。', fields: '', submit: '登录', action: '', method: 'post', submitMode: 'native', success: '登录成功', redirect: '', custom: '', size: 13, labelColor: '#5F5F5A', inputBg: '#FFFFFF', submitBg: '#0B0B0B', submitColor: '#FFFFFF', radius: 4, kicker: 'yxpilStudio' }, style: { background: '#FFFFFF', border: 1, borderColor: '#D4D4CE', radius: 6, padding: 24 } };
+      return { w: 420, h: 460, props: { mode: 'login', title: '欢迎回来', subtitle: '登录你的账号，继续编辑这个页面。', fields: '', submit: '登录', action: '', method: 'post', submitMode: 'native', success: '登录成功', redirect: '', custom: '', silent: false, size: 13, labelColor: '#5F5F5A', inputBg: '#FFFFFF', submitBg: '#0B0B0B', submitColor: '#FFFFFF', radius: 4, kicker: 'yxpilStudio' }, style: { background: '#FFFFFF', border: 1, borderColor: '#D4D4CE', radius: 6, padding: 24 } };
     case 'kpi':
       return { w: 300, h: 150, props: { label: '月度活跃', value: '128,430', delta: '+12.4%', note: '较上月', up: true, valueSize: 38, accent: '#0B0B0B', muted: '#8A8A84', bg: '#FFFFFF', borderColor: '#D4D4CE', radius: 10, pad: 18, size: 13, color: '#3A3A36', font: '' }, style: { background: 'transparent', border: 0, radius: 0, padding: 0 } };
     case 'card':
@@ -7006,8 +7067,20 @@ function formFields(p) {
     var parts = line.split('|');
     var label = (parts[0] || '').trim();
     if (!label) return null;
-    return { label: label, type: (parts[1] || 'text').trim(), placeholder: (parts[2] || '').trim(), name: (parts[3] || ('f' + (i + 1))).trim() };
+    var req = String(parts[4] || '').trim().toLowerCase();
+    return { label: label, type: (parts[1] || 'text').trim(), placeholder: (parts[2] || '').trim(), name: (parts[3] || ('f' + (i + 1))).trim(), required: req === 'required' || req === '必填' || req === '1' };
   }).filter(Boolean);
+}
+function formTableRows(p, limit) {
+  var n = Math.max(1, Math.min(limit || 20, parseInt(p && p.rows, 10) || 1));
+  return n;
+}
+function formFieldTag(f, kind, style, attrs) {
+  var type = f.type === 'textarea' ? 'textarea' : f.type;
+  var tag = type === 'textarea' ? 'textarea' : 'input';
+  var a = ' name="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.required ? ' required' : '') + (attrs || '');
+  if (tag === 'input') a = ' type="' + esc(type) + '"' + a;
+  return '<' + tag + a + ' style="' + style + '">' + (tag === 'textarea' ? '</textarea>' : '');
 }
 var FORM_SUBMIT_MODES = [
   ['native', '标准提交（GET / POST）'],
@@ -7048,11 +7121,40 @@ function authSubmitOf(p) {
 }
 function formSubmitAttrs(p, authMode) {
   var m = submitModeOf(p);
-  var s = ' data-ps-submit-mode="' + esc(m) + '" data-ps-success="' + esc(p && p.success || '提交成功') + '" data-ps-redirect="' + esc(p && p.redirect || '') + '"';
+  var s = ' data-ps-submit-mode="' + esc(m) + '" data-ps-success="' + esc(p && p.success || '提交成功') + '" data-ps-redirect="' + esc(p && p.redirect || '') + '" data-ps-method="' + esc(String(p && p.method || 'post').toUpperCase()) + '"';
+  if (p && p.silent) s += ' data-ps-silent="1"';
   if (m === 'custom') s += ' data-ps-custom="' + esc(p && p.custom || '') + '"';
   if (authMode) s += ' data-ps-auth-mode="' + esc(authModeOf(p)) + '"';
   return s;
 }
+function formTableInnerMarkup(p, compact) {
+  p = p || {};
+  var ftr = (p.radius == null ? 4 : p.radius), ftp = (parseInt(p.padding, 10) || 8);
+  var ftFields = formFields(p), ftRowCount = formTableRows(p, 20);
+  var ftCellStyle = 'width:100%;box-sizing:border-box;border:1px solid ' + esc(p.borderColor || '#D4D4CE') + ';border-radius:' + ftr + 'px;padding:0 8px;background:' + esc(p.inputBg || '#FFFFFF') + ';color:#3A3A36;font-size:' + (p.size || 12) + 'px;outline:0;';
+  var ftHead = '<tr><th style="width:36px;text-align:center;font:600 10px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#5F5F5A;background:' + esc(p.headBg || '#F7F7F4') + ';border-bottom:1px solid ' + esc(p.borderColor || '#D4D4CE') + ';padding:' + ftp + 'px 6px">#</th>';
+  ftFields.forEach(function (f) {
+    ftHead += '<th style="text-align:left;font:600 10px/1.3 -apple-system,Segoe UI,sans-serif;color:#5F5F5A;background:' + esc(p.headBg || '#F7F7F4') + ';border-bottom:1px solid ' + esc(p.borderColor || '#D4D4CE') + ';padding:' + ftp + 'px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(f.label) + (f.required ? ' <span style="color:#B84A33">*</span>' : '') + '</th>';
+  });
+  ftHead += '</tr>';
+  var ftBody = '';
+  for (var ftri = 0; ftri < ftRowCount; ftri++) {
+    var ftRowBg = (p.stripe && ftri % 2 === 1) ? (' style="background:' + esc(p.stripeBg || '#FAFAF7') + '"') : '';
+    ftBody += '<tr' + ftRowBg + '><td style="text-align:center;color:#9A9A93;font:10px/1.2 ui-monospace,monospace;padding:' + ftp + 'px 6px;border-bottom:1px solid #EDEDE7">' + (ftri + 1) + '</td>';
+    ftFields.forEach(function (f) {
+      var ftype2 = f.type === 'textarea' ? 'textarea' : f.type;
+      var fs2 = ftCellStyle + (ftype2 === 'textarea' ? 'height:48px;padding:6px 8px;resize:vertical;' : 'height:30px;') + (ftype2 === 'checkbox' ? 'width:auto;height:16px;' : '');
+      ftBody += '<td style="padding:' + ftp + 'px;border-bottom:1px solid #EDEDE7;vertical-align:middle">' + formFieldTag(f, 'formtable', fs2) + '</td>';
+    });
+    ftBody += '</tr>';
+  }
+  return '<div style="display:flex;flex-direction:column;gap:8px;height:100%;box-sizing:border-box;overflow:auto' + (compact ? ';font-size:11px' : '') + '">' +
+    '<div style="overflow:auto;border:1px solid ' + esc(p.borderColor || '#D4D4CE') + ';border-radius:' + ftr + 'px;background:' + esc(p.inputBg || '#FFFFFF') + '">' +
+    '<table style="width:100%;border-collapse:collapse;table-layout:fixed">' + ftHead + ftBody + '</table></div>' +
+    '<button type="submit" style="align-self:flex-start;border:0;border-radius:' + ftr + 'px;corner-shape:squircle;padding:0 18px;height:34px;background:' + esc(p.submitBg || '#0B0B0B') + ';color:' + esc(p.submitColor || '#FFFFFF') + ';font-size:' + (p.size || 13) + 'px;cursor:pointer">' + esc(p.submit || '提交') + '</button>' +
+    '<div data-ps-form-msg role="status" aria-live="polite" style="min-height:14px;font:10px/1.4 -apple-system,Segoe UI,sans-serif;color:#5F5F5A"></div></div>';
+}
+
 function authAutocomplete(f, mode) {
   if (f.type === 'password') return mode === 'register' || f.name === 'password2' ? 'new-password' : 'current-password';
   if (f.type === 'email') return 'username';
@@ -8843,7 +8945,7 @@ function buildNode(n) {
     body.className = 'ps-fill';
     fillBody(body, n);
     el.appendChild(body);
-    if (n.type === 'image' || n.type === 'gif' || n.type === 'video' || n.type === 'audio' || n.type === 'html' || n.type === 'carousel' || n.type === 'search' || n.type === 'form' || n.type === 'skeleton' || n.type === 'spinner' || n.type === 'loadingbar' || n.type === 'loadingdots' || n.type === 'csv' || n.type === 'table' || n.type === 'markdown') el.style.overflow = 'hidden';
+    if (n.type === 'image' || n.type === 'gif' || n.type === 'video' || n.type === 'audio' || n.type === 'html' || n.type === 'carousel' || n.type === 'search' || n.type === 'form' || n.type === 'formtable' || n.type === 'skeleton' || n.type === 'spinner' || n.type === 'loadingbar' || n.type === 'loadingdots' || n.type === 'csv' || n.type === 'table' || n.type === 'markdown') el.style.overflow = 'hidden';
     if (n.type === 'spacer') el.style.outline = '1px dashed rgba(11,11,11,.13)';
   }
   return el;
@@ -9888,6 +9990,43 @@ function fillBody(body, n) {
     body.appendChild(fb);
     return;
   }
+  if (t === 'formtable') {
+    body.className = 'ps-fill ps-ft-body';
+    var ftf = formFields(p);
+    var ftRows = formTableRows(p, 12);
+    var ftWrap = document.createElement('div'); ftWrap.className = 'ps-ft-wrap';
+    ftWrap.style.borderColor = p.borderColor || '#D4D4CE'; psSetRadius(ftWrap, p.radius == null ? 4 : p.radius);
+    var ftTable = document.createElement('table'); ftTable.className = 'ps-ft-table';
+    var ftHead = document.createElement('tr');
+    var ftNo = document.createElement('th'); ftNo.textContent = '#'; ftNo.style.width = '34px'; ftNo.style.background = p.headBg || '#F7F7F4';
+    ftHead.appendChild(ftNo);
+    ftf.forEach(function (f) {
+      var th = document.createElement('th'); th.textContent = f.label; th.style.background = p.headBg || '#F7F7F4';
+      th.style.padding = (parseInt(p.padding, 10) || 8) + 'px';
+      ftHead.appendChild(th);
+    });
+    ftTable.appendChild(ftHead);
+    for (var fti = 0; fti < ftRows; fti++) {
+      var tr = document.createElement('tr');
+      if (p.stripe && fti % 2 === 1) tr.style.background = p.stripeBg || '#FAFAF7';
+      var tdNo = document.createElement('td'); tdNo.textContent = String(fti + 1); tdNo.style.color = '#9A9A93'; tdNo.style.fontSize = '9px'; tdNo.style.textAlign = 'center'; tr.appendChild(tdNo);
+      ftf.forEach(function (f) {
+        var td = document.createElement('td'); td.style.padding = (parseInt(p.padding, 10) || 8) + 'px';
+        var cell = document.createElement('div'); cell.className = 'ps-ft-cell';
+        cell.textContent = f.type === 'checkbox' ? '☐' : (f.placeholder || '');
+        cell.style.background = p.inputBg || '#FFFFFF'; cell.style.fontSize = (p.size || 13) + 'px'; cell.style.height = f.type === 'textarea' ? '38px' : '26px';
+        td.appendChild(cell); tr.appendChild(td);
+      });
+      ftTable.appendChild(tr);
+    }
+    ftWrap.appendChild(ftTable); body.appendChild(ftWrap);
+    var ftb = document.createElement('div'); ftb.className = 'ps-form-fake';
+    ftb.textContent = p.submit || '提交';
+    ftb.style.height = '32px'; ftb.style.justifyContent = 'center'; ftb.style.background = p.submitBg || '#0B0B0B'; ftb.style.color = p.submitColor || '#FFFFFF';
+    psSetRadius(ftb, p.radius == null ? 4 : p.radius); ftb.style.fontSize = (p.size || 13) + 'px'; ftb.style.alignSelf = 'flex-start'; ftb.style.padding = '0 18px';
+    body.appendChild(ftb);
+    return;
+  }
   if (t === 'video' || t === 'audio') {
     body.className = 'ps-fill';
     body.innerHTML = mediaBlockMarkup(p, t, true);
@@ -10625,21 +10764,49 @@ function fieldsFor(n) {
     content.push({ p: 'props.radius', l: '圆角', k: 'num', min: 0, max: 999, step: 1 });
   }
   if (t === 'form') {
-    content.push({ p: 'props.fields', l: '字段（标签|类型|占位）', k: 'textarea' });
+    content.push({ p: 'props.fields', l: '字段（标签|类型|占位|字段名|可选 required）', k: 'textarea' });
     content.push({ p: 'props.submit', l: '提交按钮', k: 'text' });
     content.push({ p: 'props.action', l: '提交地址', k: 'text' });
     content.push({ p: 'props.submitMode', l: '提交模式', k: 'sel', o: FORM_SUBMIT_MODES, rerender: true });
-    if (submitModeOf(p) === 'native') content.push({ p: 'props.method', l: 'HTTP 方法', k: 'sel', o: [['post', 'POST'], ['get', 'GET']] });
-    if (submitModeOf(p) !== 'native') {
+    content.push({ p: 'props.silent', l: '静默提交（不显示提交中 / 成功提示）', k: 'switch' });
+    if (submitModeOf(p) === 'native' && !p.silent) content.push({ p: 'props.method', l: 'HTTP 方法', k: 'sel', o: [['post', 'POST'], ['get', 'GET']] });
+    if (submitModeOf(p) !== 'native' || p.silent) {
       content.push({ p: 'props.success', l: '成功提示', k: 'text' });
       content.push({ p: 'props.redirect', l: '成功后跳转地址（可留空）', k: 'text' });
       if (submitModeOf(p) === 'custom') content.push({ p: 'props.custom', l: '自定义处理器（函数或语句，可用 data / form / event）', k: 'textarea' });
     }
+    content.push({ l: '字段格式：标签|类型|占位|字段名，第五段写 required 即必填；静默提交仍会在失败时显示错误。', k: 'hint' });
     content.push({ p: 'props.size', l: '字号', k: 'num', min: 8, max: 40, step: 1 });
     content.push({ p: 'props.labelColor', l: '标签色', k: 'color' });
     content.push({ p: 'props.inputBg', l: '输入框底色', k: 'color' });
     content.push({ p: 'props.submitBg', l: '按钮底色', k: 'color' });
     content.push({ p: 'props.submitColor', l: '按钮文字色', k: 'color' });
+    content.push({ p: 'props.radius', l: '圆角', k: 'num', min: 0, max: 999, step: 1 });
+  }
+  if (t === 'formtable') {
+    content.push({ p: 'props.fields', l: '表格字段（标签|类型|占位|字段名|可选 required）', k: 'textarea' });
+    content.push({ p: 'props.rows', l: '录入行数', k: 'num', min: 1, max: 20, step: 1 });
+    content.push({ p: 'props.submit', l: '提交按钮名字', k: 'text' });
+    content.push({ p: 'props.action', l: '提交地址', k: 'text' });
+    content.push({ p: 'props.submitMode', l: '提交模式', k: 'sel', o: FORM_SUBMIT_MODES, rerender: true });
+    content.push({ p: 'props.silent', l: '静默提交（不显示提交中 / 成功提示）', k: 'switch' });
+    if (submitModeOf(p) === 'native' && !p.silent) content.push({ p: 'props.method', l: 'HTTP 方法', k: 'sel', o: [['post', 'POST'], ['get', 'GET']] });
+    if (submitModeOf(p) !== 'native' || p.silent) {
+      content.push({ p: 'props.success', l: '成功提示', k: 'text' });
+      content.push({ p: 'props.redirect', l: '成功后跳转地址（可留空）', k: 'text' });
+      if (submitModeOf(p) === 'custom') content.push({ p: 'props.custom', l: '自定义处理器（函数或语句，可用 data / form / event）', k: 'textarea' });
+    }
+    content.push({ l: '每行是一条记录，同一字段在每行的 name 相同；AJAX JSON 模式下会提交为重复键数组。', k: 'hint' });
+    content.push({ p: 'props.size', l: '字号', k: 'num', min: 8, max: 40, step: 1 });
+    content.push({ p: 'props.labelColor', l: '标签色', k: 'color' });
+    content.push({ p: 'props.inputBg', l: '输入框底色', k: 'color' });
+    content.push({ p: 'props.headBg', l: '表头底色', k: 'color' });
+    content.push({ p: 'props.stripeBg', l: '斑马纹底色', k: 'color' });
+    content.push({ p: 'props.stripe', l: '斑马纹', k: 'switch' });
+    content.push({ p: 'props.submitBg', l: '按钮底色', k: 'color' });
+    content.push({ p: 'props.submitColor', l: '按钮文字色', k: 'color' });
+    content.push({ p: 'props.borderColor', l: '边框色', k: 'color' });
+    content.push({ p: 'props.padding', l: '单元格内边距', k: 'num', min: 2, max: 24, step: 1 });
     content.push({ p: 'props.radius', l: '圆角', k: 'num', min: 0, max: 999, step: 1 });
   }
   if (t === 'auth') {
@@ -10651,8 +10818,9 @@ function fieldsFor(n) {
     content.push({ p: 'props.submit', l: '提交按钮', k: 'text' });
     content.push({ p: 'props.action', l: '提交地址', k: 'text' });
     content.push({ p: 'props.submitMode', l: '提交模式', k: 'sel', o: FORM_SUBMIT_MODES, rerender: true });
-    if (submitModeOf(p) === 'native') content.push({ p: 'props.method', l: 'HTTP 方法', k: 'sel', o: [['post', 'POST'], ['get', 'GET']] });
-    if (submitModeOf(p) !== 'native') {
+    content.push({ p: 'props.silent', l: '静默提交（不显示提交中 / 成功提示）', k: 'switch' });
+    if (submitModeOf(p) === 'native' && !p.silent) content.push({ p: 'props.method', l: 'HTTP 方法', k: 'sel', o: [['post', 'POST'], ['get', 'GET']] });
+    if (submitModeOf(p) !== 'native' || p.silent) {
       content.push({ p: 'props.success', l: '成功提示', k: 'text' });
       content.push({ p: 'props.redirect', l: '成功后跳转地址（可留空）', k: 'text' });
       if (submitModeOf(p) === 'custom') content.push({ p: 'props.custom', l: '自定义处理器（函数或语句，可用 data / form / event）', k: 'textarea' });
@@ -11566,6 +11734,187 @@ function ensureAppSkeleton(app, n, iface, ifaces) {
   app.counts = app.counts || {};
   app.counts.interfaces = ifaces.length;
   return app;
+}
+function ifaceWriteRoutes(iface) {
+  return ((iface && iface.routes) || []).filter(function (r) {
+    return /^POST|^PUT|^PATCH/i.test(String(r && r.method || ''));
+  });
+}
+function ifaceFormAction(iface, route) {
+  var base = String(iface && iface.basePath || '').replace(/\/+$/, '');
+  var p = String(route && route.path || '');
+  if (!p) return '';
+  if (p.charAt(0) !== '/') p = '/' + p;
+  return '/api' + base + p;
+}
+function ifaceFormInputType(f) {
+  f = f || {};
+  var db = String(f.type || '').toLowerCase();
+  var name = String(f.name || '').toLowerCase();
+  if (/bool|^bit$/.test(db)) return 'checkbox';
+  if (/password|passwd|pwd/.test(name)) return 'password';
+  if (/email|mail/.test(name)) return 'email';
+  if (/phone|mobile|tel/.test(name)) return 'tel';
+  if (/url|link|website|href/.test(name) || /^url/.test(db)) return 'url';
+  if (/^date$/.test(db)) return 'date';
+  if (/datetime|timestamp/.test(db)) return 'datetime-local';
+  if (/^time$/.test(db)) return 'time';
+  if (/^(tinyint|smallint|mediumint|int|integer|bigint|serial)$/.test(db)) return 'number';
+  if (/^(text|longtext|mediumtext|json|jsonb|blob|clob)$/.test(db)) return 'textarea';
+  if (/^(file|image|audio|video)/.test(db)) return 'text';
+  if (/varchar|char/.test(db) && Number(f.length) >= 255) return 'textarea';
+  return 'text';
+}
+function ifaceFormFieldList(iface, route) {
+  var cols = (iface && iface.fields) || [];
+  var byName = {};
+  cols.forEach(function (c) { if (c && c.name) byName[String(c.name).toLowerCase()] = c; });
+  var systemNames = { id: 1, created_at: 1, updated_at: 1, deleted_at: 1, create_time: 1, update_time: 1 };
+  var names = [], seen = {};
+  var body = (route && Array.isArray(route.body)) ? route.body : [];
+  function pushName(raw) {
+    var name = String((raw && raw.name) || raw || '').trim();
+    if (!name || seen[name.toLowerCase()] || systemNames[name.toLowerCase()]) return;
+    seen[name.toLowerCase()] = 1; names.push(name);
+  }
+  if (body.length) {
+    body.forEach(pushName);
+  } else {
+    cols.forEach(function (f) {
+      if (!f || !f.name || f.pk || f.autoIncrement || f.hidden || f.writable === false) return;
+      if (systemNames[String(f.name).toLowerCase()]) return;
+      pushName(f.name);
+    });
+  }
+  return names.map(function (name) {
+    var col = byName[name.toLowerCase()] || { name: name, type: 'varchar', nullable: true };
+    var label = String(col.comment || '').replace(/\s+/g, ' ').trim() || name;
+    if (label.length > 40) label = label.slice(0, 40);
+    var type = ifaceFormInputType(col);
+    var placeholder;
+    if (type === 'email') placeholder = 'you@example.com';
+    else if (type === 'tel') placeholder = '请输入手机号';
+    else if (type === 'date') placeholder = '选择日期';
+    else if (type === 'datetime-local') placeholder = '选择日期时间';
+    else if (type === 'checkbox') placeholder = '勾选' + label;
+    else if (type === 'number') placeholder = '0';
+    else if (type === 'textarea') placeholder = '请填写' + label;
+    else placeholder = '请输入' + label;
+    var required = !col.nullable && col.default == null && !col.autoIncrement && !col.pk;
+    return { name: name, label: label, type: type, placeholder: placeholder, required: !!required, dbType: col.type || '', col: col };
+  });
+}
+function ifaceFormFieldsText(fields) {
+  return (fields || []).map(function (f) {
+    return [String(f.label || f.name).replace(/\|/g, '/').replace(/\n/g, ' '), f.type || 'text', String(f.placeholder || '').replace(/\|/g, '/').replace(/\n/g, ' '), f.name, f.required ? 'required' : ''].join('|').replace(/\|+$/, '');
+  }).join('\n');
+}
+var ifaceFormState = { ifaces: [], iface: null, route: null, fields: [] };
+function ifaceFormRefresh(preserveRoute) {
+  var ifaceSel = $('ifaceFormIface'), routeSel = $('ifaceFormRoute');
+  var ifaces = ifaceFormState.ifaces;
+  var prevRoute = preserveRoute ? ifaceFormState.route : null;
+  var iface = ifaces.filter(function (i) { return String(i.name) === ifaceSel.value; })[0] || ifaces[0] || null;
+  ifaceFormState.iface = iface;
+  routeSel.innerHTML = '';
+  if (!iface) {
+    var empty = document.createElement('option'); empty.value = ''; empty.textContent = '没有可用接口'; routeSel.appendChild(empty);
+    ifaceFormState.route = null; ifaceFormState.fields = [];
+  } else {
+    var routes = ifaceWriteRoutes(iface);
+    if (!routes.length) {
+      var empty2 = document.createElement('option'); empty2.value = ''; empty2.textContent = '该接口没有 POST / PUT / PATCH 路由'; routeSel.appendChild(empty2);
+      ifaceFormState.route = null;
+    } else {
+      routes.forEach(function (r, idx) {
+        var o = document.createElement('option');
+        o.value = String(idx);
+        var tag = String(r.method || '').toUpperCase();
+        if (String(r.key || '') === 'create') tag += ' 新建';
+        o.textContent = tag + ' ' + String(r.path || '') + (r.name ? ' · ' + r.name : '');
+        routeSel.appendChild(o);
+      });
+      var pick = prevRoute ? routes.findIndex(function (r) { return String(r.method || '').toUpperCase() === String(prevRoute.method || '').toUpperCase() && String(r.path || '') === String(prevRoute.path || ''); }) : -1;
+      if (pick < 0) pick = routes.findIndex(function (r) { return String(r.key || '') === 'create'; });
+      if (pick < 0) pick = routes.findIndex(function (r) { return String(r.method || '').toUpperCase() === 'POST' && String(r.path || '').indexOf(':') < 0; });
+      if (pick < 0) pick = 0;
+      routeSel.value = String(pick);
+      ifaceFormState.route = routes[pick];
+    }
+  }
+  var fields = ifaceFormState.route ? ifaceFormFieldList(iface, ifaceFormState.route) : [];
+  ifaceFormState.fields = fields;
+  var path = ifaceFormState.route ? ifaceFormAction(iface, ifaceFormState.route) : '';
+  $('ifaceFormPath').textContent = path ? (String(ifaceFormState.route.method || 'POST').toUpperCase() + '  ' + path + (String(path).indexOf(':') >= 0 ? '   ← 路径含 :id 等参数，插入后请在检查器替换' : '')) : '—';
+  $('ifaceFormCount').textContent = fields.length + ' 个';
+  var box = $('ifaceFormFields'); box.innerHTML = '';
+  fields.forEach(function (f) {
+    var chip = document.createElement('span');
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border:1px solid var(--line);border-radius:3px;background:#fff;font:10px/1.4 var(--mono);color:var(--ink-2)';
+    chip.textContent = f.label + ' · ' + f.name + ' · ' + f.type + (f.required ? ' · 必填' : '');
+    box.appendChild(chip);
+  });
+  if (!fields.length) { box.innerHTML = '<span class="hint" style="margin:0">该路由没有可生成字段，可直接在检查器手动填写字段。</span>'; }
+  var rowField = $('ifaceFormRowsField');
+  if (rowField) rowField.style.display = $('ifaceFormKind').value === 'formtable' ? '' : 'none';
+  var submit = $('ifaceFormSubmit');
+  if (submit && !submit.value.trim()) submit.value = '提交';
+  $('ifaceFormStatus').textContent = iface ? ('接口 ' + iface.name + ' · ' + fields.length + ' 字段') : '没有可用接口';
+  $('btnIfaceFormInsert').disabled = !iface || !ifaceFormState.route || !fields.length;
+}
+function openIfaceForm() {
+  if (!S.proj) { toast('先创建或打开一个工程'); return; }
+  var ifaces = projectIfaces();
+  if (!ifaces.length) { toast('当前工程还没有后端接口，请先在工作台创建接口'); return; }
+  closeShortcuts(); closeExport(); closePreviewPage(); closePageCode(); closeProjectModal(); closeGlobalSearch(true); closePageSetup();
+  ifaceFormState.ifaces = ifaces;
+  var sel = $('ifaceFormIface'); sel.innerHTML = '';
+  ifaces.forEach(function (i) {
+    var o = document.createElement('option');
+    o.value = String(i.name);
+    o.textContent = String(i.name) + (i.basePath ? (' · ' + i.basePath) : '');
+    sel.appendChild(o);
+  });
+  sel.value = String(ifaces[0].name);
+  $('ifaceFormKind').value = 'form';
+  $('ifaceFormSubmit').value = '提交';
+  $('ifaceFormRows').value = '1';
+  $('ifaceFormSilent').checked = false;
+  ifaceFormRefresh();
+  $('ifaceFormModal').classList.add('is-open');
+}
+function closeIfaceForm() { var m = $('ifaceFormModal'); if (m) m.classList.remove('is-open'); }
+function insertIfaceForm() {
+  if (!ifaceFormState.iface || !ifaceFormState.route) { toast('请选择接口与提交路由'); return; }
+  if (!ifaceFormState.fields.length) { toast('该路由没有可写字段'); return; }
+  var kind = $('ifaceFormKind').value === 'formtable' ? 'formtable' : 'form';
+  var submit = String($('ifaceFormSubmit').value || '').trim() || '提交';
+  var silent = !!$('ifaceFormSilent').checked;
+  var rows = Math.max(1, Math.min(20, parseInt($('ifaceFormRows').value, 10) || 1));
+  var fieldsText = ifaceFormFieldsText(ifaceFormState.fields);
+  var def = DEF(kind);
+  var w = kind === 'formtable' ? Math.max(520, Math.min(760, S.proj.page.w - 32)) : Math.max(360, Math.min(420, S.proj.page.w - 32));
+  var h = kind === 'formtable' ? Math.max(180, 110 + rows * 50) : Math.max(180, 76 + ifaceFormState.fields.length * 52);
+  h = Math.min(h, S.proj.page.h - 24);
+  var x = Math.round(Math.max(16, (S.proj.page.w - w) / 2));
+  var y = Math.round(Math.max(16, Math.min(S.proj.page.h - h - 16, 96 + (countAll() % 8) * 24)));
+  var props = Object.assign({}, def.props, {
+    fields: fieldsText,
+    rows: rows,
+    submit: submit,
+    action: ifaceFormAction(ifaceFormState.iface, ifaceFormState.route),
+    method: String(ifaceFormState.route.method || 'POST').toLowerCase(),
+    submitMode: 'json',
+    silent: silent,
+    success: '提交成功',
+    redirect: ''
+  });
+  var node = N(kind, x, y, w, h, props, {});
+  node.name = '接口表单 · ' + ifaceFormState.iface.name;
+  S.proj.elements.push(node);
+  renderCanvas(); select(node.id); commit(); scheduleSave();
+  closeIfaceForm();
+  toast('已插入「' + (kind === 'formtable' ? '表格录入' : '表单') + '」· ' + ifaceFormState.fields.length + ' 个字段');
 }
 function buildIfaceField(n) {
   var wrap = document.createElement('div');
@@ -12834,7 +13183,7 @@ function openCanvasContext(e) {
         ]},
         { label: '表单控件', icon: 'input', sub: [
           ctxInsertItem('switch', x, y), ctxInsertItem('textarea', x, y), ctxInsertItem('select', x, y),
-          ctxInsertItem('input', x, y), ctxInsertItem('search', x, y), ctxInsertItem('form', x, y), ctxInsertItem('auth', x, y)
+          ctxInsertItem('input', x, y), ctxInsertItem('search', x, y), ctxInsertItem('form', x, y), ctxInsertItem('formtable', x, y), ctxInsertItem('auth', x, y)
         ]},
         { label: '媒体', icon: 'image', sub: [
           ctxInsertItem('image', x, y), ctxInsertItem('gif', x, y), ctxInsertItem('video', x, y),
@@ -12857,7 +13206,7 @@ function openCanvasContext(e) {
           ctxInsertItem('uml', x, y), ctxInsertItem('er', x, y)
         ]},
         { label: '交互组件', icon: 'layers', sub: [
-          ctxInsertItem('form', x, y), ctxInsertItem('auth', x, y), ctxInsertItem('input', x, y),
+          ctxInsertItem('form', x, y), ctxInsertItem('formtable', x, y), ctxInsertItem('auth', x, y), ctxInsertItem('input', x, y),
           ctxInsertItem('search', x, y), ctxInsertItem('embed', x, y), ctxInsertItem('dialog', x, y), ctxInsertItem('subpage', x, y)
         ]},
         { label: '加载与占位', icon: 'refresh', sub: [
@@ -13489,7 +13838,7 @@ function toolThumbMarkup(item, compact) {
   if (type === 'input' || type === 'search') {
     return '<span class="pv-field" style="width:82%;height:16px;border:1px solid #C9C9C1;background:#fff;border-radius:3px"></span>';
   }
-  if (type === 'form' || type === 'auth') return '<span class="pv-form"><i></i><i></i><i></i></span>';
+  if (type === 'form' || type === 'formtable' || type === 'auth') return '<span class="pv-form"><i></i><i></i><i></i></span>';
   if (type === 'image' || type === 'gif' || type === 'video' || type === 'audio' || type === 'carousel') {
     return '<span class="pv-media">' + (type === 'video' ? '▶' : type === 'audio' ? '♪' : '') + '</span>';
   }
@@ -14858,8 +15207,8 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
-  if ($('shortcutsModal').classList.contains('is-open') || $('exportModal').classList.contains('is-open') || $('previewModal').classList.contains('is-open') || $('pageCodeModal').classList.contains('is-open') || $('projectModal').classList.contains('is-open') || $('pageSetupModal').classList.contains('is-open') || $('assetImportModal').classList.contains('is-open') || $('globalSearchModal').classList.contains('is-open') || $('shareModal').classList.contains('is-open')) {
-    if (e.key === 'Escape') { closeShortcuts(); closeExport(); closePreviewPage(); closePageCode(); closeProjectModal(); closePageSetup(); closeAssetImport(); closeGlobalSearch(true); closeShare(); }
+  if ($('shortcutsModal').classList.contains('is-open') || $('exportModal').classList.contains('is-open') || $('previewModal').classList.contains('is-open') || $('pageCodeModal').classList.contains('is-open') || $('projectModal').classList.contains('is-open') || $('pageSetupModal').classList.contains('is-open') || $('assetImportModal').classList.contains('is-open') || $('globalSearchModal').classList.contains('is-open') || $('shareModal').classList.contains('is-open') || $('ifaceFormModal').classList.contains('is-open')) {
+    if (e.key === 'Escape') { closeShortcuts(); closeExport(); closePreviewPage(); closePageCode(); closeProjectModal(); closePageSetup(); closeAssetImport(); closeGlobalSearch(true); closeShare(); closeIfaceForm(); }
     return;
   }
   if (e.key === '?') { e.preventDefault(); openShortcuts(); return; }
@@ -15560,12 +15909,14 @@ function nodeParts(n, fw) {
         var fstyle = 'width:100%;border:1px solid #D4D4CE;border-radius:' + fr + 'px;corner-shape:squircle;padding:0 10px;background:' + esc(p.inputBg || '#FFFFFF') + ';color:#3A3A36;font-size:' + (p.size || 13) + 'px;outline:0;';
         if (ftype === 'textarea') fstyle += 'height:62px;padding:8px 10px;resize:vertical;';
         else fstyle += 'height:32px;';
-        fInner += '<label style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:' + esc(p.labelColor || '#5F5F5A') + '"><span>' + esc(f.label) + '</span>' +
-          (ftype === 'textarea' ? '<textarea name="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '" style="' + fstyle + '"></textarea>' : '<input type="' + esc(ftype) + '" name="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '" style="' + fstyle + '">') + '</label>';
+        fInner += '<label style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:' + esc(p.labelColor || '#5F5F5A') + '"><span>' + esc(f.label) + (f.required ? ' <b style="color:#B84A33;font-weight:600">*</b>' : '') + '</span>' +
+          (ftype === 'textarea' ? '<textarea name="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.required ? ' required' : '') + ' style="' + fstyle + '"></textarea>' : '<input type="' + esc(ftype) + '" name="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.required ? ' required' : '') + ' style="' + fstyle + '">') + '</label>';
       });
       fInner += '<button type="submit" style="border:0;border-radius:' + fr + 'px;corner-shape:squircle;padding:0 18px;height:34px;background:' + esc(p.submitBg || '#0B0B0B') + ';color:' + esc(p.submitColor || '#FFFFFF') + ';font-size:' + (p.size || 13) + 'px;cursor:pointer">' + esc(p.submit || '提交') + '</button>' +
         '<div data-ps-form-msg role="status" aria-live="polite" style="min-height:14px;font:10px/1.4 -apple-system,Segoe UI,sans-serif;color:#5F5F5A"></div></div>';
       return { tag: 'form', attrs: ' action="' + esc(p.action || '#') + '" method="' + (p.method === 'get' ? 'get' : 'post') + '"' + formSubmitAttrs(p), inner: fInner };
+    case 'formtable':
+      return { tag: 'form', attrs: ' action="' + esc(p.action || '#') + '" method="' + (p.method === 'get' ? 'get' : 'post') + '"' + formSubmitAttrs(p), inner: formTableInnerMarkup(p) };
     case 'shape': return { tag: 'div', inner: shapeSvg(p, null, n.w, n.h) };
     case 'icon':
       if (p.svg) return { tag: 'div', inner: svgTag(p.svg, n.w, n.h) };
@@ -15692,6 +16043,14 @@ function renderNode(n, fw, ind) {
   var pad = '  '.repeat(ind);
   if (n.type === 'shape' && (fw === 'react' || fw === 'vue')) {
     return pad + '<div' + clsAttr(fw, n) + nodeMarkerFor(n, fw) + ' data-ps-node="shape" data-ps-kind="' + esc(shapeKindOf(n)) + '"' + (shapeKindOf(n) === 'line' ? ' data-ps-line="' + shapeAxisOf(n) + '"' : '') + '>' + shapeSvg(n.props || {}, fw, n.w, n.h) + '</div>';
+  }
+  if (n.type === 'formtable' && (fw === 'react' || fw === 'vue')) {
+    var ftp2 = n.props || {};
+    var ftHtml = '<form action="' + esc(ftp2.action || '#') + '" method="' + (ftp2.method === 'get' ? 'get' : 'post') + '"' + formSubmitAttrs(ftp2) + '>' + formTableInnerMarkup(ftp2) + '</form>';
+    if (fw === 'react') {
+      return pad + '<div' + clsAttr(fw, n) + nodeMarkerFor(n, fw) + ' data-ps-node="formtable" dangerouslySetInnerHTML={{__html: ' + JSON.stringify(ftHtml) + '}}></div>';
+    }
+    return pad + '<div' + clsAttr(fw, n) + nodeMarkerFor(n, fw) + ' data-ps-node="formtable" v-html="' + ftHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></div>';
   }
   if ((n.type === 'code' || n.type === 'math' || n.type === 'wasm' || n.type === 'plugin' || n.type === 'table' || n.type === 'markdown' || isDiagramType(n.type) || UI_TYPES.indexOf(n.type) >= 0) && (fw === 'react' || fw === 'vue')) {
     var codeHtml = n.type === 'code' ? codeBlockMarkup(n.props || {}) : n.type === 'math' ? mathBlockMarkup(n.props || {}) : n.type === 'wasm' ? wasmBlockMarkup(n.props || {}) : n.type === 'table' ? tableBlockMarkup(n.props || {}, false) : n.type === 'markdown' ? markdownBlockMarkup(n.props || {}, false) : isDiagramType(n.type) ? psDiagramMarkup(n.type, n.props || {}, false, false) : UI_TYPES.indexOf(n.type) >= 0 ? uiBlockMarkup(n.type, n.props || {}, false) : pluginBlockMarkup(n.props || {});
@@ -16536,22 +16895,24 @@ function buildExport(fw, startPageId) {
     '      if(form.__psFormReady) return;\n' +
     '      form.__psFormReady = true;\n' +
     '      var mode = form.getAttribute(\'data-ps-submit-mode\') || \'native\';\n' +
+    '      var silent = form.getAttribute(\'data-ps-silent\') === \'1\';\n' +
     '      form.addEventListener(\'submit\', function(ev){\n' +
     '        var authMode = form.getAttribute(\'data-ps-auth-mode\');\n' +
     '        if(authMode === \'register\'){\n' +
     '          var p1 = form.querySelector(\'[name="password"]\'), p2 = form.querySelector(\'[name="password2"]\');\n' +
     '          if(p1 && p2 && p1.value !== p2.value){ ev.preventDefault(); psFormMessage(form, \'两次密码不一致\', \'err\'); return; }\n' +
     '        }\n' +
-    '        if(mode === \'native\') return;\n' +
+    '        if(mode === \'native\' && !silent) return;\n' +
     '        ev.preventDefault();\n' +
     '        var action = form.getAttribute(\'action\') || \'\';\n' +
     '        if(!action || action === \'#\'){ psFormMessage(form, \'请先在检查器填写提交地址\', \'err\'); return; }\n' +
+    '        var method = String(form.getAttribute(\'data-ps-method\') || form.getAttribute(\'method\') || \'post\').toUpperCase();\n' +
     '        var data = {}; var fd = new FormData(form);\n' +
     '        fd.forEach(function(v,k){ if(!(k in data)) data[k]=v; else if(!Array.isArray(data[k])) data[k]=[data[k],v]; else data[k].push(v); });\n' +
     '        var success = form.getAttribute(\'data-ps-success\') || \'提交成功\';\n' +
     '        var redirect = form.getAttribute(\'data-ps-redirect\') || \'\';\n' +
-    '        var done = function(){ psFormMessage(form, success, \'ok\'); if(redirect){ setTimeout(function(){ location.href = redirect; }, 350); } };\n' +
-    '        psFormMessage(form, \'提交中…\', \'\');\n' +
+    '        var done = function(){ if(!silent) psFormMessage(form, success, \'ok\'); if(redirect){ setTimeout(function(){ location.href = redirect; }, 350); } };\n' +
+    '        if(!silent) psFormMessage(form, \'提交中…\', \'\');\n' +
     '        if(mode === \'custom\'){\n' +
     '          var code = form.getAttribute(\'data-ps-custom\') || \'\';\n' +
     '          if(!code.trim()){ psFormMessage(form, \'请先填写自定义处理器\', \'err\'); return; }\n' +
@@ -16563,8 +16924,12 @@ function buildExport(fw, startPageId) {
     '          }catch(err){ psFormMessage(form, err && err.message ? err.message : \'自定义处理器语法错误\', \'err\'); }\n' +
     '          return;\n' +
     '        }\n' +
-    '        var opts = { method: \'POST\', credentials: \'include\' };\n' +
-    '        if(mode === \'json\'){ opts.headers = { \'Content-Type\': \'application/json\' }; opts.body = JSON.stringify(data); }\n' +
+    '        var opts = { method: method, credentials: \'include\' };\n' +
+    '        if(mode === \'native\'){\n' +
+    '          if(method === \'GET\'){ var qs = new URLSearchParams(fd).toString(); if(qs) action += (action.indexOf(\'?\') >= 0 ? \'&\' : \'?\') + qs; }\n' +
+    '          else { opts.headers = { \'Content-Type\': \'application/x-www-form-urlencoded;charset=UTF-8\' }; opts.body = new URLSearchParams(fd).toString(); }\n' +
+    '        }\n' +
+    '        else if(mode === \'json\'){ opts.headers = { \'Content-Type\': \'application/json\' }; opts.body = JSON.stringify(data); }\n' +
     '        else { opts.body = fd; }\n' +
     '        fetch(action, opts).then(function(res){ if(!res.ok) throw new Error(\'HTTP \' + res.status); return res; }).then(done).catch(function(err){ psFormMessage(form, err && err.message ? err.message : \'提交失败\', \'err\'); });\n' +
     '      });\n' +
@@ -18319,6 +18684,19 @@ $('btnClosePageSetup').addEventListener('click', closePageSetup);
 $('btnPageSetupCancel').addEventListener('click', closePageSetup);
 $('btnPageSetupApply').addEventListener('click', applyPageSetup);
 $('pageSetupModal').addEventListener('click', function (e) { if (e.target === this) closePageSetup(); });
+$('btnIfaceForm').addEventListener('click', openIfaceForm);
+$('btnCloseIfaceForm').addEventListener('click', closeIfaceForm);
+$('btnIfaceFormCancel').addEventListener('click', closeIfaceForm);
+$('btnIfaceFormInsert').addEventListener('click', insertIfaceForm);
+$('ifaceFormModal').addEventListener('click', function (e) { if (e.target === this) closeIfaceForm(); });
+$('ifaceFormIface').addEventListener('change', function () { ifaceFormRefresh(false); });
+$('ifaceFormRoute').addEventListener('change', function () {
+  var routes = ifaceWriteRoutes(ifaceFormState.iface);
+  ifaceFormState.route = routes[parseInt(this.value, 10)] || null;
+  ifaceFormRefresh(true);
+});
+$('ifaceFormKind').addEventListener('change', function () { ifaceFormRefresh(true); });
+$('ifaceFormSubmit').addEventListener('input', function () { $('ifaceFormStatus').textContent = ifaceFormState.iface ? ('接口 ' + ifaceFormState.iface.name + ' · ' + ifaceFormState.fields.length + ' 字段') : '—'; });
 $('pagePresetList').addEventListener('click', function (e) {
   var b = e.target.closest('[data-preset]');
   if (!b) return;

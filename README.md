@@ -122,6 +122,18 @@
 - `.yxpn` 工程包里同样带 `frontend/index.yxpp`，manifest 里有 `frontend` 元信息，换机器也能继续编辑。
 - 26 套内置案例全部预置 `.yxpp` 前端；其中 24 套是 PageStudio 原生 `appview` 业务应用（`project.app` + 业务运行时），打开就是真实的列表、表单、详情、后台工作流和行级动作，不是接口清单或请求调试器。案例的 `seed.sql` 只作为画布预览数据放在 `previewSeed`，导出页面不会带上它；商城、点餐、票务、博客、音乐 / 视频、工单、报销、会议、CRM、社交、聊天、预约等都已用真实数据库和真实上传链路逐项验收；问卷系统、活动报名保留各自的公开填写 / 报名页和管理员后台。
 
+## 前端表单：静默提交、表格表单与按接口生成（1.1.70）
+
+- 普通 `form`、鉴权 `auth` 和新的 `formtable` 共用一套提交属性：`data-ps-silent="1"` 与 `data-ps-method`。原生模式勾选静默后不再整页跳转，改为 fetch 提交；静默只抑制“提交中 / 成功提示”，失败仍显示错误，成功后 `redirect` 照常执行。原生静默 POST 使用 `application/x-www-form-urlencoded`，GET 把参数拼到 query；AJAX 模式按真实方法发送，PUT / PATCH 不再被写成 POST。
+- 新增独立“表格表单”组件 `formtable`，每一行是一条记录，同名字段在每行重复提交；字段协议为 `标签|类型|占位|字段名|required`，行数 1–20（画布预览最多 12），提交按钮名字可改。支持 textarea / checkbox / date / datetime-local / time / number / email / tel / url 等输入类型，以及表头、斑马纹、按钮、边框颜色与单元格内边距。HTML 导出直接生成完整 `<form>`，React / Vue 导出通过原始 HTML 注入，运行时仍走同一套 `initForms`。
+- 前端工具栏新增“接口表单”：选择已创建的后端接口和写路由（只列 POST / PUT / PATCH），自动按 `route.body` 或主表可写字段生成字段清单，跳过 `id / created_at / updated_at / deleted_at / create_time / update_time` 和隐藏字段，按字段类型映射输入控件，`nullable === false && default == null` 自动加 required；提交地址按 `/api + basePath + route.path` 自动拼接。可生成普通表单或表格录入，并直接设置按钮名、行数和静默提交。
+- PUT / PATCH 路径含 `:id` 时不会假装补参数：弹窗显示真实提交地址，并提示插入后在检查器里替换路径；路由没有可写字段时插入按钮禁用并说明原因。
+- 验收：`test:formtable` 24/24，`test:ci` 14/14，源码版与 1.1.70 安装版 UI 冒烟均 154/154，覆盖静默导出标记与原生拦截、表格字段 / 行数 / 按钮名、按接口生成并写入 action、检查器改写字段与按钮名。
+
+![从后端接口生成表单](docs/screenshots/iface-form.png)
+
+![表格表单与检查器](docs/screenshots/iface-formtable.png)
+
 ## 停止按钮（1.1.64）
 
 - 工作台 Ribbon「运行」组的「停止」现在真正停掉网页服务和 MariaDB / Redis / RustFS，状态从 `3/3 运行` 变为 `0/3`，按钮回到「启动」；只停网页服务的入口仍在服务列表里单独保留。
@@ -201,6 +213,8 @@ npm run dist:linux:dir
 AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist/linux-unpacked`，因为 electron-builder 的 AppImage / fpm 工具是 Linux 可执行文件。
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
+
+1.1.70 把 `.yxpp` 前端表单补成一套能直接接后端的完整链路。普通表单、鉴权表单和新增的“表格表单”共用静默提交：勾选后不再整页跳转，原生模式改 fetch，静默只隐藏“提交中 / 成功提示”，失败仍报错，成功后跳转照常；原生静默 POST 用 `application/x-www-form-urlencoded`，GET 拼 query，AJAX 模式按 `data-ps-method` 真发 PUT / PATCH，不再一律写成 POST。表格表单 `formtable` 每行一条记录，同名字段重复提交；字段用 `标签|类型|占位|字段名|required` 自定义，行数 1–20，提交按钮名字、表头、斑马纹、按钮和边框颜色都可改，HTML / React / Vue 导出都带完整表格。前端工具栏新增“接口表单”：选择已有接口的 POST / PUT / PATCH 路由，按 `route.body` 或主表可写字段自动生成字段，跳过系统字段与隐藏字段，按类型映射输入控件，`nullable === false && default == null` 自动必填，提交地址自动拼 `/api + basePath + route.path`，可一键生成普通表单或表格录入。路径含 `:id` 时弹窗会标明真实地址并提示插入后替换，没有可写字段的路由直接禁用插入。验收：`test:formtable` 24/24，`test:ci` 14/14，源码版和 1.1.70 安装版 UI 冒烟均 154/154（含静默导出标记与原生拦截、表格字段 / 行数 / 按钮名、按接口生成并写入 action、检查器改写）。Windows 安装包 225,042,134 B（约 214.6 MB），构建时间 2026-11-24 23:41:10，SHA256 `0EEA9EACAD61012FD6044D6308F038DD66C2C588831A4F80A3CDA86E6BD3B49A`。
 
 1.1.69 把新建接口的第一步扩成 20 个常见业务模板，按「基础与账号 / 内容与互动 / 交易与库存 / 运营与服务 / 系统与工具」5 组展示。除原有空白、登录注册、搜索、内容、商品、表单、短链、探活外，新增会员管理、订单管理、库存管理、优惠券、预约管理、工单处理、评论评分、分类标签、文件资料、消息通知、配置中心、操作日志；每张卡片显示字段数与路由数。点模板会一次填好接口名、说明、主表、业务字段、路由和鉴权，再按四步继续改；表名使用 `member_profile / order_record / inventory_stock / coupon_record` 等独立键，避开默认工程已有的 `biz_order`。验收：新增 `test:guide-templates` 126/126 检查 20 个模板的字段类型、路由白名单、表名唯一与系统字段冲突，`test:ci` 13/13，源码版 UI 冒烟 149/149（含模板数量、分组、卡片计数与订单模板实际预填）。
 
