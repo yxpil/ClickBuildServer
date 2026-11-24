@@ -253,15 +253,42 @@ function splitStatus(rest) {
   return { status: 200, exprText: rest.trim() };
 }
 
+// 3xx 的响应体只要带这些字段，就自动变成 Location，脚本不用记新的语法。
+function redirectTarget(body) {
+  if (typeof body === 'string') return body.trim();
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+  for (const key of ['location', 'Location', 'LOCATION', 'redirect', 'redirectUrl', 'url']) {
+    const value = body[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+// 把脚本返回体整理成“响应体 + 响应头”，运行时和导出 JS 共用同一套规则。
+function responseMeta(status, body) {
+  const headers = {};
+  let value = body;
+  if (value && typeof value === 'object' && !Array.isArray(value) && value.__headers && typeof value.__headers === 'object' && !Array.isArray(value.__headers)) {
+    Object.assign(headers, value.__headers);
+    value = { ...value };
+    delete value.__headers;
+  }
+  if (status >= 300 && status < 400 && status !== 304) {
+    const location = redirectTarget(value);
+    if (location && !Object.keys(headers).some((key) => key.toLowerCase() === 'location')) headers.Location = location;
+  }
+  return { status, body: value, headers };
+}
+
 function diagHint(message) {
   const m = String(message || '');
-  if (/缺少 END/.test(m)) return '在这个 IF / FOREACH 结束的位置补一行 END';
+  if (/缺少 END/.test(m)) return '在这个 IF / FOREACH / FOR / WHILE / SWITCH 结束的位置补一行 END';
   if (/占位符没有闭合/.test(m)) return '写成 {{body.name}} 或 {{query.id}}，补全后面的 }}';
-  if (/不认识的语句/.test(m)) return '语句必须以 LET / QUERY / EXEC / IF / FOREACH / RETURN / LOG / WAIT / TX / TOKEN / PUBLISH 开头';
+  if (/不认识的语句/.test(m)) return '语句必须以 LET / SET / ASSIGN / INC / APPEND / QUERY / EXEC / IF / FOREACH / FOR / WHILE / SWITCH / FUNC / RUN / RETURN / LOG / WAIT / TX / TOKEN / PUBLISH 开头';
   if (/表达式语法错误|表达式多出了内容|表达式在这里断了/.test(m)) return '检查括号、逗号、运算符和字符串引号是否成对';
   if (/变量未赋值/.test(m)) return '先在这一行之前用 LET $name = ... 赋值';
   if (/已赋值但未使用/.test(m)) return '不需要这个变量就删掉；需要排查就加 LOG DEBUG $name;';
-  if (/未知占位符/.test(m)) return '可用 {{body.x}}、{{query.x}}、{{path.x}}、{{t:主表}} 等，参考右侧脚本助手';
+  if (/未知占位符/.test(m)) return '可用 {{body.x}}、{{query.x}}、{{path.x}}、{{header.authorization}}、{{t:主表}} 等，参考右侧脚本助手';
   if (/对象占位符/.test(m)) return '对象占位符要取字段，例如 {{user.username}}，不要直接写 {{user}}';
   return '按提示修正这一行，保存前会持续自动检查';
 }
@@ -319,7 +346,7 @@ function parseScript(text) {
   const errors = [];
   const diagnostics = [];
   let i = 0;
-  const statementStart = /^(LET|SET|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|RETURN|LOG|WAIT|TX|PUBLISH|TOKEN)\b/i;
+  const statementStart = /^(LET|SET|ASSIGN|INC|DEC|APPEND|PUSH|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|FOR|WHILE|BREAK|CONTINUE|SWITCH|CASE|DEFAULT|FUNC|FUNCTION|RUN|INVOKE|RETURN|LOG|WAIT|THROW|TX|PUBLISH|TOKEN)\b/i;
 
   // 允许把一条 SQL / JSON 排成多行：只有下一行不是新语句时才续行，行号仍从语句首行算。
   function joinContinuation(line) {
@@ -374,7 +401,14 @@ function parseScript(text) {
     const raw = lines[i];
     let line = raw.trim();
     const upper = ((line.match(/^([A-Za-z]+)/) || [])[1] || '').toUpperCase();
-    if (/^(LET|SET|QUERY|EXEC|RETURN|LOG|WAIT|PUBLISH|TOKEN)\b/i.test(upper)) line = joinContinuation(line);
+    if (/^(LET|SET|ASSIGN|INC|DEC|APPEND|PUSH|QUERY|EXEC|RETURN|LOG|WAIT|PUBLISH|TOKEN|THROW|RUN|INVOKE)\b/i.test(upper)) line = joinContinuation(line);
+
+    // SQL 只能出现在 QUERY / EXEC 后面。把裸 SQL 开头的行直接指出来，
+    // 避免 SELECT / UPDATE 被当成“自定义语句”吞掉，或者反过来把自定义关键字当 SQL。
+    if (/^(SELECT|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|TRUNCATE|SHOW|DESCRIBE|EXPLAIN|WITH|GRANT|REVOKE|USE|LOCK|UNLOCK|ANALYZE|OPTIMIZE|RENAME|BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK|CALL|EXECUTE|PREPARE|DEALLOCATE)\b/i.test(line)
+      || (/^SET\s+/i.test(line) && !/^(SET)\s+\$/i.test(line))) {
+      throw new Error('SQL 语句不能裸写：前面加 QUERY（要结果集）或 EXEC（执行写入），自定义语句只认 LET / SET / ASSIGN / IF / FOR / WHILE 等关键字');
+    }
 
     if (upper === 'IF' || upper === 'ELSEIF') {
       const startLine = i + 1;
@@ -412,10 +446,127 @@ function parseScript(text) {
       return { k: 'foreach', name: m[1], expr: parseExpr(m[2]), body: blk.body };
     }
 
+    // 数字循环：FOR $i = 1 TO 10 STEP 2 ... END / FOR $i = 10 DOWNTO 1 ... END
+    if (upper === 'FOR') {
+      const startLine = i + 1;
+      const m = /^FOR\s+\$([A-Za-z0-9_]+)\s*=\s*([\s\S]+?)\s+(TO|DOWNTO)\s+([\s\S]+?)(?:\s+STEP\s+([\s\S]+?))?\s*;?\s*$/i.exec(line);
+      if (!m) throw new Error('FOR 写法：FOR $i = 1 TO 10 STEP 2 ... END');
+      i++;
+      const blk = parseBlock(['END']);
+      if (blk.stop !== 'END') throw throwAt('FOR 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
+      i++;
+      return {
+        k: 'for', name: m[1], from: parseExpr(m[2]), to: parseExpr(m[4]),
+        direction: m[3].toUpperCase() === 'DOWNTO' ? -1 : 1,
+        step: m[5] ? parseExpr(m[5]) : null, body: blk.body,
+      };
+    }
+
+    // 条件循环：WHILE 条件 ... END
+    if (upper === 'WHILE') {
+      const startLine = i + 1;
+      const cond = line.replace(/^WHILE\s*/i, '').replace(/;\s*$/, '').trim();
+      if (!cond) throw new Error('WHILE 写法：WHILE $i < 10 ... END');
+      i++;
+      const blk = parseBlock(['END']);
+      if (blk.stop !== 'END') throw throwAt('WHILE 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
+      i++;
+      return { k: 'while', cond: parseExpr(cond), body: blk.body };
+    }
+
+    // 多分支选择：SWITCH 表达式 / CASE 1,2 / DEFAULT / END
+    if (upper === 'SWITCH') {
+      const startLine = i + 1;
+      const switchText = line.replace(/^SWITCH\s*/i, '').replace(/;\s*$/, '').trim();
+      if (!switchText) throw new Error('SWITCH 写法：SWITCH $x / CASE 1 / DEFAULT / END');
+      i++;
+      const cases = [];
+      let defaultBody = null;
+      let blk = parseBlock(['CASE', 'DEFAULT', 'END']);
+      while (blk.stop === 'CASE' || blk.stop === 'DEFAULT') {
+        if (blk.stop === 'CASE') {
+          const caseText = blk.line.replace(/^CASE\s*/i, '').replace(/;\s*$/, '').trim();
+          if (!caseText) throw new Error('CASE 写法：CASE 1, 2 或 CASE \'paid\'');
+          i++;
+          const bodyBlk = parseBlock(['CASE', 'DEFAULT', 'END']);
+          cases.push({ values: splitArgs(caseText).map((x) => parseExpr(x)), body: bodyBlk.body });
+          blk = bodyBlk;
+        } else {
+          i++;
+          const bodyBlk = parseBlock(['END']);
+          defaultBody = bodyBlk.body;
+          blk = bodyBlk;
+        }
+      }
+      if (blk.stop !== 'END') throw throwAt('SWITCH 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
+      i++;
+      return { k: 'switch', expr: parseExpr(switchText), cases, defaultBody };
+    }
+
+    // 纯表达式函数：FUNC 名($a, $b) = $a + $b;  只做表达式，不做异步 SQL，避免和路由 RETURN 冲突。
+    if (upper === 'FUNC' || upper === 'FUNCTION') {
+      const m = /^(FUNC|FUNCTION)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*=\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+      if (!m) throw new Error('FUNC 写法：FUNC 名称($a, $b) = 表达式;');
+      const params = m[3].trim() ? splitArgs(m[3]).map((x) => x.replace(/^\$/, '').trim()) : [];
+      if (params.some((x) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(x))) throw new Error('FUNC 参数只能写成 $name');
+      i++;
+      return { k: 'func', name: m[2].toUpperCase(), params, expr: parseExpr(m[4].replace(/;\s*$/, '')) };
+    }
+
+    // 赋值：ASSIGN $x = 1; / $x = 1; / $x += 1; / SET $x -= 1;
+    {
+      const am = /^(ASSIGN\s+)?\$([A-Za-z0-9_]+)\s*(=|\+=|-=|\*=|\/=)\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+      if (am && (upper === 'ASSIGN' || !upper)) {
+        i++;
+        return { k: 'assign', name: am[2], op: am[3], expr: parseExpr(am[4]) };
+      }
+    }
+
+    // 自增/自减：INC $n; / INC $n BY 2; / DEC $n;
+    if (upper === 'INC' || upper === 'DEC') {
+      const m = /^(INC|DEC)\s+\$([A-Za-z0-9_]+)(?:\s+BY\s+([\s\S]+?))?\s*;?\s*$/i.exec(line);
+      if (!m) throw new Error(`${upper} 写法：INC $n; / INC $n BY 2; / DEC $n;`);
+      i++;
+      return { k: 'assign', name: m[2], op: upper === 'INC' ? '+=' : '-=', expr: m[3] ? parseExpr(m[3]) : { k: 'lit', v: 1 } };
+    }
+
+    // 追加数组元素：APPEND $list, 值; / PUSH $list, 值;
+    if (upper === 'APPEND' || upper === 'PUSH') {
+      const m = /^(APPEND|PUSH)\s+\$([A-Za-z0-9_]+)\s*,\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+      if (!m) throw new Error(`${upper} 写法：APPEND $list, 值;`);
+      i++;
+      return { k: 'append', name: m[2], expr: parseExpr(m[3]) };
+    }
+
+    if (upper === 'BREAK' || upper === 'CONTINUE') {
+      i++;
+      return { k: upper.toLowerCase() };
+    }
+
+    // 调用函数并丢弃返回值（只调用表达式函数，SQL 存储过程仍走 EXEC）
+    if (upper === 'RUN' || upper === 'INVOKE') {
+      const m = /^(RUN|INVOKE)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*)\)\s*;?\s*$/i.exec(line);
+      if (!m) throw new Error(`${upper} 写法：RUN 函数名(参数);`);
+      const args = m[3].trim() ? splitArgs(m[3]).map((x) => parseExpr(x)) : [];
+      i++;
+      return { k: 'run', name: m[2].toUpperCase(), args };
+    }
+
+    if (upper === 'THROW') {
+      const rest = line.replace(/^THROW\s*/i, '').replace(/;\s*$/, '').trim();
+      if (!rest) throw new Error('THROW 写法：THROW \'错误信息\';');
+      i++;
+      return { k: 'throw', expr: parseExpr(rest) };
+    }
+
     if (/^(LET|SET)\s+\$/i.test(line)) {
-      const m = /^(LET|SET)\s+(\$[A-Za-z0-9_]+)\s*=\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+      const m = /^(LET|SET)\s+(\$[A-Za-z0-9_]+)\s*(=|\+=|-=|\*=|\/=)\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
       if (!m) throw new Error('LET 写法：LET $x = QUERY ... ;');
-      const rhs = m[3];
+      if (m[3] !== '=') {
+        i++;
+        return { k: 'assign', name: m[2].replace(/^\$/, ''), op: m[3], expr: parseExpr(m[4]) };
+      }
+      const rhs = m[4];
       const qm = /^(QUERY|EXEC)\s+([\s\S]+?)\s*;?\s*$/i.exec(rhs);
       if (qm) {
         i++;
@@ -596,6 +747,13 @@ function evalExpr(node, env) {
 
 function callFn(name, argNodes, env) {
   const args = argNodes.map((x) => evalExpr(x, env));
+  const local = env.funcs && (env.funcs[name] || env.funcs[String(name).toUpperCase()]);
+  if (local) {
+    if (args.length !== local.params.length) throw new Error(`FUNC ${name} 需要 ${local.params.length} 个参数，实际 ${args.length} 个`);
+    const vars = {};
+    local.params.forEach((p, idx) => { vars[p] = args[idx]; });
+    return evalExpr(local.expr, { ...env, vars, funcs: env.funcs });
+  }
   if (env.customFuncs && env.customFuncs[name]) {
     const def = env.customFuncs[name];
     const idents = {};
@@ -735,6 +893,11 @@ function expandSqlFunctions(sql, params, env) {
 }
 
 async function runScript(ast, env) {
+  if (typeof ast === 'string') {
+    const parsed = parseScript(ast);
+    if (parsed.errors && parsed.errors.length) throw new Error(parsed.errors.join('；'));
+    ast = parsed.ast;
+  }
   let steps = 0;
   const logs = [];
   let result = null;
@@ -743,7 +906,7 @@ async function runScript(ast, env) {
     for (const st of list) {
       if (++steps > 5000) throw new Error('脚本执行步数超限（5000），检查一下循环');
       const r = await execStatement(st, scope);
-      if (r && r.k === 'return') return r;
+      if (r) return r;
     }
     return null;
   }
@@ -753,6 +916,35 @@ async function runScript(ast, env) {
       env.ctx.vars = scope.vars || {};
       env.ctx.last = scope.last || null;
     }
+    if (st.k === 'func') {
+      scope.funcs[st.name] = { params: st.params, expr: st.expr };
+      return null;
+    }
+    if (st.k === 'assign') {
+      const value = evalExpr(st.expr, scope);
+      if (st.op === '=') scope.vars[st.name] = value;
+      else {
+        const old = scope.vars[st.name];
+        if (st.op === '+=') scope.vars[st.name] = (typeof old === 'string' || typeof value === 'string') ? String(old == null ? '' : old) + String(value == null ? '' : value) : Number(old || 0) + Number(value);
+        else if (st.op === '-=') scope.vars[st.name] = Number(old || 0) - Number(value);
+        else if (st.op === '*=') scope.vars[st.name] = Number(old || 0) * Number(value);
+        else if (st.op === '/=') scope.vars[st.name] = Number(value) === 0 ? null : Number(old || 0) / Number(value);
+      }
+      return null;
+    }
+    if (st.k === 'append') {
+      const cur = scope.vars[st.name];
+      if (cur != null && !Array.isArray(cur)) throw new Error(`APPEND 只能追加到数组，$${st.name} 现在不是数组`);
+      scope.vars[st.name] = (cur || []).concat([evalExpr(st.expr, scope)]);
+      return null;
+    }
+    if (st.k === 'run') {
+      callFn(st.name, st.args, scope);
+      return null;
+    }
+    if (st.k === 'throw') throw new Error(String(evalExpr(st.expr, scope)));
+    if (st.k === 'break') return { k: 'break' };
+    if (st.k === 'continue') return { k: 'continue' };
     if (st.k === 'let') {
       if (st.from === 'query' || st.from === 'exec') {
         const built = render.renderSqlText(st.sql, env.iface, env.ctx);
@@ -840,7 +1032,55 @@ async function runScript(ast, env) {
       for (let n = 0; n < count; n++) {
         scope.vars[st.name] = arr[n];
         const r = await execBlock(st.body, scope);
-        if (r) return r;
+        if (r && r.k === 'return') return r;
+        if (r && r.k === 'break') break;
+        if (r && r.k === 'continue') continue;
+      }
+      return null;
+    }
+    if (st.k === 'for') {
+      const from = Number(evalExpr(st.from, scope));
+      const to = Number(evalExpr(st.to, scope));
+      const step = Math.abs(Number(st.step ? evalExpr(st.step, scope) : 1)) || 1;
+      if (!Number.isFinite(from) || !Number.isFinite(to)) throw new Error('FOR 的起点或终点不是数字');
+      let n = from;
+      let loops = 0;
+      while ((st.direction > 0 ? n <= to : n >= to) && loops++ < 1000) {
+        scope.vars[st.name] = n;
+        const r = await execBlock(st.body, scope);
+        if (r && r.k === 'return') return r;
+        if (r && r.k === 'break') break;
+        if (r && r.k === 'continue') { n += st.direction * step; continue; }
+        n += st.direction * step;
+      }
+      return null;
+    }
+    if (st.k === 'while') {
+      let loops = 0;
+      while (truthy(evalExpr(st.cond, scope)) && loops++ < 1000) {
+        const r = await execBlock(st.body, scope);
+        if (r && r.k === 'return') return r;
+        if (r && r.k === 'break') break;
+        if (r && r.k === 'continue') continue;
+      }
+      return null;
+    }
+    if (st.k === 'switch') {
+      const value = evalExpr(st.expr, scope);
+      let matched = false;
+      for (const c of st.cases) {
+        if (c.values.some((v) => evalExpr(v, scope) == value)) { // eslint-disable-line eqeqeq
+          matched = true;
+          const r = await execBlock(c.body, scope);
+          if (r && r.k === 'return') return r;
+          if (r && r.k === 'continue') return r;
+          break;
+        }
+      }
+      if (!matched && st.defaultBody) {
+        const r = await execBlock(st.defaultBody, scope);
+        if (r && r.k === 'return') return r;
+        if (r && r.k === 'continue') return r;
       }
       return null;
     }
@@ -849,14 +1089,16 @@ async function runScript(ast, env) {
       return null;
     }
     if (st.k === 'return') {
-      result = { status: st.status, body: st.expr ? evalExpr(st.expr, scope) : null };
+      const meta = responseMeta(st.status, st.expr ? evalExpr(st.expr, scope) : null);
+      result = { status: meta.status, body: meta.body, ...(Object.keys(meta.headers).length ? { headers: meta.headers } : {}) };
       return { k: 'return' };
     }
     throw new Error('未知语句：' + st.k);
   }
 
-  const scope = { ...env, vars: env.vars || {}, last: null };
+  const scope = { ...env, vars: env.vars || {}, last: null, funcs: {} };
   const r = await execBlock(ast, scope);
+  if (r && (r.k === 'break' || r.k === 'continue')) throw new Error(`${r.k.toUpperCase()} 只能写在循环或 SWITCH 里`);
   if (!result) result = { status: 200, body: scope.last || null };
   return { ...result, logs, vars: scope.vars };
 }
@@ -940,7 +1182,7 @@ function lintRawSyntax(rawLines, add) {
 }
 
 function lintSqlStatements(codeLines, add) {
-  const start = /^(LET|SET|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|RETURN|LOG|WAIT|TX|PUBLISH|TOKEN)\b/i;
+  const start = /^(LET|SET|ASSIGN|INC|DEC|APPEND|PUSH|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|FOR|WHILE|BREAK|CONTINUE|SWITCH|CASE|DEFAULT|FUNC|FUNCTION|RUN|INVOKE|RETURN|LOG|WAIT|THROW|TX|PUBLISH|TOKEN)\b/i;
   codeLines.forEach((line, idx) => {
     const lineNo = idx + 1;
     const m = /^\s*(?:(?:LET|SET)\s+\$[A-Za-z0-9_]+\s*=\s*)?(QUERY|EXEC)\b(.*)$/i.exec(line);
@@ -1016,7 +1258,7 @@ function checkScript(text) {
       const lineNo = idx + 1;
       const column = m.index + 1;
       if (render.STRUCT.has(base) || render.VALUES.has(token)) continue;
-      if (/^(query|body|path|file|vars|user|token|env|req)\.[A-Za-z0-9_]+/.test(token)) continue;
+      if (/^(query|body|path|file|vars|user|token|env|req|header|headers)\.[A-Za-z0-9_]+/.test(token)) continue;
       if (['user', 'token', 'req', 'env', 'vars'].includes(token)) {
         add({
           line: lineNo, column, endColumn: column + m[0].length, severity: 'error', code: 'OBJECT_PLACEHOLDER',
@@ -1039,17 +1281,27 @@ function checkScript(text) {
   lines.forEach((line, idx) => {
     const lineNo = idx + 1;
     let work = line;
-    const lm = /^(\s*)(LET|SET)\s+\$([A-Za-z0-9_]+)/i.exec(line);
+    const lm = /^(\s*)(LET|SET|ASSIGN|FOR|FOREACH)\s+\$([A-Za-z0-9_]+)/i.exec(line);
     if (lm) {
       const name = lm[3];
       const column = lm[0].indexOf('$') + 1;
       if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
       work = work.replace(`$${name}`, ' '.repeat(name.length + 1));
     }
-    const fm = /^(\s*)FOREACH\s+\$([A-Za-z0-9_]+)/i.exec(line);
-    if (fm) {
-      const name = fm[2];
-      const column = fm[0].indexOf('$') + 1;
+    const pm = /^(\s*)(FUNC|FUNCTION)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)/i.exec(line);
+    if (pm) {
+      splitArgs(pm[3]).forEach((raw) => {
+        const name = raw.replace(/^\$/, '').trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return;
+        if (!declared.has(name)) declared.set(name, { line: lineNo, column: pm[0].indexOf('$') + 1, used: false });
+        work = work.replace(new RegExp(`\\$${name}\\b`), ' '.repeat(name.length + 1));
+      });
+    }
+    // 裸赋值 $x = ... 也视为声明；+= / -= 等要求变量已经存在。
+    const am = /^(\s*)\$([A-Za-z0-9_]+)\s*=(?!=)/.exec(line);
+    if (am) {
+      const name = am[2];
+      const column = am[0].indexOf('$') + 1;
       if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
       work = work.replace(`$${name}`, ' '.repeat(name.length + 1));
     }
@@ -1106,20 +1358,36 @@ function exprToJs(node) {
     case 'or': return `(${exprToJs(node.a)} || ${exprToJs(node.b)})`;
     case 'cmp': return `(${exprToJs(node.a)} ${node.op} ${exprToJs(node.b)})`;
     case 'bin': return `(${exprToJs(node.a)} ${node.op} ${exprToJs(node.b)})`;
-    case 'call': return `F('${node.name}', [${node.args.map(exprToJs).join(', ')}])`;
+    case 'call': return `F('${String(node.name).toUpperCase()}', [${node.args.map(exprToJs).join(', ')}])`;
     default: return 'null';
   }
 }
 
 function scriptToJs(ast, indent) {
   const pad = '  '.repeat(indent || 0);
-  return ast.map((st) => {
-    if (st.k === 'let' && st.from === 'query') return `${pad}const $${st.name.replace('$', '')} = await Q('${String(st.sql).replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
-    if (st.k === 'let' && st.from === 'exec') return `${pad}const $${st.name.replace('$', '')} = await X('${String(st.sql).replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
-    if (st.k === 'let' && st.from === 'http') return `${pad}const $${st.name.replace('$', '')} = await H('${st.method}', '${st.url}', ${st.bodyText ? exprToJs(parseExpr(st.bodyText)) : 'null'}, ctx);`;
-    if (st.k === 'let' && st.from === 'crawl') return `${pad}const $${st.name.replace('$', '')} = await CR('${st.url}', ${st.optionsText ? exprToJs(parseExpr(st.optionsText)) : '{}'});`;
-    if (st.k === 'let' && st.from === 'token') return `${pad}const $${st.name.replace('$', '')} = await T('${st.action}', ${exprToJs(st.expr)}, ctx);`;
-    if (st.k === 'let') return `${pad}const $${st.name.replace('$', '')} = ${exprToJs(st.expr)};`;
+  const funcs = ast.filter((st) => st.k === 'func');
+  const body = ast.filter((st) => st.k !== 'func');
+  const lines = [];
+  if (funcs.length) {
+    lines.push(`${pad}var LOCAL_FUNCS = {`);
+    funcs.forEach((st) => {
+      lines.push(`${pad}  ${st.name}: (${(st.params || []).map((p) => '$' + p).join(', ')}) => ${exprToJs(st.expr)},`);
+    });
+    lines.push(`${pad}};`);
+  }
+  lines.push(body.map((st) => {
+    if (st.k === 'let' && st.from === 'query') return `${pad}let $${st.name.replace('$', '')} = await Q('${String(st.sql).replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
+    if (st.k === 'let' && st.from === 'exec') return `${pad}let $${st.name.replace('$', '')} = await X('${String(st.sql).replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
+    if (st.k === 'let' && st.from === 'http') return `${pad}let $${st.name.replace('$', '')} = await H('${st.method}', '${st.url}', ${st.bodyText ? exprToJs(parseExpr(st.bodyText)) : 'null'}, ctx);`;
+    if (st.k === 'let' && st.from === 'crawl') return `${pad}let $${st.name.replace('$', '')} = await CR('${st.url}', ${st.optionsText ? exprToJs(parseExpr(st.optionsText)) : '{}'});`;
+    if (st.k === 'let' && st.from === 'token') return `${pad}let $${st.name.replace('$', '')} = await T('${st.action}', ${exprToJs(st.expr)}, ctx);`;
+    if (st.k === 'let') return `${pad}let $${st.name.replace('$', '')} = ${exprToJs(st.expr)};`;
+    if (st.k === 'assign') return `${pad}$${st.name} ${st.op} ${exprToJs(st.expr)};`;
+    if (st.k === 'append') return `${pad}$${st.name} = toList($${st.name}).concat([${exprToJs(st.expr)}]);`;
+    if (st.k === 'run') return `${pad}F('${st.name}', [${st.args.map(exprToJs).join(', ')}]);`;
+    if (st.k === 'throw') return `${pad}throw new Error(String(${exprToJs(st.expr)}));`;
+    if (st.k === 'break') return `${pad}break;`;
+    if (st.k === 'continue') return `${pad}continue;`;
     if (st.k === 'sql') return `${pad}${st.mode === 'query' ? 'await Q' : 'await X'}('${st.sql.replace(/'/g, "\\'").replace(/\n/g, ' ')}', ctx);`;
     if (st.k === 'tx') return `${pad}await TX('${st.action}', ctx);`;
     if (st.k === 'wait') return `${pad}await new Promise((r) => setTimeout(r, Math.max(0, Math.min(Number(${exprToJs(st.expr)}) || 0, 60000))));`;
@@ -1130,11 +1398,24 @@ function scriptToJs(ast, indent) {
       if (st.elseBody) parts.push(`else {\n${scriptToJs(st.elseBody, (indent || 0) + 1)}\n${pad}}`);
       return pad + parts.join(' ');
     }
-    if (st.k === 'foreach') return `${pad}for (const ${st.name} of toList(${exprToJs(st.expr)})) {\n${scriptToJs(st.body, (indent || 0) + 1)}\n${pad}}`;
+    if (st.k === 'foreach') return `${pad}for (const $${st.name} of toList(${exprToJs(st.expr)})) {\n${scriptToJs(st.body, (indent || 0) + 1)}\n${pad}}`;
+    if (st.k === 'for') {
+      const step = st.step ? exprToJs(st.step) : '1';
+      const cmp = st.direction > 0 ? '<=' : '>=';
+      const inc = st.direction > 0 ? '+=' : '-=';
+      return `${pad}for (let $${st.name} = ${exprToJs(st.from)}; $${st.name} ${cmp} ${exprToJs(st.to)}; $${st.name} ${inc} Math.abs(${step}) || 1) {\n${scriptToJs(st.body, (indent || 0) + 1)}\n${pad}}`;
+    }
+    if (st.k === 'while') return `${pad}for (let __guard = 0; (${exprToJs(st.cond)}) && __guard++ < 1000;) {\n${scriptToJs(st.body, (indent || 0) + 1)}\n${pad}}`;
+    if (st.k === 'switch') {
+      const cases = st.cases.map((c) => c.values.map((v) => `${pad}  case ${exprToJs(v)}:`).join('\n') + `\n${pad}    ${scriptToJs(c.body, (indent || 0) + 2).trim().replace(/\n/g, '\n' + pad + '    ')}\n${pad}    break;`).join('\n');
+      const dft = st.defaultBody ? `\n${pad}  default:\n${pad}    ${scriptToJs(st.defaultBody, (indent || 0) + 2).trim().replace(/\n/g, '\n' + pad + '    ')}` : '';
+      return `${pad}switch (${exprToJs(st.expr)}) {\n${cases}${dft}\n${pad}}`;
+    }
     if (st.k === 'log') return `${pad}L('${st.level || 'INFO'}', ${exprToJs(st.expr)}, ctx);`;
-    if (st.k === 'return') return `${pad}return { status: ${st.status}, body: ${st.expr ? exprToJs(st.expr) : 'null'} };`;
+    if (st.k === 'return') return `${pad}return responseMeta(${st.status}, ${st.expr ? exprToJs(st.expr) : 'null'});`;
     return `${pad}// 未知语句`;
-  }).join('\n');
+  }).join('\n'));
+  return lines.join('\n');
 }
 
-module.exports = { parseScript, parseExpr, runScript, checkScript, scriptToJs, exprToJs, evalExpr, expandSqlFunctions };
+module.exports = { parseScript, parseExpr, runScript, checkScript, scriptToJs, exprToJs, evalExpr, expandSqlFunctions, responseMeta };

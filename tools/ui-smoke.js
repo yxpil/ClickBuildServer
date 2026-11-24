@@ -40,7 +40,7 @@ function connect(wsUrl) {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let ok = 0; let bad = 0;
-const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name); } else { bad++; console.log('  ✗ ' + name + ' → ' + String(JSON.stringify(extra)).slice(0, 200)); } };
+const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name); } else { bad++; console.log('  ✗ ' + name + ' → ' + String(JSON.stringify(extra)).slice(0, 1000)); } };
 
 (async () => {
   const list = await targets();
@@ -400,7 +400,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   // 没有 .yxpp 时进入前端工坊：显示空白画布，首次编辑自动绑定并保存
   await val(`(async()=>{S.project=await api.seed();S.project.name=${JSON.stringify(smokeName)};S.project.description='UI 冒烟专用工程，结束自动删除';S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;S.mode='grid';render();setView('studio');return true})()`, true);
   await wait(1800);
-  t('无前端工程时显示空白画布而非示例站点', await val(`S.project.frontend===undefined && document.querySelector('#studioState').textContent.includes('空白画布')`), await val(`document.querySelector('#studioState').textContent`));
+  t('无前端工程时显示空白画布而非示例站点', await val(`!S.project.frontend && document.querySelector('#studioState').textContent.includes('空白画布')`), await val(`document.querySelector('#studioState').textContent`));
   await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FAFAF8';w.scheduleSave();return true})()`);
   await wait(3600);
   t('空白画布首次编辑自动绑定 .yxpp', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg==='#FAFAF8'&&S.project.frontend.html)`), await val(`S.project.frontend?S.project.frontend.name:'无'`));

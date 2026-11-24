@@ -194,6 +194,61 @@ const GUIDE_ROUTE_DEFS = [
   { key: 'create', name: '新建', method: 'POST', path: '/:table', desc: '插入记录，事务保护' },
   { key: 'update', name: '更新', method: 'PUT', path: '/:table/:id', desc: '按主键更新记录' },
   { key: 'delete', name: '删除', method: 'DELETE', path: '/:table/:id', desc: '按主键删除记录' },
+  { key: 'search', name: '搜索', method: 'GET', path: '/:table/search', desc: '关键词 + 字段筛选 + 排序分页' },
+  { key: 'upload', name: '附件', method: 'POST', path: '/:table/:id/file', desc: '上传文件并把对象键写回记录' },
+  { key: 'login', name: '登录', method: 'POST', path: '/auth/login', desc: '校验密码并签发 token' },
+  { key: 'register', name: '注册', method: 'POST', path: '/auth/register', desc: '查重、SM4 加密并直接登录' },
+  { key: 'health', name: '健康检查', method: 'GET', path: '/:table/health', desc: '探活数据库并返回服务状态' },
+  { key: 'redirect', name: '跳转', method: 'GET', path: '/go/:slug', desc: '查表后 302 跳转到目标地址' },
+];
+const GUIDE_TEMPLATES = [
+  {
+    key: 'blank', label: '空白接口', hint: '基础五条路由', name: '', comment: '',
+    tableName: '', tableComment: '', fields: 'name varchar 名称',
+    routes: ['list', 'detail', 'create', 'update', 'delete'], authMode: 'none',
+  },
+  {
+    key: 'auth', label: '登录注册', hint: '用户名密码 + token', name: '登录注册', comment: '账号密码登录、注册即签发 token',
+    tableName: 'sys_user', tableComment: '用户账号表',
+    fields: 'username varchar 登录名\npassword_hash varchar 密码（SM4）\nnickname varchar 昵称\nrole varchar 角色\nstatus tinyint 状态',
+    routes: ['login', 'register', 'detail', 'list'], authMode: 'none',
+  },
+  {
+    key: 'search', label: '信息搜索', hint: '关键词、筛选、分页', name: '信息搜索', comment: '标题、分类、正文的搜索与分页',
+    tableName: 'search_record', tableComment: '可搜索信息表',
+    fields: 'title varchar 标题\ncategory varchar 分类\ncontent text 正文\nstatus tinyint 状态',
+    routes: ['search', 'list', 'detail', 'create', 'delete'], authMode: 'none',
+  },
+  {
+    key: 'cms', label: '内容管理', hint: '文章增删改查', name: '内容管理', comment: '文章发布、编辑、搜索与封面附件',
+    tableName: 'cms_article', tableComment: '文章表',
+    fields: 'title varchar 标题\nslug varchar URL 别名\nsummary varchar 摘要\ncontent text 正文\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'], authMode: 'write',
+  },
+  {
+    key: 'shop', label: '商品目录', hint: '库存、价格、图片', name: '商品目录', comment: '商品上架、库存、价格与主图',
+    tableName: 'shop_product', tableComment: '商品表',
+    fields: 'name varchar 商品名\nsku varchar SKU\nprice decimal 售价\nstock int 库存\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'], authMode: 'write',
+  },
+  {
+    key: 'form', label: '表单收集', hint: '报名、问卷、留言', name: '表单收集', comment: '报名、问卷、留言统一收集',
+    tableName: 'form_submission', tableComment: '表单提交表',
+    fields: 'form_name varchar 表单名\nname varchar 姓名\nphone varchar 电话\nemail varchar 邮箱\ncontent text 留言',
+    routes: ['create', 'list', 'detail', 'delete'], authMode: 'none',
+  },
+  {
+    key: 'shortlink', label: '短链跳转', hint: '302 到目标地址', name: '短链跳转', comment: '按短码查表并 302 跳转',
+    tableName: 'short_link', tableComment: '短链表',
+    fields: 'slug varchar 短码\ntarget_url varchar 目标地址\nhits int 访问次数\nstatus tinyint 状态',
+    routes: ['redirect', 'list', 'create', 'detail', 'update', 'delete'], authMode: 'none',
+  },
+  {
+    key: 'health', label: '健康检查', hint: '探活 + 服务状态', name: '健康检查', comment: '网关和监控用的探活接口',
+    tableName: 'health_probe', tableComment: '探活记录表',
+    fields: 'service varchar 服务名\nversion varchar 版本\nstatus tinyint 状态',
+    routes: ['health', 'detail', 'list'], authMode: 'none',
+  },
 ];
 const GUIDE_PRESETS = [
   { name: 'name', type: 'varchar', comment: '名称' },
@@ -241,6 +296,7 @@ async function newIfaceGuide(initialCat) {
   } catch (_) {}
   const state = {
     step: 0,
+    scenario: 'blank',
     name: '',
     categoryId: initialCat || S.cat || (cats[0] && cats[0].id) || 'biz',
     prefix: '',
@@ -248,7 +304,7 @@ async function newIfaceGuide(initialCat) {
     tableName: '',
     tableComment: '',
     fieldText: 'name varchar 名称',
-    routeKinds: GUIDE_ROUTE_DEFS.map((r) => r.key),
+    routeKinds: GUIDE_ROUTE_DEFS.slice(0, 5).map((r) => r.key),
     authMode: 'none',
     fields: [],
   };
@@ -307,6 +363,12 @@ async function newIfaceGuide(initialCat) {
         .guide-quick-row .btn{height:32px;white-space:nowrap}
         .guide-quick-or{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#9aa3b2;font-size:10px}
         .guide-quick-or:before,.guide-quick-or:after{content:"";height:1px;background:#e6eaf0;flex:1}
+        .guide-tpl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 14px}
+        .guide-tpl{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 10px;border:1px solid #dfe4ec;border-radius:8px;background:#fff;cursor:pointer;transition:border-color .12s,background .12s}
+        .guide-tpl:hover{border-color:#c9daf7;background:#f8fafc}
+        .guide-tpl.on{border-color:var(--cb-accent);background:var(--cb-accent-soft);box-shadow:0 0 0 2px var(--cb-accent-ring)}
+        .guide-tpl b{font-size:11.5px;font-weight:600;line-height:1.35}
+        .guide-tpl span{font-size:9.5px;color:var(--cb-muted);line-height:1.4}
         .guide-route-list{border:1px solid var(--cb-line);border-radius:9px;overflow:hidden;background:#fff}
         .guide-route-item{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--cb-line-soft);transition:background .12s}
         .guide-route-item:last-child{border-bottom:0}
@@ -450,6 +512,18 @@ async function newIfaceGuide(initialCat) {
         return `<div class="mt-2 flex flex-wrap gap-1">${p.fields.map((f) => `<span class="guide-chip">${esc(f.name)} · ${esc(f.type)}</span>`).join('')}</div>`;
       }
 
+      function applyTemplate(t) {
+        state.scenario = t.key;
+        if (t.name) state.name = t.name;
+        if (t.comment) state.comment = t.comment;
+        state.tableName = t.tableName || '';
+        state.tableComment = t.tableComment || '';
+        state.fieldText = t.fields || '';
+        state.routeKinds = (t.routes || GUIDE_ROUTE_DEFS.slice(0, 5).map((r) => r.key)).slice();
+        state.authMode = t.authMode || 'none';
+        renderBody();
+      }
+
       function renderBody() {
         if (state.step === 0) {
           const quick = favoriteLib.length
@@ -471,7 +545,14 @@ async function newIfaceGuide(initialCat) {
               </div>`;
           body.innerHTML = `
             ${quick}
-            <div class="guide-quick-or">或从空白接口开始</div>
+            <div class="guide-h" style="margin-top:2px">从业务模板开始</div>
+            <div class="guide-p">登录、搜索、内容、商品、表单、短链、探活这些常用场景已经预填表字段和路由；点一下再按需改。</div>
+            <div class="guide-tpl-grid">
+              ${GUIDE_TEMPLATES.map((t) => `<button type="button" class="guide-tpl ${state.scenario === t.key ? 'on' : ''}" data-guide-template="${esc(t.key)}">
+                <b>${esc(t.label)}</b><span>${esc(t.hint)}</span>
+              </button>`).join('')}
+            </div>
+            <div class="guide-quick-or">或手动填写基础信息</div>
             <div class="guide-h">第一步 · 基础信息</div>
             <div class="guide-p">这些内容会出现在接口列表、文档和生成的路由前缀里。</div>
             <div class="guide-field">
@@ -504,6 +585,9 @@ async function newIfaceGuide(initialCat) {
           const sync = () => read();
           body.querySelectorAll('#guideName,#guidePrefix,#guideComment').forEach((el) => el.addEventListener('input', sync));
           body.querySelector('#guideCat').addEventListener('change', sync);
+          body.querySelectorAll('[data-guide-template]').forEach((b) => {
+            b.onclick = () => applyTemplate(GUIDE_TEMPLATES.find((t) => t.key === b.dataset.guideTemplate) || GUIDE_TEMPLATES[0]);
+          });
           const libUse = body.querySelector('#guideLibUse');
           if (libUse) {
             libUse.onclick = () => {
@@ -643,6 +727,7 @@ async function newIfaceGuide(initialCat) {
         const msg = validate(0) || validate(1) || validate(2);
         if (msg) { fail(msg); return; }
         finish({
+          scenario: state.scenario,
           name: state.name,
           categoryId: state.categoryId,
           basePath: guideBasePath(state.prefix),
@@ -1790,12 +1875,24 @@ function scriptTemplates(it) {
   const t = scriptTable(it);
   const key = t.key || 'main';
   return [
-    ['列表', '分页查询并返回 rows', `LET $rows = QUERY SELECT {{columns:${key}}} FROM {{t:${key}}} WHERE {{where:${key}}} ORDER BY {{orderBy:${key}}} LIMIT {{limit}} OFFSET {{offset}};\nRETURN 200 { "ok": true, "rows": $rows.rows };`],
+    ['列表分页', '分页查询并返回 rows + total', `LET $rows = QUERY SELECT {{columns:${key}}} FROM {{t:${key}}} WHERE {{where:${key}}} ORDER BY {{orderBy:${key}}} LIMIT {{limit}} OFFSET {{offset}};\nLET $total = QUERY SELECT COUNT(*) AS total FROM {{t:${key}}} WHERE {{where:${key}}};\nRETURN 200 { "ok": true, "rows": $rows.rows, "total": $total.rows[0].total };`],
+    ['详情', '按主键查询并处理 404', `LET $row = QUERY SELECT {{columns:${key}}} FROM {{t:${key}}} WHERE {{idColumn:${key}}} = {{id}} LIMIT 1;\nIF LEN($row.rows) == 0\n  RETURN 404 { "ok": false, "error": "NOT_FOUND", "message": "记录不存在" };\nEND\nRETURN 200 { "ok": true, "row": $row.rows[0] };`],
     ['新增', '插入一条并返回 insertId', `LET $ins = EXEC INSERT INTO {{t:${key}}} ({{insertColumns:${key}}}) VALUES ({{insertValues:${key}}});\nRETURN 201 { "ok": true, "id": $ins.insertId };`],
-    ['校验', '先查重，再决定是否继续', `LET $exists = QUERY SELECT {{idColumn:${key}}} FROM {{t:${key}}} WHERE {{idColumn:${key}}} = {{body.id}} LIMIT 1;\nIF LEN($exists.rows) > 0\n  RETURN 409 { "ok": false, "error": "EXISTS" };\nEND`],
-    ['事务', '手动提交或回滚', `TX BEGIN;\nLET $a = EXEC INSERT INTO {{t:${key}}} ({{insertColumns:${key}}}) VALUES ({{insertValues:${key}}});\nTX COMMIT;\nRETURN 201 { "ok": true, "id": $a.insertId };`],
+    ['更新', '先检查存在再更新', `LET $hit = QUERY SELECT COUNT(*) AS n FROM {{t:${key}}} WHERE {{idColumn:${key}}} = {{id}} LIMIT 1;\nIF $hit.rows[0].n == 0\n  RETURN 404 { "ok": false, "error": "NOT_FOUND" };\nEND\nLET $upd = EXEC UPDATE {{t:${key}}} SET {{updateSet:${key}}} WHERE {{idColumn:${key}}} = {{id}};\nRETURN 200 { "ok": true, "changed": $upd.affectedRows };`],
+    ['删除', '先检查存在再删除', `LET $hit = QUERY SELECT COUNT(*) AS n FROM {{t:${key}}} WHERE {{idColumn:${key}}} = {{id}} LIMIT 1;\nIF $hit.rows[0].n == 0\n  RETURN 404 { "ok": false, "error": "NOT_FOUND" };\nEND\nLET $del = EXEC DELETE FROM {{t:${key}}} WHERE {{idColumn:${key}}} = {{id}};\nRETURN 200 { "ok": true, "deleted": $del.affectedRows };`],
+    ['搜索', '关键词走 where 条件，支持排序分页', `LET $rows = QUERY SELECT {{columns:${key}}} FROM {{t:${key}}} WHERE {{where:${key}}} ORDER BY {{orderBy:${key}}} LIMIT {{limit}} OFFSET {{offset}};\nRETURN 200 { "ok": true, "rows": $rows.rows, "q": {{query.keyword}} };`],
+    ['统计', '按状态分组计数与求和', `LET $stats = QUERY SELECT status, COUNT(*) AS n, SUM(amount) AS total FROM {{t:${key}}} GROUP BY status ORDER BY status;\nRETURN 200 { "ok": true, "stats": $stats.rows };`],
+    ['事务新增', '多条写入失败自动回滚', `TX BEGIN;\nLET $a = EXEC INSERT INTO {{t:${key}}} ({{insertColumns:${key}}}) VALUES ({{insertValues:${key}}});\nTX COMMIT;\nRETURN 201 { "ok": true, "id": $a.insertId };`],
+    ['登录签发', '校验密码后签发 token', `LET $u = QUERY SELECT id, password_hash, nickname FROM {{t:${key}}} WHERE username = {{body.username}} LIMIT 1;\nIF LEN($u.rows) == 0\n  RETURN 401 { "ok": false, "error": "INVALID_CREDENTIALS", "message": "用户名或密码错误" };\nEND\nIF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}\n  RETURN 401 { "ok": false, "error": "INVALID_CREDENTIALS", "message": "用户名或密码错误" };\nEND\nLET $t = TOKEN NEW { "uid": $u.rows[0].id, "username": {{body.username}} };\nRETURN 200 { "ok": true, "token": $t.token, "user": { "id": $u.rows[0].id, "nickname": $u.rows[0].nickname } };`],
+    ['500 错误', '结构化报告错误与 traceId', `LOG ERROR '业务处理失败';\nRETURN 500 { "ok": false, "error": "INTERNAL", "message": "服务处理失败", "hint": "把 traceId 和日志一起发给管理员" };`],
+    ['重定向', '301/302/303/307/308 自动带 Location', `RETURN 301 "/login";`],
+    ['重定向对象', '对象里写 location 或 url', `RETURN 302 { "location": "/login", "reason": "未登录" };`],
     ['抓取', '抓网页并按大小/超时限制', `LET $page = CRAWL 'https://example.com' { maxBytes: 200000, timeout: 8000 };\nRETURN 200 { "ok": $page.ok, "title": $page.title, "bytes": $page.bytes };`],
     ['等待', '显式延时，最长 60 秒', `WAIT 500;\nLOG DEBUG '等待完成';`],
+    ['变量与函数', '赋值、自增、纯表达式函数', `LET $count = 0;\nFUNC DOUBLE($a) = $a * 2;\nINC $count BY 2;\nASSIGN $count = DOUBLE($count);\nRETURN 200 { "count": $count };`],
+    ['FOR 循环', '按次数/区间循环，支持 BREAK', `LET $sum = 0;\nFOR $i = 1 TO 5 STEP 1\n  INC $sum BY $i;\nEND\nRETURN 200 { "sum": $sum };`],
+    ['WHILE 循环', '条件循环，必须能退出', `LET $n = 0;\nWHILE $n < 5\n  INC $n;\n  IF $n == 3\n    BREAK;\n  END\nEND\nRETURN 200 { "n": $n };`],
+    ['SWITCH 分支', '多值匹配，CASE 可写多个值', `LET $status = {{body.status}};\nSWITCH $status\nCASE 'paid', 'shipped'\n  RETURN 200 { "ok": true, "status": $status };\nDEFAULT\n  RETURN 400 { "ok": false, "error": "BAD_STATUS" };\nEND`],
   ];
 }
 
@@ -1846,7 +1943,7 @@ function insertScriptText(text) {
   ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-const CB_KEYWORDS = new Set(['LET', 'SET', 'QUERY', 'EXEC', 'IF', 'ELSEIF', 'ELSE', 'END', 'FOREACH', 'IN', 'RETURN', 'LOG', 'WAIT', 'TX', 'BEGIN', 'COMMIT', 'ROLLBACK', 'TOKEN', 'NEW', 'PUBLISH', 'CRAWL', 'REDIS', 'GET', 'PUT', 'DEL', 'INCR', 'EXPIRE']);
+const CB_KEYWORDS = new Set(['LET', 'SET', 'ASSIGN', 'INC', 'DEC', 'APPEND', 'PUSH', 'QUERY', 'EXEC', 'IF', 'ELSEIF', 'ELSE', 'END', 'FOREACH', 'FOR', 'TO', 'DOWNTO', 'STEP', 'WHILE', 'BREAK', 'CONTINUE', 'SWITCH', 'CASE', 'DEFAULT', 'FUNC', 'FUNCTION', 'RUN', 'INVOKE', 'THROW', 'IN', 'RETURN', 'LOG', 'WAIT', 'TX', 'BEGIN', 'COMMIT', 'ROLLBACK', 'TOKEN', 'NEW', 'PUBLISH', 'CRAWL', 'REDIS', 'GET', 'PUT', 'DEL', 'INCR', 'EXPIRE']);
 const CB_SQL = new Set(['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AS', 'NULL', 'IS', 'LIKE', 'IN', 'EXISTS', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'UNION', 'ALL']);
 
 function scriptTok(cls, text) {
@@ -2159,8 +2256,8 @@ function setupScriptEditor(onChange) {
       const ls = ta.value.lastIndexOf('\n', s - 1) + 1;
       const line = ta.value.slice(ls, s);
       const indent = (line.match(/^\s*/) || [''])[0];
-      const deeper = /^\s*(IF|ELSEIF|ELSE|FOREACH|TX\s+BEGIN|BEGIN)\b/i.test(line);
-      const dedent = /^\s*(END|ELSE|ELSEIF)\b/i.test(line) ? 2 : 0;
+      const deeper = /^\s*(IF|ELSEIF|ELSE|FOREACH|FOR|WHILE|SWITCH|CASE|DEFAULT|TX\s+BEGIN|BEGIN)\b/i.test(line);
+      const dedent = /^\s*(END|CASE|DEFAULT|ELSE|ELSEIF)\b/i.test(line) ? 2 : 0;
       const base = indent.length >= dedent ? indent.slice(0, indent.length - dedent) : '';
       ta.setRangeText('\n' + base + (deeper ? '  ' : ''), s, ta.selectionEnd, 'end');
       ta.dispatchEvent(new Event('input', { bubbles: true }));
@@ -2225,12 +2322,21 @@ function showScriptGuide() {
         <tr><td class="mono">LET $x = EXEC INSERT/UPDATE/DELETE …;</td><td>增删改，结果在 $x.affectedRows / $x.insertId</td></tr>
         <tr><td class="mono">IF 条件 … ELSE … END</td><td>分支；条件可用 LEN、IN、CONTAINS</td></tr>
         <tr><td class="mono">FOREACH $row IN $x.rows … END</td><td>循环，最多 500 条</td></tr>
+        <tr><td class="mono">FOR $i = 1 TO 5 / DOWNTO / END</td><td>按区间循环，可写 STEP；支持 BREAK / CONTINUE</td></tr>
+        <tr><td class="mono">WHILE 条件 … END</td><td>条件循环；每次执行都会重新判断，最多 1000 轮</td></tr>
+        <tr><td class="mono">SWITCH $x / CASE 1, 2 / DEFAULT / END</td><td>多分支；CASE 可写多个逗号分隔的值</td></tr>
+        <tr><td class="mono">ASSIGN $x = …; / $x += 1; / INC $x; / DEC $x;</td><td>重新赋值、自增自减；变量要先用 LET 声明</td></tr>
+        <tr><td class="mono">APPEND $list, 值; / PUSH $list, 值;</td><td>向数组追加元素，循环拼结果常用</td></tr>
+        <tr><td class="mono">FUNC 名称($a) = 表达式; / RUN 名称(1);</td><td>纯表达式函数与调用；不用 SQL 的 CALL</td></tr>
+        <tr><td class="mono">THROW '错误';</td><td>主动抛错，返回 500 与结构化错误报告</td></tr>
         <tr><td class="mono">RETURN 200 { "ok": true };</td><td>直接返回 JSON</td></tr>
+        <tr><td class="mono">RETURN 301 "/login";</td><td>重定向，响应头自动带 Location</td></tr>
         <tr><td class="mono">LOG INFO '内容';</td><td>写运行日志，控制台可见</td></tr>
         <tr><td class="mono">WAIT 500;</td><td>等待 500 毫秒，最长 60 秒</td></tr>
         <tr><td class="mono">TX BEGIN; … TX COMMIT;</td><td>手动事务；异常时 ROLLBACK</td></tr>
         <tr><td class="mono">LET $x = CRAWL 'https://…' { … };</td><td>抓取网页，返回 title/text/links/bytes</td></tr>
-      </tbody>
+        <tr><td class="mono">SELECT / INSERT / UPDATE / DELETE …</td><td>不能裸写；必须写成 QUERY SQL; 或 EXEC SQL;</td></tr>
+</tbody>
     </table>
     <div class="mt-3 font-semibold">最常用占位符</div>
     <div class="text-neutral-600"><span class="mono">{{t:main}}</span> 表名 · <span class="mono">{{columns:main}}</span> 字段 · <span class="mono">{{where:main}}</span> 条件 · <span class="mono">{{body.x}}</span> 请求体 · <span class="mono">{{query.x}}</span> 查询参数 · <span class="mono">{{id}}</span> 主键参数</div>
@@ -3322,13 +3428,17 @@ RETURN 201 { "ok": true, "token": $t.token };</pre></div>
         <tr><td class="mono">LET $x = QUERY SQL;</td><td>执行查询，结果在 <span class="hb-inline">$x.rows</span>，还有 <span class="hb-inline">$x.sql</span> / <span class="hb-inline">$x.params</span>。</td></tr>
         <tr><td class="mono">LET $x = EXEC SQL;</td><td>执行增删改，结果含 <span class="hb-inline">affectedRows</span>、<span class="hb-inline">insertId</span>。</td></tr>
         <tr><td class="mono">LET $x = 表达式;</td><td>算值，比如 <span class="hb-inline">HASH('sha256', {{body.password}})</span>。</td></tr>
+        <tr><td class="mono">ASSIGN $x = 值; / $x += 1;</td><td>重新赋值；<span class="hb-inline">+= -= *= /=</span> 都支持。变量必须先用 LET 声明，裸 <span class="hb-inline">$x = ...</span> 也等价于赋值。</td></tr>
+        <tr><td class="mono">INC $n; / INC $n BY 2; / DEC $n;</td><td>自增、自减；不写 BY 时步长为 1。</td></tr>
+        <tr><td class="mono">APPEND $list, 值; / PUSH $list, 值;</td><td>把值追加到数组；循环里经常用来拼返回列表。</td></tr>
         <tr><td class="mono">QUERY SQL;</td><td>不取名也能执行；结果留在 <span class="hb-inline">{{last.x}}</span>，下一条 SQL 里可引用，但不会自动变成 <span class="hb-inline">$变量</span>。</td></tr>
         <tr><td class="mono">RETURN 200 { ... };</td><td>立即结束并返回；不写状态码时默认 200。</td></tr>
+        <tr><td class="mono">RETURN 301 "/login";</td><td>3xx 重定向；字符串或对象里的 <span class="hb-inline">location / url</span> 会写进 <span class="hb-inline">Location</span> 响应头。301/302/303/307/308 都支持。</td></tr>
         <tr><td class="mono">LOG INFO '文本';</td><td>写服务日志；级别可写 TRACE / DEBUG / INFO / WARN / ERROR。</td></tr>
       </tbody></table>
       <div class="hb-h3">分支与循环</div>
-      <div class="hb-p">IF 不需要括号和花括号，用 <span class="hb-inline">IF 条件</span> 开始，<span class="hb-inline">ELSEIF</span>、<span class="hb-inline">ELSE</span> 可选，最后必须有 <span class="hb-inline">END</span>。FOREACH 用 <span class="hb-inline">FOREACH $row IN $rows.rows</span> 开始，也要 <span class="hb-inline">END</span> 结束，每次最多遍历 500 条。</div>
-      <div class="hb-code"><div class="hb-code-head">条件与循环</div><pre>IF {{body.status}} == 1 &amp;&amp; {{body.amount}} &gt; 0
+      <div class="hb-p">IF / FOREACH / FOR / WHILE / SWITCH 都以 <span class="hb-inline">END</span> 结束。FOR 用 <span class="hb-inline">FOR $i = 1 TO 5 STEP 1</span> 或 <span class="hb-inline">DOWNTO</span>；WHILE 条件为真时一直执行；SWITCH 的 <span class="hb-inline">CASE</span> 可以写多个逗号分隔的值，<span class="hb-inline">DEFAULT</span> 兜底。循环和 SWITCH 里可以用 <span class="hb-inline">BREAK</span> / <span class="hb-inline">CONTINUE</span>。</div>
+      <div class="hb-code"><div class="hb-code-head">条件、区间循环与多分支</div><pre>IF {{body.status}} == 1 &amp;&amp; {{body.amount}} &gt; 0
   RETURN 200 { "ok": true };
 ELSEIF {{body.status}} == 2
   RETURN 403 { "ok": false, "error": "LOCKED" };
@@ -3337,13 +3447,18 @@ ELSE
   RETURN 400 { "ok": false, "error": "BAD_STATUS" };
 END
 
-LET $order = EXEC INSERT INTO {{t:main}} (order_no, customer)
-VALUES ({{body.order_no}}, {{body.customer}});
+LET $sum = 0;
+FOR $i = 1 TO 3
+  INC $sum BY $i;
+END
 
-FOREACH $item IN {{body.items}}
-  EXEC INSERT INTO {{t:item}} (order_id, sku, qty)
-  VALUES ($order.insertId, {{item.sku}}, {{item.qty}});
+SWITCH {{body.status}}
+CASE 'paid', 'shipped'
+  RETURN 200 { "ok": true };
+DEFAULT
+  RETURN 400 { "ok": false };
 END</pre></div>
+      <div class="hb-warn"><b>和 SQL 严格分开</b><div>裸写 <span class="hb-inline">SELECT / INSERT / UPDATE / DELETE / CALL / SET …</span> 会直接报错；要执行 SQL 必须写成 <span class="hb-inline">QUERY SQL;</span> 或 <span class="hb-inline">EXEC SQL;</span>。自定义函数调用用 <span class="hb-inline">RUN 名称(...)</span>，不要用 SQL 的 <span class="hb-inline">CALL</span>，避免被当成存储过程。</div></div>
       <div class="hb-h3">表达式</div>
       <div class="hb-p">支持 <span class="hb-inline">== != &gt; &lt; &gt;= &lt;=</span>、<span class="hb-inline">&amp;&amp; || !</span>、<span class="hb-inline">+ - * / %</span>；支持数组 <span class="hb-inline">['a','b']</span> 和对象 <span class="hb-inline">{ "k": 1 }</span>。字符串用单引号或双引号。变量用 <span class="hb-inline">$name</span>，取值用 <span class="hb-inline">$x.rows[0].id</span> 或 <span class="hb-inline">$x.rows.0.id</span>。</div>
       <div class="hb-h3">进阶语句</div>
@@ -3355,6 +3470,9 @@ END</pre></div>
         <tr><td class="mono">LET $t = TOKEN NEW { "uid": 1 };</td><td>签发会话 token；返回 <span class="hb-inline">$t.token</span>、<span class="hb-inline">$t.onlyId</span>、<span class="hb-inline">$t.ttl</span>。</td></tr>
         <tr><td class="mono">LET $u = TOKEN GET $token;</td><td>按 token 取会话内容；无效返回空。也可以 <span class="hb-inline">TOKEN DEL $token;</span> 注销。</td></tr>
         <tr><td class="mono">PUBLISH 'orders:new' { "id": 1 };</td><td>向 Redis 频道发布消息，微服务之间可用。</td></tr>
+        <tr><td class="mono">FUNC 名称($a, $b) = 表达式;</td><td>纯表达式函数，只能做同步计算，不里面执行 SQL。参数写 <span class="hb-inline">$a</span>，调用写 <span class="hb-inline">名称(1, 2)</span>。</td></tr>
+        <tr><td class="mono">RUN 名称(参数); / INVOKE 名称(参数);</td><td>调用 FUNC 定义的函数并丢弃返回值；批量副作用或自检用。</td></tr>
+        <tr><td class="mono">THROW '错误信息';</td><td>主动抛出脚本错误，服务会返回 500 并把信息写进结构化错误报告。</td></tr>
       </tbody></table>
       <div class="hb-warn"><b>写好习惯</b><div>每条语句建议以分号结尾；注释用 <span class="hb-inline">#</span> 最稳，也支持 <span class="hb-inline">//</span> 和 <span class="hb-inline">/* ... */</span>。停止输入 0.3 秒后编辑器会自动检查，红色波浪线就是语法或变量问题。</div></div>
     `,
@@ -3888,7 +4006,10 @@ function renderSearch() {
       $('#search').value = '';
       searchActive = -1;
       render();
-      if (r.kind === '字段' && r.field) requestAnimationFrame(() => focusTableField(r.field));
+      if (r.kind === '字段' && r.field) {
+        focusTableField(r.field);
+        setTimeout(() => focusTableField(r.field), 0);
+      }
     };
   });
 }
@@ -5254,8 +5375,28 @@ $('#taskTabs').addEventListener('contextmenu', (e) => {
 });
 
 /* ---------------- 主题 ---------------- */
+const THEME_PALETTES = [
+  { id: 'wps', name: 'WPS 蓝', head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff' },
+  { id: 'teal', name: '松石绿', head: '#f5fbf8', headText: '#173a32', accent: '#0f766e', footer: '#f5fbf8' },
+  { id: 'amber', name: '琥珀橙', head: '#fffaf1', headText: '#3d2a12', accent: '#b45309', footer: '#fffaf1' },
+  { id: 'red', name: '胭脂红', head: '#fff7f6', headText: '#3b1714', accent: '#b42318', footer: '#fff7f6' },
+  { id: 'violet', name: '紫罗兰', head: '#faf7ff', headText: '#2b1b44', accent: '#6d28d9', footer: '#faf7ff' },
+  { id: 'cyan', name: '海盐青', head: '#f4fbfd', headText: '#12333d', accent: '#0891b2', footer: '#f4fbfd' },
+  { id: 'rose', name: '玫瑰粉', head: '#fff7fa', headText: '#3c1625', accent: '#be123c', footer: '#fff7fa' },
+  { id: 'graphite', name: '深海黑', head: '#0f172a', headText: '#f8fafc', accent: '#38bdf8', footer: '#0f172a' },
+];
+
 function themeDefaults() {
   return { v: 2, head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff', font: '' };
+}
+function themePalette(id) {
+  return THEME_PALETTES.find((p) => p.id === id) || THEME_PALETTES[0];
+}
+function hexToRgba(hex, alpha) {
+  const h = String(hex || '').replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return `rgba(47,107,220,${alpha})`;
+  const n = parseInt(h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 function isLegacyDefaultTheme(t) {
   return !(t && t.v)
@@ -5271,6 +5412,8 @@ function applyTheme(t) {
   root.setProperty('--cb-head', th.head || '#ffffff');
   root.setProperty('--cb-headtext', th.headText || '#20242b');
   root.setProperty('--cb-accent', th.accent || '#2f6bdc');
+  root.setProperty('--cb-accent-soft', hexToRgba(th.accent, 0.1));
+  root.setProperty('--cb-accent-ring', hexToRgba(th.accent, 0.18));
   root.setProperty('--cb-footer', th.footer || '#ffffff');
   root.setProperty('--cb-font', th.font || '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif');
   if (th.titleSuffix) document.title = `ClickBuildServer · ${th.titleSuffix}`;
@@ -5647,6 +5790,13 @@ function showTheme() {
   if (isLegacyDefaultTheme(saved)) Object.assign(t, themeDefaults());
   modal(`<div class="p-4 w-[560px]">
     <div class="text-[13px] font-semibold mb-3">界面主题</div>
+    <div class="text-[11px] text-neutral-500 mb-2">一键切换整套配色，也可以单独微调页眉、强调色和页脚。</div>
+    <div class="grid grid-cols-4 gap-2 mb-4">
+      ${THEME_PALETTES.map((p) => `<button type="button" class="btn thin justify-start gap-1.5 theme-palette" data-theme-preset="${p.id}" title="${esc(p.name)}">
+        <span class="inline-block w-3 h-3 rounded-full border border-black/10" style="background:${p.accent}"></span>
+        <span class="truncate">${esc(p.name)}</span>
+      </button>`).join('')}
+    </div>
     <div class="grid grid-cols-2 gap-3 text-[12px]">
       <label>页眉底色 <input type="color" id="thHead" value="${esc(t.head)}" class="ml-2 align-middle"></label>
       <label>页眉文字 <input type="color" id="thHeadText" value="${esc(t.headText)}" class="ml-2 align-middle"></label>
@@ -5668,6 +5818,17 @@ function showTheme() {
       accent: root.querySelector('#thAccent').value,
       footer: root.querySelector('#thFooter').value,
       font: root.querySelector('#thFont').value,
+    });
+    root.querySelectorAll('[data-theme-preset]').forEach((btn) => {
+      btn.onclick = () => {
+        const p = themePalette(btn.dataset.themePreset);
+        root.querySelector('#thHead').value = p.head;
+        root.querySelector('#thHeadText').value = p.headText;
+        root.querySelector('#thAccent').value = p.accent;
+        root.querySelector('#thFooter').value = p.footer;
+        applyTheme(read());
+        toast(`已预览「${p.name}」`);
+      };
     });
     root.querySelector('#thClose').onclick = closeModal;
     root.querySelector('#thReset').onclick = async () => {

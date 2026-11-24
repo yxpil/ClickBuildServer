@@ -334,7 +334,9 @@ async function startMysql() {
   if (!fs.existsSync(path.join(datadir, 'mysql'))) {
     fs.mkdirSync(datadir, { recursive: true });
     pushLog('mysql', '初始化数据目录…');
-    const initArgs = ['--no-defaults', '--datadir', datadir, '--basedir', mariadbRoot];
+    const initArgs = platform.isWindows
+      ? ['--datadir', datadir]
+      : ['--no-defaults', '--datadir', datadir, '--basedir', mariadbRoot];
     if (!platform.isWindows) {
       // 不读宿主机的 /etc/mysql 配置（CI 镜像里可能带 user=mysql），
       // 并把属主指定为当前用户；普通用户没有 chown 给 mysql 的权限。

@@ -116,7 +116,7 @@ module.exports = {
       const built = render.renderSqlText(sqlText, IFACE, ctx);
       return db.execute(built.sql, built.params);
     };
-    const F = (name, args) => funcs.call(name, args);
+    const F = (name, args) => (typeof LOCAL_FUNCS === 'object' && LOCAL_FUNCS && LOCAL_FUNCS[name] ? LOCAL_FUNCS[name](...args) : funcs.call(name, args));
     const V = (token) => render.valueOf(token, ctx, IFACE);
     const toList = (v) => (Array.isArray(v) ? v : (v && v.rows) || []);
     const H = async (method, url, body) => {
@@ -134,6 +134,27 @@ module.exports = {
     const TX = async (action) => (db.tx ? db.tx(action) : null);
     const P = async (channel, payload) => (db.publish ? db.publish(channel, payload) : null);
     const L = (level, message) => console.log(\`[\${level}] \${message}\`);
+    const responseMeta = (status, body) => {
+      const headers = {};
+      let value = body;
+      if (value && typeof value === 'object' && !Array.isArray(value) && value.__headers && typeof value.__headers === 'object' && !Array.isArray(value.__headers)) {
+        Object.assign(headers, value.__headers);
+        value = { ...value };
+        delete value.__headers;
+      }
+      if (status >= 300 && status < 400 && status !== 304) {
+        let location = '';
+        if (typeof value === 'string') location = value.trim();
+        else if (value && typeof value === 'object') {
+          for (const key of ['location', 'Location', 'LOCATION', 'redirect', 'redirectUrl', 'url']) {
+            const candidate = value[key];
+            if (typeof candidate === 'string' && candidate.trim()) { location = candidate.trim(); break; }
+          }
+        }
+        if (location && !Object.keys(headers).some((key) => key.toLowerCase() === 'location')) headers.Location = location;
+      }
+      return { status, body: value, headers };
+    };
 
 ${body}
   },

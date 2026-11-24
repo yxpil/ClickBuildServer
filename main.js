@@ -278,6 +278,7 @@ if (!gotLock) {
         contextIsolation: true,
         nodeIntegration: false,
         spellcheck: false,
+        backgroundThrottling: false,
       },
     });
 

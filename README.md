@@ -42,7 +42,7 @@
 ## 控制台、脚本助手与搜索（1.1.26）
 
 - 底部控制台改成 IDEA 式的工具窗：可拖拽调高，可同时打开「生成服务 / MariaDB / Redis / RustFS」多个标签，支持过滤、自动滚动、清屏、复制和单标签关闭；`Alt+F12` 或 ``Ctrl+` `` 开关，服务 stdout / stderr 每秒增量刷新，不会整段重刷。
-- 路由页右侧新增脚本助手：列表、新增、校验、事务、抓取、等待六类模板，一键插入当前表名、字段列表、WHERE、主键和 `{{body.x}}` 等占位符；`Ctrl+Space` 收起/展开，另有完整语法速查和 `LET / QUERY / EXEC / IF / FOREACH / TX / CRAWL / WAIT` 说明。
+- 路由页右侧新增脚本助手：列表、新增、校验、事务、抓取、等待、变量函数、FOR/WHILE/SWITCH 等模板，一键插入当前表名、字段列表、WHERE、主键和 `{{body.x}}` 等占位符；`Ctrl+Space` 收起/展开，另有完整语法速查和 `LET / QUERY / EXEC / IF / FOREACH / FOR / WHILE / SWITCH / FUNC / RUN / ASSIGN / THROW` 说明。
 - 帮助页顶部新增「在这里能做什么」：建表、生成接口、写脚本、联调、导出五张卡片；新手不用先翻完整文档也能知道下一步点哪里。
 - 全局搜索改成打分排序：精确 > 前缀 > 包含，接口 / 路由 / 表 / 字段有优先级，命中词高亮；`↑↓` 选择、`Enter` 跳转，结果超过 60 条时明确显示总数和「显示前 60 条」。点字段结果会直接跳到表结构并聚焦、滚动到该字段。
 - 接口列表增加当前分类筛选和 `shown / total` 计数；表头长接口名、表名、备注统一省略号，固定布局不再被撑破。UI 冒烟用 130 个接口验证：工作区和表格无横向溢出，分类筛选能收敛到 1 条，搜索仍能限流和滚动。
@@ -202,6 +202,8 @@ AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
 
+1.1.66 补上真正的 HTTP 重定向：脚本 `RETURN 301 "/login";`、`RETURN 302 { "location": "https://example.com" };` 以及 303/307/308 都会自动写 `Location` 响应头并返回空响应体，浏览器和 `curl -L` 能直接跟随；对象里的 `location / Location / redirect / url` 都可识别，`__headers` 可附带额外响应头。自定义 `handler` 也能返回 `{ status, headers, body }`，3xx 带 `Location` 时同样不写响应体。3xx 路由不再读写 Redis 缓存，缓存 key 加入 method + path，避免多个路由共用同一张表模板时串读；导出的 JS 路由同步生成 `responseMeta`，301 不再丢 `Location`。同时修复 Windows 全新数据目录下 `mariadb-install-db` 不认识 `--no-defaults/--basedir` 导致 MariaDB 初始化失败的问题。验收：`test:ci` 10/10，源码版 UI 冒烟 141/141，真实生成服务 301/302/303/307/308 与自定义 handler 全部带 Location 并跟随到 200，普通列表缓存仍正常命中。1.1.66 同时把脚本解释器扩成更完整的业务语法：`ASSIGN / INC / DEC / APPEND / PUSH` 负责赋值和数组累积，`FOR / WHILE / SWITCH / CASE / DEFAULT / BREAK / CONTINUE` 负责区间循环、条件循环和多分支，`FUNC / RUN / INVOKE / THROW` 负责纯表达式函数、调用和主动报错；裸写 SQL 会被明确拒绝，必须走 `QUERY` / `EXEC`，函数调用用 `RUN` 避开 SQL 的 `CALL`。实测生成服务 `GET /api/syntax/demo` 返回 `{"sum":13,"list":[12],"db":0}`，`THROW` 路由返回 500 并带 `route / method / path / hint / traceId`；脚本助手新增「变量与函数 / FOR 循环 / WHILE 循环 / SWITCH 分支」四条模版。
+
 1.1.65 是双平台发布版：Windows 产品行为与 1.1.64 一致，同时新增 Linux x86_64 的 AppImage / deb，内置 MariaDB 13.0.2、Redis 8.10.3、RustFS 1.0.6 与 Node 25.2.1，并在 Linux 上真实跑通三台服务起停、生成服务 CRUD 与资源采样。CI 与 Release 统一走 `npm run test:ci` 的 10 套回归，补入停止按钮 6/6 与 21 语言包 158/158；发布构建固定 `--publish never`，不再让 electron-builder 在没有 `GH_TOKEN` 时自动上传；标签必须与 `package.json` 版本一致，安装包按精确文件名校验并同时上传 `.blockmap` 与 `.sha256`；上传 action 升级到 Node 24 的 `softprops/action-gh-release@v3.0.4`。本地 `test:ci` 10/10、1.1.65 安装版 UI 冒烟 141/141。
 
 1.1.55 把工作台的接口方法做成固定语义色：GET 绿、POST 蓝、PUT 琥珀、PATCH 紫、DELETE 红，路由列表、详情/更新/删除表、权限矩阵、缓存表与接口文档共用同一套徽标；选中路由的左侧色条、浅色底和脚本编辑区细边都跟着方法走。编辑器页签加分类色点，右侧表 / 路由统计改成浅蓝与浅绿胶囊，表标签选中态由黑底改为浅蓝胶囊；表结构页按字段类型给第一列加 3px 色条并给类型文字着色。颜色只做识别，不跟 WPS 强调色漂移；源码版与 1.1.56 安装版 UI 冒烟均为 136/136。1.1.54 把 API 测试从“手写”改成“跟工程一起生成”：`codegen` 每次生成服务、更新部署或导出工程，都会写出 `tests/api.test.js`、`tests/plan.json`、`tests/README.md`；测试页新增「自动测试」区，可单独点「生成测试」并看到接口 / 路由 / 用例 / 只读 / 写入 / 跳过计数。默认只生成安全用例：列表 2xx 且能找到 `rows` / `data`，详情 / 更新 / 删除用不存在 ID 断言脚本声明的 `RETURN 404`，鉴权路由不带 token 断言 401；上传、上游转发、对象表、抓取和自定义脚本跳过并写明原因。写入生命周期单独计数，默认跳过，只有 `CBS_WRITE_TESTS=1` 才新建→详情→更新→删除，并在 `finally` 里兜底删除；新建成功但响应没有 ID 时停止后续步骤，不编假 ID。真实「后端任务」工程（`basePath=/v1`）生成 5 个用例，只读 4/4、开启写入 5/5，测试数据清到 0 行；`test-testgen` 19/19，模版回归 194/194，多语言 24/24。1.1.53 是前一版的现场监控：底部状态条加入 CPU、内存、磁盘、服务运行数与进程内存，点开是资源占用分析面板，列本应用和每个内置服务的 PID / 内存 / 端口，并按阈值给出排查结论；资源采样全部现场读取，服务内存 `tasklist` 缓存 6 秒，系统指标跟随既有 4 秒轮询，不新增高频定时器。
@@ -331,13 +333,35 @@ RETURN 200 { "ok": true, "token": $t.token };
 支持：
 
 - `LET $x = QUERY|EXEC SQL;`、`LET $x = 表达式;`
+- `ASSIGN $x = 值;`、`$x = 值;`、`$x += 1;`（`+= -= *= /=`）、`INC $n;` / `INC $n BY 2;` / `DEC $n;`
+- `APPEND $list, 值;` / `PUSH $list, 值;`（循环里拼数组）
 - `IF / ELSEIF / ELSE / END`、`FOREACH $row IN $list / END`
+- `FOR $i = 1 TO 5 STEP 1 / DOWNTO / END`、`WHILE 条件 / END`、`SWITCH 表达式 / CASE 1, 2 / DEFAULT / END`
+- `BREAK`、`CONTINUE`、`FUNC 名称($a, $b) = 表达式;`、`RUN 名称(参数);` / `INVOKE 名称(参数);`、`THROW '错误信息';`
 - `TX BEGIN|COMMIT|ROLLBACK`（写路由默认自动事务）
 - `HTTP GET|POST|PUT|DELETE 'url' {json}`（服务间调用）
 - `PUBLISH 'channel' expr`（Redis 消息）
 - `TOKEN NEW|GET|DEL`（onlyId + token 会话）
 - `LOG TRACE|DEBUG|INFO|WARN|ERROR|FATAL expr`（彩色控制台 + 落库 + SSE）
-- `RETURN [status] {json};`
+- `RETURN [status] {json};`；3xx 可写 `RETURN 301 "/login";`，或 `RETURN 302 { "location": "https://example.com" };`，服务会自动补 `Location` 响应头。301/302/303/307/308 都可用，响应体为空，浏览器和 `curl -L` 会跟随。
+
+自定义语句和 SQL 严格分开：裸写 `SELECT / INSERT / UPDATE / DELETE / REPLACE / CREATE / ALTER / DROP / TRUNCATE / CALL / SET …` 会直接报语法错误，必须写成 `QUERY SQL;`（要结果集）或 `EXEC SQL;`（执行写入）。函数调用有意使用 `RUN` / `INVOKE`，避开 SQL 的 `CALL`；`SET $x = ...` 只表示变量赋值，不会被当成 SQL `SET`。完整示例：
+
+```text
+LET $sum = 0;
+FUNC DOUBLE($a) = $a * 2;
+FOR $i = 1 TO 3
+  INC $sum BY $i;
+END
+ASSIGN $sum = DOUBLE($sum);
+SWITCH $sum
+CASE 12
+  LOG INFO '命中 12';
+DEFAULT
+  LOG WARN '其他值';
+END
+RETURN 200 { "sum": $sum };
+```
 
 函数：`HASH / MD5 / SHA1 / SHA256 / SM3 / SM4_ENC / SM4_DEC / SUBSTR / LEFT / RIGHT / LEN / UPPER / LOWER / TRIM / CONCAT / REPLACE / SPLIT / JOIN / NOW / TODAY / UUID / BASE64 / URL_ENC / RAND_INT / MASK / JSON_GET / IF / IN / COALESCE …`，另可在“导出处”写自定义函数。
 
@@ -436,6 +460,14 @@ module.exports.routes.push({
 
 `handler` 和脚本路由共用鉴权、限流、时间窗、事务和 Redis 缓存；`api` 提供 `db.query / db.execute`、`redis`、`s3`、`log`。模块还可导出 `async setup(api)`，在 MySQL / Redis / S3 就绪后做索引、预热、定时任务等初始化，`setup` 里同样能用 `api.db`。新增模块只要往 `src/modules/` 放一个目录，不用改 `server.js`。
 
+`handler` 也可以直接返回响应头，例如 301 跳转：
+
+```js
+handler: async () => ({ status: 301, headers: { Location: '/login' }, body: { ok: true } })
+```
+
+3xx 带 `Location` 时服务会返回空响应体，避免把 JSON 包塞进跳转；`204/304/HEAD` 也按无响应体处理。
+
 
 ## 模版 / 插件 / 文档
 
@@ -518,7 +550,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 / 1.1.65 安装版） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 1.1.66） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |

@@ -95,7 +95,11 @@ function pick(ctx, token) {
     }
     return cur;
   }
-  const bag = { query: ctx.query, body: ctx.body, path: ctx.path, file: ctx.file, user: ctx.user || {}, env: ctx.env || {} }[scope];
+  const bag = {
+    query: ctx.query, body: ctx.body, path: ctx.path, file: ctx.file,
+    user: ctx.user || {}, env: ctx.env || {},
+    header: ctx.headers || {}, headers: ctx.headers || {}, req: ctx.req || {},
+  }[scope];
   if (!bag) return undefined;
   return Object.prototype.hasOwnProperty.call(bag, key) ? bag[key] : undefined;
 }

@@ -449,17 +449,47 @@ function allowedMethods(pathname) {
   return [...out];
 }
 
+function cleanHeaders(input) {
+  const out = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  for (const [key, value] of Object.entries(input)) {
+    if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(key)) continue;
+    if (/^(content-length|transfer-encoding|connection)$/i.test(key)) continue;
+    const values = Array.isArray(value) ? value : [value];
+    if (values.some((v) => /[\r\n]/.test(String(v)))) continue;
+    out[key] = Array.isArray(value) ? values.map(String) : String(value);
+  }
+  return out;
+}
+
+function redirectTarget(body) {
+  if (typeof body === 'string') return body.trim();
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+  for (const key of ['location', 'Location', 'LOCATION', 'redirect', 'redirectUrl', 'url']) {
+    const value = body[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function hasLocation(headers) {
+  return Object.keys(headers || {}).some((key) => key.toLowerCase() === 'location');
+}
+
 function send(res, status, body, extra) {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, {
+  const headers = {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'content-type,x-filename,x-content-type,authorization',
     'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'cache-control': 'no-store',
-    ...(extra || {}),
-  });
-  res.end(payload);
+    ...cleanHeaders(extra),
+  };
+  const redirect = status >= 300 && status < 400 && hasLocation(headers);
+  const noBody = status === 204 || status === 304 || (res.req && res.req.method === 'HEAD') || redirect;
+  if (noBody) delete headers['content-type'];
+  res.writeHead(status, headers);
+  res.end(noBody ? '' : JSON.stringify(body == null ? {} : body));
 }
 
 function upstreamOf(key) {
@@ -630,7 +660,7 @@ function sendError(req, res, status, body, title, detail, extra) {
       'access-control-allow-origin': '*',
       ...(extra || {}),
     });
-    return res.end(errorHtml(status, title || (status === 404 ? '没有找到这个页面' : '服务内部错误'), (body && body.message) || '', detail || '', body && body.traceId));
+    return res.end(errorHtml(status, title || (status === 404 ? '没有找到这个页面' : '服务内部错误'), (body && body.message) || '', [(body && body.hint), detail].filter(Boolean).join('\n'), body && body.traceId));
   }
   return send(res, status, body, extra);
 }
@@ -738,9 +768,15 @@ function cacheKeyOf(iface, route, ctx) {
   try {
     const raw = render.renderText(tpl, iface, ctx);
     if (!raw) return '';
-    // 每个工程一个缓存命名空间，多个工程共用一台 Redis 也互不相干
-    return raw.startsWith(`${CACHE_NS}:`) ? raw : `${CACHE_NS}:${raw.replace(/^icb:/, '')}`;
+    // 每个工程一个缓存命名空间，多个工程共用一台 Redis 也互不相干。
+    // 路由也必须进 key：列表/详情可能共用同一个表模板，不能互相读到别人的缓存。
+    const body = raw.startsWith(`${CACHE_NS}:`) ? raw.slice(CACHE_NS.length + 1) : raw.replace(/^icb:/, '');
+    return `${CACHE_NS}:${route.method}:${route.path}:${body}`;
   } catch (e) { return ''; }
+}
+
+function scriptMayRedirect(route) {
+  return /(^|\n)\s*RETURN\s+3\d{2}\b/i.test(String((route && route.script) || ''));
 }
 
 async function invalidate(iface) {
@@ -996,6 +1032,8 @@ async function handle(req, res, item) {
 
   const ctx = {
     query, body, path: item.params, id: item.params.id != null ? item.params.id : (query.id != null ? query.id : body.id),
+    headers: req.headers || {},
+    req: { method: req.method, url: req.url, path: pathname, headers: req.headers || {} },
     file: null, vars: user ? { user } : {}, uuid: crypto.randomUUID().replace(/-/g, ''),
     user, token, remoteIp: ip, traceId, service: project.services || [],
     io: route.io || {},
@@ -1041,7 +1079,8 @@ async function handle(req, res, item) {
     }
   }
 
-  const ckey = route.cache && route.cache.enabled ? cacheKeyOf(iface, route, ctx) : '';
+  const cacheable = route.cache && route.cache.enabled && !scriptMayRedirect(route);
+  const ckey = cacheable ? cacheKeyOf(iface, route, ctx) : '';
   if (ckey && redis) {
     try {
       const hit = await redis.get(ckey);
@@ -1198,8 +1237,8 @@ async function handle(req, res, item) {
         log: (level, message, data) => logPush({ level: level || 'INFO', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 0, ms: Date.now() - started, ip, traceId, message, data }),
       };
       const raw = await route.handler(ctx, api);
-      result = (raw && typeof raw === 'object' && ('status' in raw || 'body' in raw || 'logs' in raw))
-        ? { status: raw.status || 200, body: raw.body, logs: raw.logs || [] }
+      result = (raw && typeof raw === 'object' && ('status' in raw || 'body' in raw || 'logs' in raw || 'headers' in raw))
+        ? { status: raw.status || 200, body: raw.body, logs: raw.logs || [], headers: raw.headers }
         : { status: 200, body: raw };
     } else {
       result = await scriptEngine.runScript(parsedOf(route), {
@@ -1245,6 +1284,10 @@ async function handle(req, res, item) {
       await txRollbackAll('脚本异常');
       logPush({ level: 'FATAL', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status: 500, ms: Date.now() - started, ip, traceId, message: '事务已回滚（脚本异常）', data: { error: e.message, stack: String(e.stack || '').split('\n').slice(0, 4) } });
     }
+    // 把路由上下文挂到异常上，最外层 500 报告才能写清楚是哪条路由失败。
+    e.icbRoute = route.name;
+    e.icbRouteMethod = route.method;
+    e.icbRoutePath = pathname;
     breakerRecord(rkey, guard.breaker, true);
     throw e;
   }
@@ -1266,7 +1309,13 @@ async function handle(req, res, item) {
 
   logs.push(...(result.logs || []));
   const status = result.status || 200;
-  if (status < 400 && route.cache && route.cache.enabled && ckey && redis) {
+  const headers = cleanHeaders(result.headers);
+  if (status >= 300 && status < 400 && status !== 304) {
+    const location = redirectTarget(result.body);
+    if (location && !hasLocation(headers)) headers.Location = location;
+  }
+  const redirect = status >= 300 && status < 400 && hasLocation(headers);
+  if (!redirect && status < 400 && route.cache && route.cache.enabled && ckey && redis) {
     try { await redis.setex(ckey, route.cache.ttl || 60, JSON.stringify(result.body)); } catch (e) { /* 忽略 */ }
   }
   if (route.method !== 'GET' && status < 400) await invalidate(iface);
@@ -1276,10 +1325,17 @@ async function handle(req, res, item) {
   logPush({ level: status >= 500 ? 'ERROR' : status >= 400 ? 'WARN' : 'INFO', ts: stamp(), iface: iface.name, route: route.name, method: route.method, pathname, status, ms, ip, traceId, message: `${status} ${route.name}`, data: logs.length ? logs : null });
 
   const outBody = result.body && typeof result.body === 'object' ? result.body : {};
-  const failed = status >= 400 || outBody.ok === false;
+  const failed = status >= 400 || (!redirect && outBody.ok === false);
   const out = {
     ok: !failed,
-    ...(failed ? { error: outBody.error || 'ERROR', message: outBody.message || undefined } : {}),
+    ...(failed ? {
+      error: outBody.error || 'ERROR',
+      message: outBody.message || undefined,
+      hint: outBody.hint || undefined,
+      route: route.name,
+      method: route.method,
+      path: pathname,
+    } : {}),
     data: result.body,
     cached: false,
     ms,
@@ -1289,7 +1345,9 @@ async function handle(req, res, item) {
   };
   if (status >= 500) return sendError(req, res, status, out, '服务内部错误', outBody.message || '');
   const setCookie = authCookie(ctx, route);
-  return send(res, status, out, setCookie ? { 'set-cookie': setCookie } : undefined);
+  const extra = { ...headers };
+  if (setCookie) extra['set-cookie'] = setCookie;
+  return send(res, status, out, extra);
 }
 
 // ---------------- 文档 ----------------
@@ -1605,6 +1663,10 @@ const server = http.createServer(async (req, res) => {
     logPush({ level: 'ERROR', ts: stamp(), method: req.method, pathname, status: 500, ms: 0, message: e.message, traceId });
     return sendError(req, res, 500, {
       ok: false, error: 'INTERNAL', message: e.message, stack: String(e.stack || '').split('\n').slice(0, 4), traceId,
+      hint: '把这条 traceId 发到控制台日志里，可以定位到具体路由和 SQL；需要隐藏堆栈时关闭“错误详情”开关。',
+      route: e.icbRoute || undefined,
+      method: e.icbRouteMethod || req.method,
+      path: e.icbRoutePath || pathname,
     }, '服务内部错误', ERR_DETAIL ? String(e.stack || e.message) : '');
   }
 });

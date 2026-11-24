@@ -59,7 +59,7 @@ function defaultGuard() {
   };
 }
 
-const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'proxy', 'objects', 'crawl', 'custom'];
+const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'login', 'register', 'search', 'health', 'redirect', 'proxy', 'objects', 'crawl', 'custom'];
 const IO_RESPONSES = ['json', 'cookie', 'file', 'object', 'proxy', 'crawl'];
 const IO_STORES = ['none', 'mysql', 'redis', 'memory', 's3'];
 const FILE_KINDS = ['any', 'image', 'video', 'audio', 'document', 'pdf', 'archive'];
@@ -151,6 +151,11 @@ const ROUTE_META = {
   update: { name: '更新', method: 'PUT', path: '/:table/:id' },
   delete: { name: '删除', method: 'DELETE', path: '/:table/:id' },
   upload: { name: '附件', method: 'POST', path: '/:table/:id/file' },
+  login: { name: '登录', method: 'POST', path: '/auth/login' },
+  register: { name: '注册', method: 'POST', path: '/auth/register' },
+  search: { name: '搜索', method: 'GET', path: '/:table/search' },
+  health: { name: '健康检查', method: 'GET', path: '/:table/health' },
+  redirect: { name: '跳转', method: 'GET', path: '/go/:slug' },
   proxy: { name: '上游转发', method: 'POST', path: '/proxy' },
   objects: { name: '对象表', method: 'GET', path: '/objects' },
   crawl: { name: '抓取', method: 'GET', path: '/crawl' },
@@ -198,6 +203,46 @@ const ROUTE_TEMPLATES = {
     'END',
     'EXEC UPDATE {{t:main}} SET {{bindColumn:main}} = {{objectKey}} WHERE {{idColumn:main}} = {{id}};',
     'RETURN 200 { "key": {{objectKey}}, "url": {{objectUrl}}, "name": {{filename}} };',
+  ].join('\n'),
+  login: [
+    '# 登录：表里需要有 username / password_hash / nickname 字段；密码用 SM4 存储',
+    'LET $u = QUERY SELECT id, password_hash, nickname FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;',
+    'IF LEN($u.rows) == 0',
+    '  RETURN 401 { "ok": false, "error": "INVALID_CREDENTIALS", "message": "用户名或密码错误" };',
+    'END',
+    "IF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}",
+    '  RETURN 401 { "ok": false, "error": "INVALID_CREDENTIALS", "message": "用户名或密码错误" };',
+    'END',
+    'LET $t = TOKEN NEW { "uid": $u.rows[0].id, "username": {{body.username}}, "nickname": $u.rows[0].nickname };',
+    'RETURN 200 { "ok": true, "token": $t.token, "expiresIn": $t.ttl, "user": { "id": $u.rows[0].id, "nickname": $u.rows[0].nickname } };',
+  ].join('\n'),
+  register: [
+    '# 注册：先查重，再插入，密码 SM4 加密，最后直接签发 token',
+    'LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;',
+    'IF LEN($exists.rows) > 0',
+    '  RETURN 409 { "ok": false, "error": "USER_EXISTS", "message": "用户名已存在" };',
+    'END',
+    "LET $ins = EXEC INSERT INTO {{t:main}} (username, password_hash, nickname, role, status) VALUES ({{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}}, {{body.role}}, 1);",
+    'LET $t = TOKEN NEW { "uid": $ins.insertId, "username": {{body.username}}, "nickname": {{body.nickname}} };',
+    'RETURN 201 { "ok": true, "id": $ins.insertId, "token": $t.token, "expiresIn": $t.ttl };',
+  ].join('\n'),
+  search: [
+    '# 搜索：关键字与字段筛选都走 {{where:main}}，支持排序和分页',
+    'LET $rows = QUERY SELECT {{columns:main}} FROM {{t:main}} WHERE {{where:main}} ORDER BY {{orderBy:main}} LIMIT {{limit}} OFFSET {{offset}};',
+    'RETURN 200 { "ok": true, "rows": $rows.rows, "keyword": {{query.keyword}}, "total": LEN($rows.rows) };',
+  ].join('\n'),
+  health: [
+    '# 健康检查：轻量探活，不返回业务数据；适合网关、负载均衡和监控',
+    'LET $db = QUERY SELECT 1 AS ok;',
+    'RETURN 200 { "ok": true, "db": $db.rows[0].ok, "service": "clickbuild", "time": NOW() };',
+  ].join('\n'),
+  redirect: [
+    '# 短链跳转：按路径参数 slug 查目标地址，再用 302 送出 Location',
+    'LET $row = QUERY SELECT target_url FROM {{t:main}} WHERE slug = {{path.slug}} LIMIT 1;',
+    'IF LEN($row.rows) == 0',
+    '  RETURN 404 { "ok": false, "error": "NOT_FOUND", "message": "短链不存在" };',
+    'END',
+    'RETURN 302 $row.rows[0].target_url;',
   ].join('\n'),
   proxy: [
     '# 上游转发由服务器按 route.proxy 直接代理，不走这段脚本。',
@@ -309,26 +354,118 @@ function newRoute(kind, iface, index) {
     path,
     auth: false,
     summary: '',
-    guard: { ...defaultGuard(), tx: ['create', 'update', 'delete'].includes(kindKey) },
+    guard: { ...defaultGuard(), tx: ['create', 'update', 'delete', 'register'].includes(kindKey) },
     script: ROUTE_TEMPLATES[kindKey],
     cache: { enabled: kindKey === 'list' || kindKey === 'detail', key: 'icb:{{t:main}}:{{queryHash}}:{{page}}:{{pageSize}}', ttl: 60 },
   };
 }
 
+const IFACE_SCENARIOS = {
+  blank: { label: '空接口', table: '', comment: '', routes: null, fields: null },
+  auth: {
+    label: '登录注册',
+    table: 'sys_user',
+    comment: '用户名密码登录、注册即签发 token',
+    routes: ['login', 'register', 'detail', 'list'],
+    fields: [
+      { name: 'username', type: 'varchar', comment: '登录名' },
+      { name: 'password_hash', type: 'varchar', comment: '密码（SM4）' },
+      { name: 'nickname', type: 'varchar', comment: '昵称' },
+      { name: 'role', type: 'varchar', comment: '角色 admin/user' },
+      { name: 'status', type: 'tinyint', comment: '1 启用 0 禁用' },
+    ],
+  },
+  search: {
+    label: '信息搜索',
+    table: 'search_record',
+    comment: '关键词、字段筛选、排序、分页',
+    routes: ['search', 'list', 'detail', 'create', 'delete'],
+    fields: [
+      { name: 'title', type: 'varchar', comment: '标题' },
+      { name: 'category', type: 'varchar', comment: '分类' },
+      { name: 'content', type: 'text', comment: '正文' },
+      { name: 'status', type: 'tinyint', comment: '0 草稿 1 发布' },
+    ],
+  },
+  cms: {
+    label: '内容管理',
+    table: 'cms_article',
+    comment: '文章增删改查与搜索',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'],
+    fields: [
+      { name: 'title', type: 'varchar', comment: '标题' },
+      { name: 'slug', type: 'varchar', comment: 'URL 别名' },
+      { name: 'summary', type: 'varchar', comment: '摘要' },
+      { name: 'content', type: 'text', comment: '正文' },
+      { name: 'status', type: 'tinyint', comment: '0 草稿 1 发布' },
+    ],
+  },
+  shop: {
+    label: '商品目录',
+    table: 'shop_product',
+    comment: '商品、库存、价格与图片',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'],
+    fields: [
+      { name: 'name', type: 'varchar', comment: '商品名' },
+      { name: 'sku', type: 'varchar', comment: 'SKU' },
+      { name: 'price', type: 'decimal', comment: '售价' },
+      { name: 'stock', type: 'int', comment: '库存' },
+      { name: 'status', type: 'tinyint', comment: '1 上架 0 下架' },
+    ],
+  },
+  form: {
+    label: '表单收集',
+    table: 'form_submission',
+    comment: '报名、问卷、留言统一收集',
+    routes: ['create', 'list', 'detail', 'delete'],
+    fields: [
+      { name: 'form_name', type: 'varchar', comment: '表单名' },
+      { name: 'name', type: 'varchar', comment: '姓名' },
+      { name: 'phone', type: 'varchar', comment: '电话' },
+      { name: 'email', type: 'varchar', comment: '邮箱' },
+      { name: 'content', type: 'text', comment: '留言' },
+    ],
+  },
+  shortlink: {
+    label: '短链跳转',
+    table: 'short_link',
+    comment: 'slug 查表后 302 跳到目标地址',
+    routes: ['redirect', 'list', 'create', 'detail', 'update', 'delete'],
+    fields: [
+      { name: 'slug', type: 'varchar', comment: '短码' },
+      { name: 'target_url', type: 'varchar', comment: '目标地址' },
+      { name: 'hits', type: 'int', comment: '访问次数' },
+      { name: 'status', type: 'tinyint', comment: '1 启用 0 停用' },
+    ],
+  },
+  health: {
+    label: '健康检查',
+    table: 'health_probe',
+    comment: '探活、版本与服务状态',
+    routes: ['health', 'detail', 'list'],
+    fields: [
+      { name: 'service', type: 'varchar', comment: '服务名' },
+      { name: 'version', type: 'varchar', comment: '版本' },
+      { name: 'status', type: 'tinyint', comment: '1 正常 0 异常' },
+    ],
+  },
+};
+
 function newIface(name, categoryId, opts) {
   const o = opts || {};
+  const sc = IFACE_SCENARIOS[String(o.scenario || o.template || 'blank')] || IFACE_SCENARIOS.blank;
   const used = new Set();
   const id = crypto.randomUUID().slice(0, 8);
   const base = safeIdent(name || 'new', 'iface');
-  const tableName = o.tableName ? safeIdent(o.tableName, 'tbl') : `${base}_${id}`;
+  const tableName = o.tableName ? safeIdent(o.tableName, 'tbl') : (sc.table ? safeIdent(sc.table, 'tbl') : `${base}_${id}`);
   const main = newTable(tableName, used);
   // 默认路由模板统一引用 {{t:main}} / {{columns:main}}，首张表必须叫 main。
   main.key = 'main';
-  main.comment = String(o.tableComment || '');
+  main.comment = String(o.tableComment || sc.comment || '');
   used.add('main');
   const initialFields = Array.isArray(o.fields)
     ? o.fields
-    : [{ name: 'name', type: 'varchar', comment: '名称' }];
+    : (sc.fields || [{ name: 'name', type: 'varchar', comment: '名称' }]);
   const reserved = new Set(['id', 'created_at', 'updated_at']);
   const custom = initialFields.map((f) => {
     const key = String((f && f.name) || '').trim().toLowerCase();
@@ -341,10 +478,10 @@ function newIface(name, categoryId, opts) {
     };
   }).filter(Boolean);
   main.fields = [...defaultFields(), ...custom];
-  const allowedKinds = ['list', 'detail', 'create', 'update', 'delete'];
+  const allowedKinds = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'login', 'register', 'search', 'health', 'redirect'];
   const wantedKinds = Array.isArray(o.routeKinds) && o.routeKinds.length
     ? o.routeKinds.filter((k) => allowedKinds.includes(k))
-    : allowedKinds;
+    : (sc.routes || allowedKinds);
   const kinds = wantedKinds.length ? Array.from(new Set(wantedKinds)) : allowedKinds;
   const routes = kinds.map((k) => newRoute(k, { tables: [main] }));
   let basePath = String(o.basePath || '').trim();
@@ -353,8 +490,9 @@ function newIface(name, categoryId, opts) {
     basePath = basePath.replace(/\/+$/, '');
   }
   const authMode = o.authMode === 'all' || o.authMode === 'write' ? o.authMode : 'none';
+  const openKinds = ['login', 'register', 'health', 'redirect'];
   routes.forEach((r) => {
-    r.auth = authMode === 'all' || (authMode === 'write' && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(r.method));
+    r.auth = !openKinds.includes(r.key) && (authMode === 'all' || (authMode === 'write' && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(r.method)));
   });
   return {
     id,
@@ -884,7 +1022,7 @@ function ddlOf(iface) {
 }
 
 module.exports = {
-  TYPES, TYPE_KEYS, TASK_TYPES, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES,
+  TYPES, TYPE_KEYS, TASK_TYPES, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES, IFACE_SCENARIOS,
   IO_RESPONSES, IO_STORES, FILE_KINDS,
   newField, defaultFields, newTable, newRoute, newIface, cloneIface, seedProject,
   defaultIoTypes, normalizeIoTypes, ioOf,
