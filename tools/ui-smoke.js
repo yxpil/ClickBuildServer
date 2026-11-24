@@ -118,7 +118,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`showIfaceLibrary({view:'tables'})`);
   await wait(500);
   const tableView = JSON.parse(await val(`(()=>{const m=document.querySelector('#libTitle');const cards=document.querySelectorAll('[data-table-kit-card]');const mall=document.querySelector('[data-table-kit-card="tablekit:mall"]');return JSON.stringify({title:m&&m.textContent,cards:cards.length,mall:mall?mall.innerText:'',chips:mall?mall.querySelectorAll('[data-table-add]').length:0,buttons:mall?mall.querySelectorAll('[data-table-use],[data-table-new]').length:0})})()`));
-  t('接口库有表格视图与 8 组预设', tableView.title === '表格套件' && tableView.cards === 8, JSON.stringify(tableView).slice(0, 180));
+  t('接口库有表格视图与 26 组预设', tableView.title === '表格套件' && tableView.cards === 26, JSON.stringify(tableView).slice(0, 180));
   t('商城表组列出 5 张表 / 40 字段与两个动作', /5 张表/.test(tableView.mall) && /40 字段/.test(tableView.mall) && tableView.chips === 5 && tableView.buttons === 2, tableView.mall.slice(0, 240));
   const tableN0 = await val(`S.project.interfaces.length`);
   await val(`document.querySelector('[data-table-new="tablekit:blog"]').click()`);

@@ -122,14 +122,23 @@ function main() {
 
   console.log('\n表格套件');
   const tks = lib.tableKits();
-  ok(tks.length === 8, '表格套件 8 组', String(tks.length));
-  ok(tks.reduce((n, k) => n + k.counts.tables, 0) === 46, '8 组共 46 张物理表');
-  ok(tks.reduce((n, k) => n + k.counts.tableDefs, 0) === 77, '8 组共 77 条表定义');
-  ok(tks.reduce((n, k) => n + k.counts.fields, 0) === 314, '8 组共 314 个字段');
+  ok(tks.length === 26, '表格套件覆盖全部 26 套内置模版', String(tks.length));
+  ok(tks.reduce((n, k) => n + k.counts.tables, 0) === 112, '26 组共 112 张物理表');
+  ok(tks.reduce((n, k) => n + k.counts.tableDefs, 0) === 155, '26 组共 155 条表定义');
+  ok(tks.reduce((n, k) => n + k.counts.fields, 0) === 742, '26 组共 742 个字段');
+  ok(new Set(tks.map((k) => k.id)).size === tks.length, '表格套件 id 不重复');
   const tmall = tks.find((x) => x.id === 'tablekit:mall');
   ok(tmall && tmall.counts.tables === 5 && tmall.counts.fields === 40 && tmall.counts.sharedTables === 1, '商城表组 5 表 / 40 字段 / 1 张共享');
   const tsocial = tks.find((x) => x.id === 'tablekit:social');
   ok(tsocial && tsocial.counts.tables === 18 && tsocial.counts.tableDefs === 46, '社区表组 46 条定义归并为 18 张表', `${tsocial && tsocial.counts.tableDefs} -> ${tsocial && tsocial.counts.tables}`);
+  const tvideo = tks.find((x) => x.id === 'tablekit:video');
+  ok(tvideo && tvideo.counts.tables === 5 && tvideo.counts.fields === 31, '视频站等非八大套件也进入表组', tvideo && `${tvideo.counts.tables}/${tvideo.counts.fields}`);
+
+  for (const tk of tks) {
+    const r = lib.insertTableKit(emptyProject(tk.name), tk.id);
+    const v = spec.validateProject(r.project);
+    ok(r.added.length === tk.counts.tables && v.ok, `表组 ${tk.name} 全量接入并校验通过`, `${r.added.length}/${tk.counts.tables}`);
+  }
 
   const tEmpty = emptyProject('空工程接表');
   const tNew = lib.insertTableKit(tEmpty, 'tablekit:mall');

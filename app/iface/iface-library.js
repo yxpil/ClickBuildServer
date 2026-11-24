@@ -62,6 +62,23 @@ const KITS = [
   },
 ];
 
+// 表格套件默认覆盖全部内置工程模版：8 套接口套件优先排在最前，
+// 其余模版按名称表组补齐，避免“预设表”只覆盖少数业务。
+const TABLE_KITS = KITS.concat(
+  templates.list()
+    .filter((x) => x.kind === 'builtin' && !KITS.some((k) => k.templateId === x.id))
+    .filter((x) => x.counts && x.counts.tables > 0)
+    .map((x) => ({
+      key: String(x.id || '').replace(/^builtin:/, ''),
+      templateId: x.id,
+      name: x.name,
+      summary: x.description || '',
+      tags: x.tags || [],
+      useCases: [],
+    }))
+    .filter((x) => x.key)
+);
+
 function dir() {
   const d = path.join(store.root(), DIR);
   fs.mkdirSync(d, { recursive: true });
@@ -224,7 +241,7 @@ function tableKitSource(def) {
 
 function tableKitDef(id) {
   const key = String(id || '').replace(/^tablekit:/, '');
-  return KITS.find((k) => k.key === key) || null;
+  return TABLE_KITS.find((k) => k.key === key) || null;
 }
 
 function tableKitEntry(def, meta) {
@@ -263,7 +280,7 @@ function tableKitEntry(def, meta) {
 
 function tableKits() {
   const meta = readMeta();
-  return KITS.map((def) => {
+  return TABLE_KITS.map((def) => {
     try { return tableKitEntry(def, meta); } catch (e) { return null; }
   }).filter(Boolean);
 }
@@ -495,6 +512,13 @@ function uniqueTableKey(base, used) {
   while (used.has(key)) key = `${String(base || 'tbl').replace(/[^A-Za-z0-9_]/g, '_')}_${i++}`;
   used.add(key);
   return key;
+}
+
+function tableKitLabel(name) {
+  return String(name || '数据表')
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || '数据表';
 }
 
 function uniqueRoutePath(base, method, used, prefix) {
@@ -752,7 +776,7 @@ function insertTableKit(project, id, opts) {
       catIds.add(cid);
     }
     const first = plan.find((x) => !x.skip);
-    const name = uniqueIfaceName(`${def.name.replace(/系统$/, '')}表组`, ifaceNames);
+    const name = uniqueIfaceName(`${tableKitLabel(def.name.replace(/系统$/, ''))}表组`, ifaceNames);
     // 表组接口保留一组基础 CRUD 路由，第一张表仍是 main；这样表接进来就能直接查。
     target = spec.newIface(name, cat.id, {
       scenario: 'blank',

@@ -3770,7 +3770,7 @@ RETURN 200 { "user": $user };</pre></div>
         <div class="hb-card"><b>路由冲突</b><p>整套共用的根路由撞上现有工程时，给整套加业务前缀（如 /mall），不会把 /products 改成 /products-2。</p></div>
       </div>
       <div class="hb-h3">表格套件（1.1.74）</div>
-      <div class="hb-p">「套件」旁边的「表格」页签把 8 套业务里的物理表单独列出来：8 组、46 张表、77 条表定义、314 个字段。同一张表被多个接口引用时只列一次，共享表会标黄；字段、索引、关系、连接方式都保留。</div>
+      <div class="hb-p">「套件」旁边的「表格」页签把全部内置工程模版的物理表单独列出来：26 组、112 张表、155 条表定义、742 个字段；前 8 组是带完整接口闭环的业务套件，后面是视频、音乐、小说、餐饮、挂号、物流、报价等模版表组。同一张表被多个接口引用时只列一次，字段、索引和关系合并，共享表会标黄。</div>
       <div class="hb-grid">
         <div class="hb-card"><b>加到当前接口</b><p>整组表直接并进当前接口，现有路由不变；表名按全工程避重，关系 target 跟着表名重映射。</p></div>
         <div class="hb-card"><b>单张表加入</b><p>点卡片里的表名按钮，只加那一张；适合已有接口只缺一张关联表。</p></div>
@@ -4955,7 +4955,7 @@ async function showIfaceLibrary(opts) {
 
       if (isTables) {
         const shown = state.tableKits.filter((k) => {
-          const hay = [k.name, k.summary, (k.tags || []).join(' '), (k.tables || []).map((x) => x.name + ' ' + (x.comment || '')).join(' ')].join(' ').toLowerCase();
+          const hay = [k.name, k.summary, (k.tags || []).join(' '), (k.tables || []).map((x) => x.name + ' ' + (x.comment || '') + ' ' + (x.fieldNames || []).join(' ')).join(' ')].join(' ').toLowerCase();
           return !q || hay.includes(q);
         });
         statsEl.textContent = `${state.tableKits.length} 组 · ${state.tableKits.reduce((n, k) => n + k.counts.tables, 0)} 表 · ${state.tableKits.reduce((n, k) => n + k.counts.fields, 0)} 字段`;
@@ -5056,7 +5056,7 @@ async function showIfaceLibrary(opts) {
         const kit = state.tableKits.find((x) => x.id === id);
         project = await api.seed();
         project.taskType = 'backend';
-        project.name = uniqueProjectName(`${kit ? String(kit.name).replace(/系统表组$|表组$/g, '') : '数据表'}工程`);
+        project.name = uniqueProjectName(`${kit ? String(kit.name).replace(/系统表组$|表组$/g, '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim() : '数据表'}工程`);
         project.description = '预置表格套件 · 数据表接口';
         project.interfaces = [];
         project.functions = [];
