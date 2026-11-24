@@ -73,12 +73,26 @@ function entryOf(project, file, updatedAt) {
   };
 }
 
+// Node 25 在 Windows 上对含中文的目录执行 fs.rmSync(recursive) 会“返回成功但目录还在”。
+// 工程缓存目录直接用工程名，中文很常见，所以这里逐层 unlink + rmdir，保证缓存真的清掉。
+function removeTree(target) {
+  if (!fs.existsSync(target)) return;
+  let st;
+  try { st = fs.lstatSync(target); } catch (e) { return; }
+  if (st.isDirectory() && !st.isSymbolicLink()) {
+    for (const name of fs.readdirSync(target)) removeTree(path.join(target, name));
+    try { fs.rmdirSync(target); } catch (e) { /* 被占用时留给下次保存覆盖 */ }
+    return;
+  }
+  try { fs.unlinkSync(target); } catch (e) { /* 忽略被占用的单个文件 */ }
+}
+
 function writeCache(file, name) {
   const dir = cacheOf(name);
   const staging = `${dir}.tmp-${process.pid}`;
   try {
     const entries = pkg.unzip(fs.readFileSync(file));
-    fs.rmSync(staging, { recursive: true, force: true });
+    removeTree(staging);
     for (const entry of Object.keys(entries)) {
       const out = path.join(staging, entry);
       fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -89,12 +103,12 @@ function writeCache(file, name) {
       `工程本体：${file}`,
       '修改这里的文件不会自动同步；请在 ClickBuild 中编辑并保存。',
     ].join('\n'), 'utf8');
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
     fs.renameSync(staging, dir);
     return dir;
   } catch (e) {
     // 工作缓存只是方便查看；被编辑器占用或权限不足时不能拖垮工程保存。
-    try { fs.rmSync(staging, { recursive: true, force: true }); } catch (e2) { /* 忽略 */ }
+    removeTree(staging);
     return null;
   }
 }
@@ -206,7 +220,7 @@ function remove(name) {
   const legacy = legacyOf(name);
   let active = fs.existsSync(file) || fs.existsSync(legacy);
   if (fs.existsSync(file)) fs.unlinkSync(file);
-  fs.rmSync(cache, { recursive: true, force: true });
+  removeTree(cache);
   for (const f of [legacy, legacy + '.bak']) {
     if (fs.existsSync(f)) fs.unlinkSync(f);
   }

@@ -63,6 +63,23 @@
 
 ![接口套件弹窗](docs/screenshots/iface-kits.png)
 
+## 脚本解释器强化：把“能跑”补成“好用”（1.1.77）
+
+这轮没有加新语法堆料，而是把解释器里容易静默出错、或者写起来别扭的地方补齐：
+
+- **动态下标**：`$rows[$i].name`、`$matrix[$i][$j]`、`$map[$key]['字段']` 都能读写，下标可以是任意表达式；`INC / APPEND` 和导出的 JS 同步支持。
+- **`IN (1, 2, 3)`**：除 `$x IN $list` 外，支持 SQL 风格的括号列表和空列表 `()`；`ASSERT 2 IN [1, 2], '...'` 里的数组逗号也不会再被错误拆参数。
+- **字符串转义**：`\n \r \t \b \f \v \0 \\ \" \'` 与 `\u4f60` 这类 Unicode 转义按预期生效，不再把 `\n` 变成字母 `n`。
+- **比较语义对齐**：两边都是非数字字符串时按字典序，ISO 日期可以直接 `BETWEEN '2026-01-01' AND '2026-12-31'`；导出的 JS 用同一个 `CMP` helper，不再出现“服务里 true、导出后 false”。
+- **`ELSE IF`** 作为 `ELSEIF` 的别名，两种写法都能过校验。
+- **FUNC 顶层提升**：先调用后定义也能用，递归函数不再依赖定义顺序。
+- **TRY / FINALLY 修正**：`CATCH` 里再次抛错时 `FINALLY` 仍会执行；`FINALLY` 里的 `RETURN / BREAK / CONTINUE` 按 JS 语义覆盖原结果。
+- **运行期行号**：执行错误会带 `scriptLine`，生成服务的 500 响应新增 `line` 字段，日志提示“脚本第 N 行”，不用再靠猜。
+- **数字校验**：`1.2.3` 这类非法数字字面量直接报语法错误，不再静默变成 `NaN`。
+- **循环上限显式报错**：`FOREACH` 最多 500 条、`FOR / WHILE / REPEAT` 最多 1000 次；超出、负数次数或非数字边界都会直接报错，不再悄悄截断。导出 JS 同步加上守卫，循环变量在循环结束后仍可读取，与服务端保持一致。
+
+回归：`tools/test-script-dsl.js` 从 20 项扩到 **34/34**，覆盖动态下标、嵌套下标、括号列表、转义、FUNC 提升、FINALLY、错误行号、日期比较、循环上限和导出 JS 语义；原 20 项全部保持通过。
+
 ## 创建引导：账号权限开箱即用（1.1.76）
 
 新建接口第一步新增「基础账号权限 · 推荐」快捷预设，点「使用账号权限预设」会一次填好 `sys_account` 账号表、7 条路由和鉴权；确认创建后不用再手工拼登录、token 或角色规则。
@@ -452,13 +469,15 @@ RETURN 200 { "ok": true, "token": $t.token };
 - `LET $x = QUERY|EXEC SQL;`、`LET $x = 表达式;`
 - `ASSIGN $x = 值;`、`$x = 值;`、`$x += 1;`（`+= -= *= /=`）、`INC $n;` / `INC $n BY 2;` / `DEC $n;`
 - 嵌套赋值：`$user.name = 'A';`、`$list[0] = 9;`、`$user.score += 1;`；`INC / DEC / APPEND / PREPEND` 都支持 `$user.score`、`$user.tags` 路径
+- 动态下标：`$rows[$i].name`、`$matrix[$i][$j]`、`$map[$key]['字段']`，下标支持 `$i + 1`、`LEN($list) - 1` 等表达式
 - `APPEND $list, 值;` / `PREPEND $list, 值;` / `PUSH $list, 值;`（尾部追加或头部前插，循环里拼数组）
-- `IF / ELSEIF / ELSE / END`、`FOREACH $row IN $list / END`
+- `IF / ELSEIF / ELSE IF / ELSE / END`、`FOREACH $row IN $list / END`
 - `FOR $i = 1 TO 5 STEP 1 / DOWNTO / END`、`WHILE 条件 / END`、`REPEAT 5 TIMES / REPEAT 5 TIMES AS $i / END`、`SWITCH 表达式 / CASE 1, 2 / DEFAULT / END`
+- 循环上限：`FOREACH` 最多 500 条，`FOR / WHILE / REPEAT` 最多 1000 次；超出、负数次数、非数字边界直接报错，不会静默截断
 - `BREAK`、`CONTINUE`、`FUNC 名称($a, $b) = 表达式;`、`RUN 名称(参数);` / `INVOKE 名称(参数);`、`THROW '错误信息';`
 - `TRY / CATCH $err / FINALLY / END`：捕获运行错误，catch 对象有 `name / message / stack`；`CATCH` 可省略变量，默认 `$err`
 - `ASSERT 条件, '失败信息';`：条件不成立立即抛错，可交给 `TRY` 捕获
-- 表达式：`条件 ? 值1 : 值2`、`$a ?? $b`、`AND / OR / NOT`（也支持 `&& / || / !`）、`$x IN [1,2]` / `NOT IN`、`$x LIKE '张%'` / `NOT LIKE`（`%` 任意串、`_` 单字符）、`$x BETWEEN 1 AND 9` / `NOT BETWEEN`、`$x IS NULL` / `IS NOT NULL`
+- 表达式：`条件 ? 值1 : 值2`、`$a ?? $b`、`AND / OR / NOT`（也支持 `&& / || / !`）、`$x IN [1,2]` / `$x IN (1, 2, 3)` / `NOT IN`、`$x LIKE '张%'` / `NOT LIKE`（`%` 任意串、`_` 单字符）、`$x BETWEEN 1 AND 9` / `NOT BETWEEN`、`$x IS NULL` / `IS NOT NULL`；字符串比较按字典序，数字字符串和 ISO 日期可直接比大小
 - `TX BEGIN|COMMIT|ROLLBACK`（写路由默认自动事务）
 - `HTTP GET|POST|PUT|DELETE 'url' {json}`（服务间调用）
 - `PUBLISH 'channel' expr`（Redis 消息）

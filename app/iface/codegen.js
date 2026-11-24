@@ -120,7 +120,22 @@ module.exports = {
     const V = (token) => render.valueOf(token, ctx, IFACE);
     const toList = (v) => (Array.isArray(v) ? v : (v && v.rows) || []);
     const truthy = (v) => (Array.isArray(v) ? v.length > 0 : !!v && v !== 0 && v !== '');
-    const BTW = (v, lo, hi) => Number(v) >= Number(lo) && Number(v) <= Number(hi);
+    const CMP = (a, b, op) => {
+      let d;
+      if (typeof a === 'string' && typeof b === 'string') {
+        const an = Number(a);
+        const bn = Number(b);
+        d = a.trim() !== '' && b.trim() !== '' && Number.isFinite(an) && Number.isFinite(bn)
+          ? (an < bn ? -1 : (an > bn ? 1 : 0))
+          : (a < b ? -1 : (a > b ? 1 : 0));
+      } else {
+        const an = Number(a);
+        const bn = Number(b);
+        d = an < bn ? -1 : (an > bn ? 1 : 0);
+      }
+      return op === '>' ? d > 0 : op === '<' ? d < 0 : op === '>=' ? d >= 0 : op === '<=' ? d <= 0 : false;
+    };
+    const BTW = (v, lo, hi) => CMP(v, lo, '>=') && CMP(v, hi, '<=');
     const LK = (text, pattern) => {
       const t = String(text == null ? '' : text).toLowerCase();
       const p = String(pattern == null ? '' : pattern).toLowerCase();

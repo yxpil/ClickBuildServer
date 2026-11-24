@@ -1491,8 +1491,10 @@ pre{border:1px solid #111;background:#fafafa;padding:10px;overflow:auto;white-sp
 <tr><td><code>LET $x = QUERY SELECT ...;</code></td><td>查询，结果在 <code>$x.rows</code></td></tr>
 <tr><td><code>LET $x = EXEC INSERT/UPDATE/DELETE ...;</code></td><td>写操作，结果在 <code>$x.insertId</code> / <code>$x.affectedRows</code></td></tr>
 <tr><td><code>LET $x = HASH('sha256', {{body.name}});</code></td><td>表达式赋值，可调用内置函数</td></tr>
-<tr><td><code>IF 条件 ... ELSEIF ... ELSE ... END</code></td><td>分支</td></tr>
-<tr><td><code>FOREACH $row IN $rows.rows ... END</code></td><td>循环，最多 500 条</td></tr>
+<tr><td><code>IF 条件 ... ELSEIF / ELSE IF ... ELSE ... END</code></td><td>分支</td></tr>
+<tr><td><code>LET $v = $rows[$i].name;</code></td><td>动态下标，支持嵌套与表达式</td></tr>
+<tr><td><code>IF $x IN (1, 2, 3) ... END</code></td><td>括号列表 / <code>$list</code> / <code>()</code> 空列表</td></tr>
+<tr><td><code>FOREACH $row IN $rows.rows ... END</code></td><td>循环，最多 500 条，超出直接报错</td></tr>
 <tr><td><code>RETURN 200 { "x": $x };</code></td><td>返回 JSON，第二段是表达式</td></tr>
 <tr><td><code>LOG 表达式;</code></td><td>写一条请求日志</td></tr>
 <tr><td><code>TX BEGIN|COMMIT|ROLLBACK;</code></td><td>手动事务；写路由默认自动事务</td></tr>
@@ -1660,10 +1662,13 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     const traceId = crypto.randomBytes(6).toString('hex');
     console.error('[error]', traceId, req.method, req.url, e);
-    logPush({ level: 'ERROR', ts: stamp(), method: req.method, pathname, status: 500, ms: 0, message: e.message, traceId });
+    logPush({ level: 'ERROR', ts: stamp(), method: req.method, pathname, status: 500, ms: 0, message: e.scriptLine ? `脚本第 ${e.scriptLine} 行：${e.message}` : e.message, traceId });
     return sendError(req, res, 500, {
       ok: false, error: 'INTERNAL', message: e.message, stack: String(e.stack || '').split('\n').slice(0, 4), traceId,
-      hint: '把这条 traceId 发到控制台日志里，可以定位到具体路由和 SQL；需要隐藏堆栈时关闭“错误详情”开关。',
+      line: e.scriptLine || undefined,
+      hint: e.scriptLine
+        ? `脚本第 ${e.scriptLine} 行执行失败；把这条 traceId 发到控制台日志里，可以定位到具体路由和 SQL。`
+        : '把这条 traceId 发到控制台日志里，可以定位到具体路由和 SQL；需要隐藏堆栈时关闭“错误详情”开关。',
       route: e.icbRoute || undefined,
       method: e.icbRouteMethod || req.method,
       path: e.icbRoutePath || pathname,
