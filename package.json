@@ -82,7 +82,7 @@
     ],
     "extraResources": [
       {
-        "from": "assets/logo.png",
+        "from": "build/icon.png",
         "to": "logo.png"
       }
     ],

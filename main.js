@@ -2,6 +2,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const { registerIpc } = require('./app/ipc');
 const { registerIpc: registerIfaceIpc } = require('./app/iface/ipc');
@@ -31,6 +32,14 @@ if (!gotLock) {
     current: '正在准备启动环境',
     done: false,
   };
+
+  function windowIcon() {
+    // 打包后优先用 resources 下的实体图标；源码运行回退到 assets/logo.png。
+    const candidates = app.isPackaged && process.resourcesPath
+      ? [path.join(process.resourcesPath, 'logo.png'), path.join(__dirname, 'assets', 'logo.png')]
+      : [path.join(__dirname, 'assets', 'logo.png')];
+    return candidates.find((file) => fs.existsSync(file)) || candidates[0];
+  }
 
   function splashSend(data) {
     if (splash && !splash.isDestroyed() && !splash.webContents.isDestroyed()) splash.webContents.send('startup:update', data);
@@ -76,7 +85,7 @@ if (!gotLock) {
       alwaysOnTop: true,
       backgroundColor: '#f4f1e9',
       title: 'ClickBuildServer · 正在关闭',
-      icon: path.join(__dirname, 'assets', 'logo.png'),
+      icon: windowIcon(),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
@@ -239,7 +248,7 @@ if (!gotLock) {
       show: false,
       backgroundColor: '#f4f1e9',
       title: 'ClickBuildServer · 正在启动',
-      icon: path.join(__dirname, 'assets', 'logo.png'),
+      icon: windowIcon(),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
@@ -260,7 +269,7 @@ if (!gotLock) {
       minHeight: 700,
       backgroundColor: '#ffffff',
       title: 'ClickBuildServer · 接口工作台',
-      icon: path.join(__dirname, 'assets', 'logo.png'),
+      icon: windowIcon(),
       frame: false,
       thickFrame: true,
       show: false,
