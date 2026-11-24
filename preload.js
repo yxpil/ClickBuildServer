@@ -1,7 +1,7 @@
 // 作者：yxpil
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // contextBridge 的返回对象是代理，直接回传会被主进程序列化器拒绝（"could not be cloned"）。
 // 项目配置本来就是纯 JSON，传之前先做一次 JSON 归一化。
@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld('icb', {
   seed: () => invoke('iface:seed'),
   blank: (opts) => invoke('iface:blank', opts || {}),
   ident: (name, prefix) => invoke('iface:ident', name, prefix || 'tbl'),
+  pathForFile: (file) => {
+    try { return webUtils.getPathForFile(file) || (file && file.path) || ''; } catch (e) { return (file && file.path) || ''; }
+  },
+  importTable: (file) => invoke('iface:tableImport', file),
+  importTableBuffer: (payload) => invoke('iface:tableImportBuffer', payload),
+  pickTable: () => invoke('iface:tablePick'),
   validate: (project) => invoke('iface:validate', project),
   preview: (payload) => invoke('iface:preview', payload),
   checkScript: (text) => invoke('iface:script:check', text),

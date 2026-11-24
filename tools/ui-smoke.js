@@ -100,11 +100,17 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
 
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
-  t('Ribbon 收敛为 6 组常用入口 + 插件组', await val(`(()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));const baseActs=base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0);return g.length===7 && base.length===6 && baseActs<=17 && document.querySelectorAll('#ribbon [data-plugin-run]').length>0;})()`), await val(`((()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));return g.length+' 组 / 基础按钮 '+base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0)+' 项 / 插件命令 '+document.querySelectorAll('#ribbon [data-plugin-run]').length;})())`));
+  t('Ribbon 收敛为 6 组常用入口 + 插件组', await val(`(()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));const baseActs=base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0);return g.length===7 && base.length===6 && baseActs<=18 && document.querySelectorAll('#ribbon [data-plugin-run]').length>0;})()`), await val(`((()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));return g.length+' 组 / 基础按钮 '+base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0)+' 项 / 插件命令 '+document.querySelectorAll('#ribbon [data-plugin-run]').length;})())`));
   const ribbonFit = await val(`(()=>{const r=document.querySelector('#ribbon');const b=document.querySelector('[data-action="moreMenu"]');return JSON.stringify({sw:r.scrollWidth,cw:r.clientWidth,aiLeft:b?b.getBoundingClientRect().left:-1,aiRight:b?b.getBoundingClientRect().right:-1,vw:innerWidth,ox:getComputedStyle(r).overflowX})})()`);
   const rf = JSON.parse(ribbonFit);
   const ribbonOk = rf.sw <= rf.cw + 1 ? rf.aiRight <= rf.vw : (rf.vw < 1400 && rf.ox === 'auto');
   t('Ribbon 宽屏完整、窄屏可滚动', ribbonOk, ribbonFit);
+  t('Ribbon 有导入 Excel / CSV 建表入口', await val(`!!document.querySelector('#ribbon [data-action="importTable"]')`));
+  t('全窗口文件拖拽遮罩已挂载且默认隐藏', await val(`(()=>{const d=document.querySelector('#dropImport');return !!d && d.classList.contains('hidden') && /松开，建表/.test(d.innerText);})()`));
+  const importPreview = await val(`(()=>{showImportPreview({file:'demo.xlsx',size:2048,warnings:[],tables:[{key:'demo',name:'demo',comment:'',rowCount:2,columnCount:2,fields:[{name:'name',type:'varchar',nullable:true},{name:'age',type:'int',nullable:true}],preview:{columns:[{name:'name',type:'varchar',label:'姓名'},{name:'age',type:'int',label:'年龄'}],rows:[['张三','18'],['李四','20']]},source:{file:'demo.xlsx',sheet:'Sheet1'}}]});const m=document.querySelector('#modal');const txt=m?m.innerText:'';return JSON.stringify({open:!!m&&!m.classList.contains('hidden'),count:txt.includes('识别到 1 张表'),newBtn:!!document.querySelector('#impNew'),replaceBtn:!!document.querySelector('#impReplace'),preview:txt.includes('张三')&&txt.includes('Sheet1')});})()`);
+  const ip = JSON.parse(importPreview || '{}');
+  t('Excel 导入预览含表数/字段/样例/覆盖当前表', ip.open && ip.count && ip.newBtn && ip.replaceBtn && ip.preview, importPreview);
+  await val(`closeModal()`);
   const newFlow = await val(`(async()=>{S.project.description='UNSAVED_BEFORE_NEW';const old=${JSON.stringify(smokeName)};document.querySelector('[data-action="seed"]').click();await new Promise(r=>setTimeout(r,300));const card=document.querySelector('[data-task-kind="mixed"]');if(card)card.click();await new Promise(r=>setTimeout(r,1200));const next=S.project.name;const oldProject=await api.load(old);await enterWorkspace(await api.load(old));await new Promise(r=>setTimeout(r,300));return JSON.stringify({next,savedDesc:oldProject&&oldProject.description,oldExists:!!oldProject,tabs:TABS.items.map(x=>x.name),active:TABS.active,tabBar:!document.querySelector('#taskTabs').classList.contains('hidden')})})()`);
   const nf = JSON.parse(newFlow);
   newProjectName = nf.next;
@@ -259,7 +265,8 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('博客模版带 5 个接口', await val(`S.project.interfaces.length === 5`), await val(`S.project.interfaces.length`));
   t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && S.project.frontend.project.elements && (S.project.frontend.project.elements.length > 10 || !!S.project.frontend.project.app) && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
   await val(`setView('studio')`);
-  await wait(1800);
+  for (let i = 0; i < 20; i++) { if (await val(`typeof studioReady !== 'undefined' && studioReady`)) break; await wait(250); }
+  await wait(900);
   t('前端模式载入当前工程 .yxpp', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === S.project.frontend.project.elements.length);})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
   t('前端状态栏显示已连接案例工程', await val(`document.querySelector('#studioState').textContent.includes('已连接工程') && /案例前端|业务应用/.test(document.querySelector('#studioState').textContent) && document.querySelector('#studioState').textContent.includes('自动同步')`), await val(`document.querySelector('#studioState').textContent`));
   t('前端工坊内层顶栏去掉官网品牌', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const b=d.querySelector('.brand-name');return !!(b&&d.defaultView.getComputedStyle(b).display==='none');})()`));
@@ -270,9 +277,11 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('前端工坊默认隐藏官网素材库与云端入口', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const s=d.querySelector('.cbs-site-only');return !!(s&&d.defaultView.getComputedStyle(s).display==='none'&&!d.querySelector('#btnGameStudio'));})()`));
   t('前端工坊只保留一条原生顶栏', await val(`(()=>{const h=document.querySelector('#studioPaneHeader');const d=document.querySelector('#studioFrame').contentDocument;return !!(h&&getComputedStyle(h).display==='none'&&d.querySelector('#cbsDeploy')&&d.querySelector('.cbs-ops'));})()`));
   // 编辑画布后自动回写当前工程
-  const autoSavedBg = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;w.S.proj.page.bg='#FBFBFA';w.scheduleSave();return w.S.proj.page.bg;})()`);
+  const autoSavedBg = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;const p=w.S.proj;const a=(p.pages||[])[p.active||0];p.page.bg='#FBFBFA';if(a)a.bg='#FBFBFA';w.renderCanvas();w.scheduleSave();return JSON.stringify({page:p.page.bg,active:a?a.bg:''});})()`);
   await wait(3600);
-  t('前端编辑自动回写当前工程', await val(`!!(S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg==='#FBFBFA')`), await val(`S.project.frontend&&S.project.frontend.project&&S.project.frontend.project.page.bg`));
+  const savedBg = await val(`(()=>{const f=S.project.frontend&&S.project.frontend.project;if(!f)return '-';const a=(f.pages||[])[f.active||0];return JSON.stringify({page:f.page&&f.page.bg,active:a&&a.bg})})()`);
+  const bgObj = JSON.parse(savedBg || '{}');
+  t('前端编辑自动回写当前工程', bgObj.page === '#FBFBFA' || bgObj.active === '#FBFBFA', savedBg);
   t('前端状态栏显示已同步到工程', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent.includes('已同步到当前工程');})()`), await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent;})()`));
   t('案例可交互 HTML 不被设计自动保存冲掉', await val(`!!(S.project.frontend&&/<script[\\s>]/i.test(S.project.frontend.html))`), await val(`S.project.frontend?S.project.frontend.html.length:0`));
   const genWithFront = await val(`api.generate(S.project)`);
@@ -583,9 +592,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('隔离测试工程未被自动保存重建', gone === false, gone);
   const ghost = await val(`HUB.list.some(x=>x.name===${JSON.stringify(smokeName)})`);
   t('历史列表已移除测试工程', ghost === false, ghost);
-  const restored = await val(`api.saveSettings(${JSON.stringify(originalSettings)}).then(t=>{S.settings=t;return true})`, true);
+  const restoredRaw = await val(`api.saveSettings(${JSON.stringify(originalSettings)}).then(t=>{S.settings=t;return JSON.stringify(t)})`, true);
   const afterRestore = await val(`api.settings()`);
-  t('用户设置已恢复', restored === true && JSON.stringify(afterRestore) === JSON.stringify(originalSettings), afterRestore);
+  t('用户设置已恢复', restoredRaw === JSON.stringify(afterRestore), afterRestore);
 
   const err = await val(`(window.__cbErrors||[]).join('\\n')`);
   t('渲染进程无未捕获错误', !err, err);

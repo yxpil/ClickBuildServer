@@ -202,6 +202,10 @@ AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
 
+1.1.68 把 Excel / CSV 变成建表入口：文件直接拖进工作台任意位置，松手后弹预览，按第一行表头生成字段并自动推断 int / bigint / decimal / bool / date / datetime / json / text 类型；`.xlsx` / `.xlsm` 多工作表会分别建表，单表也可选择覆盖当前表字段。解析器不依赖第三方包，自己读 ZIP + SpreadsheetML，支持共享字符串、内联字符串、日期序列号与样式、隐藏工作表跳过、64MB / 20 万行 / 256 列上限；CSV / TSV 支持 BOM、GBK / GB18030、逗号 / 分号 / 制表符 / 竖线自动识别、引号内逗号与换行，以及重复表头、空表头、`id / created_at / updated_at` 重名避让。中文表头会映射成安全字段名，手机号、编号、身份证等保留为文本，密码类字段默认隐藏；导入只建表结构，不把行数据写进 MySQL。Ribbon 新增“导入”，表结构页按钮与右键菜单共用同一条链路，旧版 `.xls` 明确提示另存为 xlsx。验收：`test:table-import` 10/10，`test:ci` 12/12，真实 Electron 拖放与 IPC 解析通过，源码版 UI 冒烟 144/144（含 Ribbon 导入入口、全窗口拖拽遮罩、预览弹窗的表数 / 字段 / 样例 / 覆盖当前表），预览确认后生成 DDL 包含 `ti_fixture_1 / ti_fixture_2`，日期列落为 `DATE`、金额列落为 `DECIMAL(18,2)`。
+
+![Excel / CSV 拖入后的建表预览](docs/screenshots/import-preview.png)
+
 1.1.67 把接口脚本 DSL 从“能用”补到“业务上够用”，并且每条能力都同时落到解析器、执行器、导出 JS、lint、脚本助手、帮助中心和永久回归里。表达式新增三元 `条件 ? 值1 : 值2`、空值合并 `??`、关键字 `AND / OR / NOT`、`IN / NOT IN`、`LIKE / NOT LIKE`、`BETWEEN / NOT BETWEEN`、`IS NULL / IS NOT NULL`；语句新增 `TRY / CATCH / FINALLY / END`、`ASSERT 条件, '失败信息';`、`REPEAT n TIMES [AS $i]`、`PREPEND`，以及 `$user.name = ...`、`$list[0] = ...`、`$user.score += ...` 这类嵌套赋值和嵌套 `INC / DEC / APPEND / PREPEND`。`NOT` 现在按整段比较取反，`REPEAT` 次数取整并夹在 0..1000，`CATCH` 变量可省略默认 `err`，`FINALLY` 在 return / break / continue / 继续抛错前都会执行。导出 JS 同步输出 `try / catch / finally`、`assert`、`repeat`、`prepend` 与嵌套赋值，并用 `truthy / BTW / LIKE` 兼容空数组、结果集对象和通配符，不再出现只有运行时认识、导出代码不认识的分支。脚本助手扩到 24 条模板，新增表达式判断、错误捕获、固定次数循环、嵌套对象数组、ASSERT 与空值/否定判断；关键字高亮、回车缩进、速查表和帮助中心同步更新，裸写 SQL 仍被明确拒绝。验收：`test:script-dsl` 20/20，`test:ci` 11/11，导出运行时 19/19，源码版、解包版与安装版 UI 冒烟均 141/141；真实生成服务 `GET /api/syntax/advanced` 返回 `sum=15`、`tags=[first, zero, last]`、`vip=true`、`like=true`，`ASSERT` 被 `CATCH` 后返回业务 400，未捕获断言返回 500 并带 `route / method / path / hint / traceId`，导出的高级语法路由也已在真实 `src` 环境执行通过。
 
 1.1.66 补上真正的 HTTP 重定向：脚本 `RETURN 301 "/login";`、`RETURN 302 { "location": "https://example.com" };` 以及 303/307/308 都会自动写 `Location` 响应头并返回空响应体，浏览器和 `curl -L` 能直接跟随；对象里的 `location / Location / redirect / url` 都可识别，`__headers` 可附带额外响应头。自定义 `handler` 也能返回 `{ status, headers, body }`，3xx 带 `Location` 时同样不写响应体。3xx 路由不再读写 Redis 缓存，缓存 key 加入 method + path，避免多个路由共用同一张表模板时串读；导出的 JS 路由同步生成 `responseMeta`，301 不再丢 `Location`。同时修复 Windows 全新数据目录下 `mariadb-install-db` 不认识 `--no-defaults/--basedir` 导致 MariaDB 初始化失败的问题。验收：`test:ci` 10/10，源码版 UI 冒烟 141/141，真实生成服务 301/302/303/307/308 与自定义 handler 全部带 Location 并跟随到 200，普通列表缓存仍正常命中。1.1.66 同时把脚本解释器扩成更完整的业务语法：`ASSIGN / INC / DEC / APPEND / PUSH` 负责赋值和数组累积，`FOR / WHILE / SWITCH / CASE / DEFAULT / BREAK / CONTINUE` 负责区间循环、条件循环和多分支，`FUNC / RUN / INVOKE / THROW` 负责纯表达式函数、调用和主动报错；裸写 SQL 会被明确拒绝，必须走 `QUERY` / `EXEC`，函数调用用 `RUN` 避开 SQL 的 `CALL`。实测生成服务 `GET /api/syntax/demo` 返回 `{"sum":13,"list":[12],"db":0}`，`THROW` 路由返回 500 并带 `route / method / path / hint / traceId`；脚本助手新增「变量与函数 / FOR 循环 / WHILE 循环 / SWITCH 分支」四条模版。
@@ -533,7 +537,7 @@ handler: async () => ({ status: 301, headers: { Location: '/login' }, body: { ok
 
 GitHub Actions 工作流在 `.github/workflows/`：
 
-- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 先还原 `vendor/services`，再 `npm ci` → `npm run test:ci` 跑 10 套回归 → `npm run dist:dir` 构建 unpacked 版；Linux runner 先装 `build-essential / musl-tools / unzip`，用缓存的 `tools/vendor-services-linux.sh` 组装四个 Linux 二进制 → `npm run test:ci` → `npm run test:services:linux` 真实起停三台服务 → `npm run dist:linux:dir`，并校验 `dist/linux-unpacked/clickbuildserver`、内置 `mariadbd` 与 `runtime/node/bin/node` 都存在。
+- `ci.yml`：推送到 `main`、PR、手动触发；Windows runner 先还原 `vendor/services`，再 `npm ci` → `npm run test:ci` 跑 12 套回归 → `npm run dist:dir` 构建 unpacked 版；Linux runner 先装 `build-essential / musl-tools / unzip`，用缓存的 `tools/vendor-services-linux.sh` 组装四个 Linux 二进制 → `npm run test:ci` → `npm run test:services:linux` 真实起停三台服务 → `npm run dist:linux:dir`，并校验 `dist/linux-unpacked/clickbuildserver`、内置 `mariadbd` 与 `runtime/node/bin/node` 都存在。
 - `release.yml`：推送 `v*` 标签触发；先校验标签与 `package.json` 版本一致，再还原 `vendor/services`、跑同一套 `test:ci` → `npm run dist -- --publish never` 构建 NSIS 安装包 → 校验精确文件名与 `.blockmap`、生成 `.sha256` → 用 `softprops/action-gh-release` 创建 Release 并上传 `.exe`、`.blockmap` 与 `.sha256`。发布任务不取消进行中的同标签构建，避免上传到一半被新任务打断。
 
 过去 1.1.46–1.1.53 的 Release 都在最后一步失败：标签构建触发 electron-builder 自动上传，而 runner 没有 `GH_TOKEN`，日志为 `GitHub Personal Access Token is not set`。1.1.54 前的 `7d90b99` 已改为 `--publish never`，上传只交给 `action-gh-release`；本轮又把同样的保护写进版本校验、文件校验和显式 `GITHUB_TOKEN`，避免回归。
@@ -558,7 +562,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 
 | 套件 | 结果 |
 | --- | --- |
-| `npm run test:ci`（CI 顺序执行 10 套核心回归，含停止按钮 / 多语言） | **10/10** |
+| `npm run test:ci`（CI 顺序执行 12 套核心回归，含停止按钮 / 多语言 / 表格导入） | **12/12** |
 | `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **194/194** |
 | `tools/test-plugins-v2.js`（命令 / 权限 / 钩子取消与改写 / 模版 / 脚手架 / 安装卸载 / 旧插件兼容） | **26/26** |
 | `tools/test-task-types.js`（三类任务常量 / 默认混合 / 落盘重读 / 非法回退 / 历史索引 / 复制保留） | **13/13** |
@@ -568,6 +572,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-testgen.js`（自动测试计划 / 只读写入计数 / 404 与 401 / 跳过原因 / 生成文件语法） | **19/19** |
 | `tools/test-new-iface.js`（新建接口默认路由、404 与创建引导参数） | **16/16** |
 | `tools/test-script-dsl.js`（三元 / 空值合并 / 逻辑优先级 / IN / LIKE / BETWEEN / IS NULL / TRY / REPEAT / ASSERT / 嵌套赋值 / lint / 导出 JS 编译） | **20/20** |
+| `tools/test-table-import.js`（CSV 表头 / 引号换行 / 分号 / GBK / 重名避让 / xlsx 多工作表 / 共享与内联字符串 / 日期样式 / 损坏文件拒绝） | **10/10** |
 | `tools/test-social.js`（社交接口库 86 条路由真实 HTTP） | **117/117** |
 | `tools/test-iface-library.js`（单接口库 75 内置 / 收藏 / 分类 / 改名 / 二次插入路由避重 / 删除） | **33/33** |
 | `tools/smoke-survey.js`（问卷系统真实 HTTP：登录/建卷/发布/答卷/统计/删除保护/关闭） | **22/22** |
@@ -578,7 +583,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 1.1.67） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **144/144**（源码版 1.1.68） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |

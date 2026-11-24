@@ -24,6 +24,7 @@ const defender = require('./defender');
 const frontend = require('./frontend');
 const projectExport = require('./project-export');
 const deployer = require('./deploy');
+const tableImport = require('./table-import');
 const store = require('../store');
 const i18n = require('../i18n');
 
@@ -214,6 +215,21 @@ function registerIpc() {
   ipcMain.handle('iface:seed', () => spec.seedProject());
   ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz', opts || {}));
   ipcMain.handle('iface:ident', (e, name, prefix) => spec.safeIdent(name, prefix || 'tbl'));
+  ipcMain.handle('iface:tableImport', (e, file) => tableImport.parseFile(file));
+  ipcMain.handle('iface:tableImportBuffer', (e, payload) => {
+    const p = payload || {};
+    return tableImport.parseBuffer(Buffer.from(String(p.data || ''), 'base64'), p.name || 'data.csv');
+  });
+  ipcMain.handle('iface:tablePick', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender) || BrowserWindow.getFocusedWindow();
+    const got = await dialog.showOpenDialog(win, {
+      title: '导入 Excel / CSV 建表',
+      properties: ['openFile'],
+      filters: tableImport.pickFilters(),
+    });
+    if (got.canceled || !got.filePaths.length) return { ok: false, canceled: true };
+    return tableImport.parseFile(got.filePaths[0]);
+  });
 
   ipcMain.handle('iface:validate', (e, project) => spec.validateProject(spec.normalizeProject(project)));
   ipcMain.handle('iface:preview', (e, payload) => preview(payload));

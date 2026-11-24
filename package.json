@@ -1,6 +1,6 @@
 {
   "name": "click-build-server",
-  "version": "1.1.67",
+  "version": "1.1.68",
   "description": "以接口为最小单位的后端服务生成器：多库多表、脚本 SQL、事务、缓存、RBAC 与一键生成可运行服务；Electron 桌面端，内置前端工坊与 26 套模版",
   "main": "main.js",
   "author": "yxpil",
@@ -10,6 +10,7 @@
     "build:css": "tailwindcss -i renderer/wbench.src.css -o renderer/wbench.css --minify",
     "test:templates": "node tools/test-templates.js --gen",
     "test:ci": "node tools/test-ci.js",
+    "test:table-import": "node tools/test-table-import.js",
     "test:help": "node tools/test-help.js",
     "test:pack": "node tools/test-pack.js",
     "test:deploy": "node tools/test-deploy.js",

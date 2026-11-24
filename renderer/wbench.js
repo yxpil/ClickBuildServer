@@ -112,6 +112,7 @@ const I = {
   package: '<path d="M8 2l6 3v6l-6 3-6-3V5z"/><path d="M2 5l6 3 6-3M8 8v6"/>',
   star: '<path d="M8 2.2l1.75 3.55 3.92.57-2.84 2.77.67 3.9L8 11.14l-3.5 1.85.67-3.9L2.33 6.32l3.92-.57z"/>',
   search: '<circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/>',
+  upload: '<path d="M8 10V2.5M5 5.5L8 2.5l3 3M2.5 9v3.5h11V9"/>',
 };
 const icon = (k) => `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">${I[k] || I.page}</svg>`;
 
@@ -1178,6 +1179,7 @@ function renderRibbon() {
   </div><div class="lbl">接口</div></div>
 
   <div class="ribbon-group"><div class="flex gap-1">
+    ${rb('importTable', 'upload', '导入', '拖拽或选择 Excel / CSV，自动按工作表建表')}
     ${rb('addTable', 'table', '加表', '给当前接口加一张表')}
     ${rb('addField', 'field', '加字段', '给当前表加字段')}
     ${rb('ddl', 'sql', '看 DDL', '查看建表语句')}
@@ -1740,9 +1742,8 @@ function tabTables(it) {
     </div>
     <div class="shrink-0 border-t border-neutral-200 px-3 py-2 flex items-center gap-2 text-[12px]">
       <button class="btn thin" data-action="addField">＋ 加字段</button>
-      <button class="btn thin" data-action="importTable">导入表格</button>
-      <input id="tImport" type="file" accept=".csv,.tsv,.txt" class="hidden">
-      <span class="text-neutral-500">表键 <b>${esc(t.key)}</b>，脚本里用 {{columns:${esc(t.key)}}}、{{where:${esc(t.key)}}} 引用这张表。</span>
+      <button class="btn thin" data-action="importTable">导入 Excel / CSV</button>
+      <span class="text-neutral-500">表键 <b>${esc(t.key)}</b>，脚本里用 {{columns:${esc(t.key)}}}、{{where:${esc(t.key)}}} 引用这张表。也可以把文件直接拖进窗口，按工作表自动建表。</span>
       <span id="tStoreHint" class="text-neutral-500 truncate" style="max-width:320px">${esc((STORE_MODES.find((m) => m.id === st.mode) || {}).desc || '')}</span>
       <button class="btn thin ml-auto" data-action="ddl">看 DDL</button>
     </div>
@@ -1794,35 +1795,10 @@ function bindTables(it) {
   if (importInput) importInput.onchange = async () => {
     const file = importInput.files && importInput.files[0];
     if (!file) return;
-    try {
-      const rows = parseDelimited(await file.text());
-      if (rows.length < 1) throw new Error('文件是空的');
-      const headers = rows[0], data = rows.slice(1);
-      if (!(await confirmBox('导入表格', `用「${file.name}」的表头替换当前表字段？字段按列位置覆盖，已有主键/自增标记保留。`))) return;
-      const usedNames = new Set();
-      t.fields = headers.map((h, i) => {
-        const old = t.fields[i] || {};
-        let name = fieldNameFromHeader(h, i);
-        while (usedNames.has(name)) name = name.replace(/(_\d+)?$/, (m) => `_${Number((m || '_1').slice(1)) + 1}`);
-        usedNames.add(name);
-        return {
-          name,
-          type: data.length ? guessColumnType(data.map((r) => r[i])) : (old.type || 'varchar'),
-          comment: String(h || '').trim() || old.comment || '',
-          pk: !!old.pk, autoIncrement: !!old.autoIncrement, nullable: old.nullable !== false,
-          search: old.search !== false, hidden: !!old.hidden, query: old.query !== false,
-          writable: old.writable !== false, default: old.default || '',
-        };
-      });
-      scheduleSave();
-      renderWorkspace();
-      toast(`已导入 ${t.fields.length} 个字段（${data.length} 行样例）`, 4000);
-    } catch (e) {
-      toast('表格导入失败：' + e.message, 5000);
-    } finally {
-      importInput.value = '';
-    }
+    try { await importTableFlow(file); }
+    finally { importInput.value = ''; }
   };
+
   $$('[data-fi]').forEach((el) => {
     const i = Number(el.dataset.fi);
     const k = el.dataset.fk;
@@ -3393,8 +3369,10 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
         <tr><td>文件 8 种</td><td class="mono">file / image / video / audio / pdf / doc / excel / archive</td><td>SQL 里只存 S3 对象键，不把文件本体塞进数据库；上传路由会按类型限制文件。</td></tr>
       </tbody></table>
       <div class="hb-tip"><b>文件字段的正确用法</b><div>把字段类型设成 image / file 等，再给路由分配“文件上传”或“图片上传”类型。上传成功后脚本里用 <span class="hb-inline">{{objectKey}}</span> 入库，列表接口返回对象键，前端再换成可访问 URL。</div></div>
-      <div class="hb-h3">从 CSV / TSV 导入字段</div>
-      <div class="hb-p">表结构页底部点“导入表格”，选择 .csv / .tsv / .txt。第一行当表头，后面样例数据用来猜类型；已有主键、自增标记会保留。导入会替换当前表字段，操作前先确认表名。</div>
+      <div class="hb-h3">拖 Excel / CSV 进来，自动建表</div>
+      <div class="hb-p">把 <span class="hb-inline">.xlsx</span> / <span class="hb-inline">.xlsm</span> / <span class="hb-inline">.csv</span> / <span class="hb-inline">.tsv</span> 直接拖进工作台任意位置，松手后会先弹预览：第一行当表头，样例数据用来猜字段类型；一个 Excel 有多张工作表时，每张表各建一张表。确认后默认“全部导入为新表”，单表也可以选“覆盖当前表字段”。</div>
+      <div class="hb-p">也可以点 Ribbon 的“导入”或表结构页的“导入 Excel / CSV”。文件只在前端解析，不会上传到外部服务；旧版 <span class="hb-inline">.xls</span> 会提示先另存为 xlsx。导入只建表结构，表格里的行不会写进 MySQL；字段名从中文表头自动映射，手机号、编号、身份证这类会保留成文本，密码类表头默认隐藏。</div>
+      <div class="hb-tip"><b>导入后还要做什么</b><div>先确认字段类型和主键，再保存工程、生成服务；需要样例数据时，用生成目录的 <span class="hb-inline">src/seed.json</span> 或通过接口写入。多工作表重名时，表键会自动加序号，不会覆盖已有表。</div></div>
       <div class="hb-check"><b>验收标准</b><div>表头 25 种类型都能选；勾“搜索”的文本字段能被 <span class="hb-inline">?keyword=</span> 命中；隐藏字段不出现在 <span class="hb-inline">{{columns}}</span> 和列表响应里；文件字段只看到对象键。</div></div>
     `,
   },
@@ -4232,7 +4210,7 @@ async function act(name, el) {
     S.tableKey = it.tables[0].key; scheduleSave(); renderWorkspace();
     return;
   }
-  if (name === 'importTable') { const inp = $('#tImport'); if (inp) inp.click(); return; }
+  if (name === 'importTable') { pickImportTable(); return; }
   if (name === 'addField' && it) {
     addFieldQuick(it);
     return;
@@ -5465,41 +5443,177 @@ function aiDefaults() {
   };
 }
 
-function parseDelimited(text) {
-  const clean = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const first = clean.split('\n')[0] || '';
-  const delim = first.includes('\t') ? '\t' : ',';
-  const rows = [];
-  let row = [], cell = '', quoted = false;
-  for (let i = 0; i < clean.length; i++) {
-    const ch = clean[i];
-    if (quoted) {
-      if (ch === '"' && clean[i + 1] === '"') { cell += '"'; i++; }
-      else if (ch === '"') quoted = false;
-      else cell += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === delim) { row.push(cell); cell = ''; }
-    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-    else cell += ch;
+/* ---------------- Excel / CSV 拖拽建表 ---------------- */
+function fileExt(name) {
+  const m = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : '';
+}
+function bytesToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  const parts = [];
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)));
   }
-  if (cell || row.length) { row.push(cell); rows.push(row); }
-  return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
+  return btoa(parts.join(''));
 }
-function guessColumnType(values) {
-  const sample = values.map((v) => String(v == null ? '' : v).trim()).filter(Boolean).slice(0, 12);
-  if (!sample.length) return 'varchar';
-  if (sample.every((v) => /^-?\d+$/.test(v))) return 'bigint';
-  if (sample.every((v) => /^-?\d+(\.\d+)?$/.test(v))) return 'decimal';
-  if (sample.every((v) => /^(true|false|0|1)$/i.test(v))) return 'bool';
-  if (sample.every((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))) return 'date';
-  if (sample.every((v) => /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v))) return 'datetime';
-  if (sample.every((v) => /^[\[{]/.test(v))) return 'json';
-  return 'varchar';
+async function importTableFlow(input) {
+  const it = S.project ? activeIface() : null;
+  if (!it) { toast('先打开一个接口工程，再把 Excel / CSV 拖进来', 4000); return; }
+  const isFile = input && typeof input !== 'string';
+  const name = isFile ? input.name : String(input || '').split(/[\\/]/).pop();
+  const ext = fileExt(name);
+  if (!['xlsx', 'xlsm', 'csv', 'tsv', 'txt', 'xls'].includes(ext)) {
+    toast(`「${name || '这个文件'}」不是表格文件，支持 .xlsx / .csv / .tsv`, 5000);
+    return;
+  }
+  if (ext === 'xls') { toast('旧版 .xls 还不能直接读，请在 Excel 里另存为 .xlsx 或 .csv', 5000); return; }
+  toast(`正在读取「${name}」…`, 1200);
+  try {
+    let result = null;
+    if (!isFile) result = await api.importTable(input);
+    else {
+      let filePath = '';
+      try { if (api.pathForFile) filePath = api.pathForFile(input); } catch (e) { filePath = ''; }
+      if (filePath) result = await api.importTable(filePath);
+      else {
+        const buf = await input.arrayBuffer();
+        result = await api.importTableBuffer({ name: input.name, data: bytesToBase64(buf) });
+      }
+    }
+    if (!result || !result.ok) throw new Error((result && result.message) || '没有识别到表头');
+    if (!S.project) { toast('工程已经关掉了，重新打开再导入', 4000); return; }
+    showImportPreview(result);
+  } catch (e) {
+    toast('导入失败：' + ((e && e.message) || e), 6000);
+  }
 }
-function fieldNameFromHeader(h, i) {
-  const s = String(h || '').trim().replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
-  if (!s) return `field_${i + 1}`;
-  return /^[0-9]/.test(s) ? `f_${s}` : s;
+async function pickImportTable() {
+  if (!S.project) { toast('先打开一个接口工程，再导入表格', 4000); return; }
+  if (!api.pickTable) { toast('当前版本没有文件选择器，直接把文件拖进窗口', 4000); return; }
+  try {
+    const result = await api.pickTable();
+    if (!result || result.canceled) return;
+    if (!result.ok) throw new Error(result.message || '没有识别到表头');
+    if (!S.project) { toast('工程已经关掉了，重新打开再导入', 4000); return; }
+    showImportPreview(result);
+  } catch (e) {
+    toast('导入失败：' + ((e && e.message) || e), 6000);
+  }
+}
+function nextImportKey(it, wanted) {
+  let base = String(wanted || 'data').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
+  if (!/^[a-z_][a-z0-9_]{0,47}$/.test(base)) base = 'data';
+  let key = base;
+  let n = 2;
+  while (it.tables.some((t) => t.key === key || t.name === key)) key = `${base}_${n++}`;
+  return key;
+}
+function importPreviewCard(t) {
+  const cols = (t.preview.columns || []).slice(0, 9);
+  const rows = (t.preview.rows || []).slice(0, 5);
+  return `<div class="border border-neutral-300 mb-3">
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-neutral-200 bg-neutral-50">
+      <span class="font-semibold">${esc(t.source && t.source.sheet ? `工作表「${t.source.sheet}」` : (t.source && t.source.file) || t.name)}</span>
+      <span class="text-[11px] text-neutral-500">→ 表键 <b class="mono">${esc(t.key)}</b></span>
+      <span class="text-[11px] text-neutral-500 ml-auto">${t.rowCount} 行 · ${t.columnCount} 列</span>
+    </div>
+    <div class="px-3 py-2 overflow-auto">
+      <div class="text-[11px] text-neutral-500 mb-1">字段：${cols.map((c) => `<span class="mono">${esc(c.name)}</span> <span class="text-neutral-400">${esc(c.type)}</span>`).join('，')}${(t.preview.columns || []).length > 9 ? ' …' : ''}</div>
+      <table class="gt" style="min-width:520px"><thead><tr>${cols.map((c) => `<th>${esc(c.label || c.name)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((r) => `<tr>${cols.map((_, i) => `<td class="mono truncate" style="max-width:160px">${esc(r[i] == null ? '' : r[i])}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    </div>
+  </div>`;
+}
+function showImportPreview(result) {
+  const tables = result.tables || [];
+  const warnings = result.warnings || [];
+  modal(`<div class="p-4">
+    <div class="flex items-start gap-3 mb-3">
+      <div class="min-w-0">
+        <div class="text-[18px] font-semibold">识别到 ${tables.length} 张表</div>
+        <div class="text-[12px] text-neutral-500 mt-1">${esc(result.file || '')} · ${(result.size / 1024).toFixed(1)} KB · 表头自动变成字段，样例只用来推断类型</div>
+      </div>
+      <button class="btn thin ml-auto" id="impNo">取消</button>
+    </div>
+    <div class="max-h-[54vh] overflow-auto">${tables.map(importPreviewCard).join('')}</div>
+    ${warnings.length ? `<div class="text-[11px] text-neutral-500 mb-2">${warnings.map(esc).join('；')}</div>` : ''}
+    <div class="text-[11px] text-neutral-500 mb-3">导入只创建/覆盖表结构，不把表格行写进 MySQL；生成服务后用接口或 seed 再灌数据。</div>
+    <div class="flex items-center gap-2 border-t border-neutral-200 pt-3">
+      ${tables.length === 1 && tableOfIface(activeIface(), S.tableKey) ? `<button class="btn thin" id="impReplace">覆盖当前表字段</button>` : ''}
+      <button class="btn thin ml-auto" id="impCancel2">取消</button>
+      <button class="btn solid" id="impNew">全部导入为新表</button>
+    </div></div>`, (root) => {
+    const close = () => closeModal();
+    root.querySelector('#impNo').onclick = close;
+    root.querySelector('#impCancel2').onclick = close;
+    const replace = root.querySelector('#impReplace');
+    if (replace) replace.onclick = () => {
+      const cur = tableOfIface(activeIface(), S.tableKey);
+      if (!cur) return;
+      cur.fields = JSON.parse(JSON.stringify(tables[0].fields));
+      cur.comment = tables[0].comment || cur.comment;
+      close(); scheduleSave(); renderWorkspace();
+      toast(`已用「${tables[0].source.sheet || tables[0].source.file}」覆盖「${cur.key}」的 ${cur.fields.length} 个字段`, 4000);
+    };
+    root.querySelector('#impNew').onclick = () => {
+      const it = S.project ? activeIface() : null;
+      if (!it) { close(); toast('工程已经关掉了，重新打开再导入', 4000); return; }
+      const added = tables.map((t) => {
+        const key = nextImportKey(it, t.key);
+        return { key, name: key, schema: '', comment: t.comment || '', fields: JSON.parse(JSON.stringify(t.fields)) };
+      });
+      it.tables.push(...added);
+      S.tableKey = added[added.length - 1].key;
+      S.tab = 'tables';
+      S.mode = 'editor';
+      close(); scheduleSave(); renderWorkspace();
+      toast(`已新建 ${added.length} 张表：${added.map((t) => t.key).join('、')}`, 5000);
+    };
+  }, { width: 980, maxHeight: '86vh' });
+}
+function bindDropImport() {
+  const el = document.createElement('div');
+  el.id = 'dropImport';
+  el.className = 'fixed inset-0 z-[9998] hidden pointer-events-none flex items-center justify-center';
+  el.innerHTML = `<div class="absolute inset-0 bg-white/85 backdrop-blur-sm"></div>
+    <div class="relative border-2 border-dashed border-neutral-900 bg-white px-10 py-8 text-center shadow-2xl">
+      <div class="text-[28px] font-black tracking-tight">松开，建表</div>
+      <div class="text-[13px] text-neutral-600 mt-2">读取 .xlsx / .csv 的表头，自动识别字段类型；多工作表会分别建表</div>
+      <div class="text-[11px] text-neutral-400 mt-2">只建表结构，不写数据库</div>
+    </div>`;
+  document.body.appendChild(el);
+  let depth = 0;
+  const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+  const show = () => { if (S.project) el.classList.remove('hidden'); };
+  const hide = () => { depth = 0; el.classList.add('hidden'); };
+  window.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth++;
+    show();
+  });
+  window.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+  window.addEventListener('dragleave', (e) => {
+    if (!hasFiles(e)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) el.classList.add('hidden');
+  });
+  window.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    hide();
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    if (!files.length) return;
+    if (files.length > 1) {
+      toast('一次拖一个文件；多工作表请放在同一个 .xlsx 里', 5000);
+      return;
+    }
+    importTableFlow(files[0]);
+  });
 }
 
 const STORE_MODES = [  { id: 'mysql', name: '直连 MySQL', desc: '每次都读库，最稳，适合账务和必须实时的数据' },
@@ -6271,6 +6385,7 @@ document.addEventListener('contextmenu', (e) => {
     { label: '新建分类', hint: 'Ctrl+Shift+N', run: () => act('addCat') },
     { sep: true },
     { label: '导入 .yxpn', run: () => act('importYxpn') },
+    { label: '导入 Excel / CSV 建表', run: () => pickImportTable() },
     { label: '导出工程', run: () => act('exportProject') },
     { label: '生成服务', hint: 'Ctrl+Enter', run: () => act('generate') },
     { label: '打开生成目录', disabled: !S.genDir, run: () => api.openPath(S.genDir) },
@@ -6931,6 +7046,7 @@ window.addEventListener('blur', hideHubMenu);
 /* ---------------- 启动 ---------------- */
 (async function boot() {
   bindWindowControls();
+  bindDropImport();
   let startupToastDone = false;
   const applyStartupReport = async (report) => {
     try {
