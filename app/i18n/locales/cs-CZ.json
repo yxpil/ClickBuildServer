@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Vždy načítat z databáze – nejstabilnější řešení, vhodné pro účetní data a data vyžadující skutečný čas.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Zastavit webové služby a MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Zastavením se ukončí webové služby a MariaDB / Redis / RustFS, avšak databáze nebudou odstraněny.",
-    "仍有服务未能停止": "Některé služby se nepodařilo zastavit"
+    "仍有服务未能停止": "Některé služby se nepodařilo zastavit",
+    "基础账号权限 · 推荐": "Základní oprávnění účtu · Doporučeno",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Přihlášení, registrace, aktuální uživatel, odhlášení, seznam, podrobnosti a vyhledávání jsou předvyplněny; relace tokenů a oprávnění rolí admin/user jsou nakonfigurovány a po vytvoření jsou přímo použitelné.",
+    "使用账号权限预设": "Použít předvolby oprávnění účtu",
+    "账号权限": "Oprávnění účtu",
+    "登录注册 + 当前用户 + 角色": "Přihlášení a registrace + aktuální uživatel + role",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Přihlášení a registrace, aktuální uživatel, odhlášení a oprávnění rolí admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Předvolby oprávnění účtu: přihlášení/registrace jsou veřejné; aktuální uživatel/odhlášení a seznam/podrobnosti/vyhledávání vyžadují token; správa uživatelů je určena pouze pro admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Přihlášení/registrace jsou veřejné; zbývající funkce vyžadují token, správa uživatelů je určena pouze pro admin.",
+    "用户账号表": "Tabulka uživatelských účtů",
+    "当前用户": "Aktuální uživatel",
+    "退出登录": "Odhlásit se",
+    "推荐": "Doporučit",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Po vstupu do pracovního prostoru klikněte na „Nové rozhraní“ na pásu karet nebo stiskněte Ctrl+N. Průvodce vytvořením má celkem čtyři kroky: základní informace → hlavní tabulka → směrování → potvrzení. V horní části prvního kroku je položka „Doporučená oprávnění základního účtu“; jejím kliknutím nastavíte přihlášení, registraci, aktuálního uživatele, odhlášení a role admin/user. Níže je také 20 běžných obchodních šablon; jejich výběrem se automaticky vyplní pole tabulky, směrování i ověřování oprávnění, které pak můžete upravit podle potřeby."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Zastavení selhalo: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "„$1“ byl(a) vytvořen(a): přihlášení, registrace, aktuální uživatel, odhlášení a dotazy jsou již nastaveny; uživateli mohou spravovat pouze administrátoři."
     }
   ]
 }

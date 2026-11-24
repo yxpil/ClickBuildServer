@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Lecture systématique depuis la base de données : solution la plus fiable, adaptée aux données comptables et en temps réel.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Arrêter le service web et MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "L'arrêt arrêtera le service web et MariaDB / Redis / RustFS, sans supprimer la base de données.",
-    "仍有服务未能停止": "Certains services n'ont pas pu être arrêtés"
+    "仍有服务未能停止": "Certains services n'ont pas pu être arrêtés",
+    "基础账号权限 · 推荐": "Autorisations de compte de base · Recommandé",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Connexion, inscription, utilisateur actuel, déconnexion, liste, détails et recherche pré-remplis en une seule fois ; la session token et les autorisations des rôles admin/user sont configurées ensemble et prêtes à l'emploi après création.",
+    "使用账号权限预设": "Utiliser les paramètres prédéfinis des autorisations de compte",
+    "账号权限": "Autorisations de compte",
+    "登录注册 + 当前用户 + 角色": "Connexion/inscription + utilisateur actuel + rôle",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Connexion, inscription, utilisateur actuel, déconnexion et autorisations des rôles admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Paramètres prédéfinis des autorisations de compte : connexion/inscription publiques ; utilisateur actuel, déconnexion, liste, détails et recherche nécessitent un token ; gestion des utilisateurs réservée à admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Connexion/inscription publiques ; le reste nécessite un token, gestion des utilisateurs réservée à admin.",
+    "用户账号表": "Table des comptes utilisateurs",
+    "当前用户": "Utilisateur actuel",
+    "退出登录": "Se déconnecter",
+    "推荐": "Recommander",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Une fois dans l’espace de travail, cliquez sur « Nouvel API » dans le ruban ou appuyez sur Ctrl+N. La création guidée comporte quatre étapes : informations de base → table principale → routage → confirmation. En haut de la première étape se trouve « Autorisations de compte de base · recommandé » ; cliquez dessus pour configurer automatiquement la connexion, l’inscription, l’utilisateur actuel, la déconnexion ainsi que les rôles admin/user. Ci-dessous sont également disponibles 20 modèles métier courants : un clic remplit les champs de la table, le routage et l’authentification, puis il suffit d’effectuer les modifications nécessaires."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Échec de l'arrêt : $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "« $1 » a été créé : la connexion, l’inscription, l’utilisateur actuel, la déconnexion et la recherche sont configurées ; seul l’administrateur peut gérer les utilisateurs."
     }
   ]
 }

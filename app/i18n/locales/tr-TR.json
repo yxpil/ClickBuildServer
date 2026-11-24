@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Her seferinde veritabanından okur; en kararlısıdır, muhasebe ve gerçek zamanlılık gerektiren veriler için uygundur.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Web hizmeti ile MariaDB / Redis / RustFS'i durdur",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Durdurma işlemi web hizmeti ile MariaDB / Redis / RustFS'i durdurur ancak veritabanını silmez.",
-    "仍有服务未能停止": "Hâlâ durdurulamayan hizmetler var"
+    "仍有服务未能停止": "Hâlâ durdurulamayan hizmetler var",
+    "基础账号权限 · 推荐": "Temel hesap izinleri · Önerilen",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Oturum açma, kayıt, mevcut kullanıcı, çıkış, liste, detaylar ve arama için tek seferde ön doldurma; token oturumu ile admin/user rol izinleri birlikte yapılandırılır, oluşturulduktan sonra doğrudan kullanılabilir.",
+    "使用账号权限预设": "Hesap izinlerini önceden ayarla",
+    "账号权限": "Hesap izinleri",
+    "登录注册 + 当前用户 + 角色": "Oturum açma/kayıt + mevcut kullanıcı + roller",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Oturum açma/kayıt, mevcut kullanıcı, çıkış ve admin/user rol izinleri",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Hesap izinleri ön ayarı: Oturum açma/kayıt herkese açık; mevcut kullanıcı/çıkış ile liste/detaylar/arama için token gerekir; kullanıcı yönetimi yalnızca admin'e özeldir.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Oturum açma/kayıt herkese açık; geri kalanı için token gerekir, kullanıcı yönetimi yalnızca admin'e özeldir",
+    "用户账号表": "Kullanıcı Hesap Tablosu",
+    "当前用户": "Mevcut Kullanıcı",
+    "退出登录": "Oturumu Kapat",
+    "推荐": "Önerilenler",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Çalışma alanına girdikten sonra Şerit'teki “Yeni Arayüz” düğmesine tıklayın veya Ctrl+N tuşlarına basın. Oluşturma sihirbazı toplam dört adımdan oluşur: Temel Bilgiler → Ana Tablo → Yönlendirme → Onay; ilk adımın üst kısmında “Temel Hesap Yetkileri · Önerilen” seçeneği bulunur, bir kez tıkladığınızda oturum açma, kayıt, mevcut kullanıcı, çıkış ve admin/user rolleri yapılandırılır; altında ayrıca 20 yaygın iş şablonu yer alır, bir kez tıkladığınızda tablo alanları, yönlendirmeler ve kimlik doğrulama ayarları otomatik olarak doldurulur, ardından ihtiyaçlarınıza göre düzenleyebilirsiniz."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Durdurma başarısız: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "\"$1\" oluşturuldu: Oturum açma, kayıt olma, mevcut kullanıcı, çıkış yapma ve sorgulama yapılandırıldı; kullanıcıları yalnızca admin yönetebilir."
     }
   ]
 }

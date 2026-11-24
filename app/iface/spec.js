@@ -59,7 +59,7 @@ function defaultGuard() {
   };
 }
 
-const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'login', 'register', 'search', 'health', 'redirect', 'proxy', 'objects', 'crawl', 'custom'];
+const ROUTE_KINDS = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'login', 'register', 'me', 'logout', 'search', 'health', 'redirect', 'proxy', 'objects', 'crawl', 'custom'];
 const IO_RESPONSES = ['json', 'cookie', 'file', 'object', 'proxy', 'crawl'];
 const IO_STORES = ['none', 'mysql', 'redis', 'memory', 's3'];
 const FILE_KINDS = ['any', 'image', 'video', 'audio', 'document', 'pdf', 'archive'];
@@ -153,6 +153,8 @@ const ROUTE_META = {
   upload: { name: '附件', method: 'POST', path: '/:table/:id/file' },
   login: { name: '登录', method: 'POST', path: '/auth/login' },
   register: { name: '注册', method: 'POST', path: '/auth/register' },
+  me: { name: '当前用户', method: 'GET', path: '/auth/me' },
+  logout: { name: '退出登录', method: 'POST', path: '/auth/logout' },
   search: { name: '搜索', method: 'GET', path: '/:table/search' },
   health: { name: '健康检查', method: 'GET', path: '/:table/health' },
   redirect: { name: '跳转', method: 'GET', path: '/go/:slug' },
@@ -223,8 +225,17 @@ const ROUTE_TEMPLATES = {
     '  RETURN 409 { "ok": false, "error": "USER_EXISTS", "message": "用户名已存在" };',
     'END',
     "LET $ins = EXEC INSERT INTO {{t:main}} (username, password_hash, nickname, role, status) VALUES ({{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}}, {{body.role}}, 1);",
-    'LET $t = TOKEN NEW { "uid": $ins.insertId, "username": {{body.username}}, "nickname": {{body.nickname}} };',
+    'LET $t = TOKEN NEW { "uid": $ins.insertId, "username": {{body.username}}, "nickname": {{body.nickname}}, "role": {{body.role}} };',
     'RETURN 201 { "ok": true, "id": $ins.insertId, "token": $t.token, "expiresIn": $t.ttl };',
+  ].join('\n'),
+  me: [
+    '# 当前用户：网关先验 token，验过就把会话放进 $user',
+    'RETURN 200 { "ok": true, "user": $user, "token": {{token}} };',
+  ].join('\n'),
+  logout: [
+    '# 退出登录：删除 Redis / 内存里的 token 会话，并清掉 Cookie',
+    'TOKEN DEL {{token}};',
+    'RETURN 200 { "ok": true, "message": "已退出登录" };',
   ].join('\n'),
   search: [
     '# 搜索：关键字与字段筛选都走 {{where:main}}，支持排序和分页',
@@ -352,7 +363,7 @@ function newRoute(kind, iface, index) {
     name: ROUTE_META[kindKey].name,
     method: ROUTE_META[kindKey].method,
     path,
-    auth: false,
+    auth: kindKey === 'me' || kindKey === 'logout',
     summary: '',
     guard: { ...defaultGuard(), tx: ['create', 'update', 'delete', 'register'].includes(kindKey) },
     script: ROUTE_TEMPLATES[kindKey],
@@ -374,6 +385,55 @@ const IFACE_SCENARIOS = {
       { name: 'role', type: 'varchar', comment: '角色 admin/user' },
       { name: 'status', type: 'tinyint', comment: '1 启用 0 禁用' },
     ],
+  },
+  rbac: {
+    label: '账号权限',
+    table: 'sys_account',
+    comment: '登录注册、当前用户、退出登录与角色权限；首个注册账号自动成为管理员',
+    routes: ['login', 'register', 'me', 'logout', 'list', 'detail', 'search'],
+    authMode: 'all',
+    fields: [
+      { name: 'username', type: 'varchar', comment: '登录名' },
+      { name: 'password_hash', type: 'varchar', comment: '密码（SM4）' },
+      { name: 'nickname', type: 'varchar', comment: '昵称' },
+      { name: 'role', type: 'varchar', comment: '角色 admin/user' },
+      { name: 'status', type: 'tinyint', comment: '1 启用 0 禁用' },
+    ],
+    // 用户管理只给管理员；登录、注册公开；当前用户与退出需要 token。
+    routeRoles: { list: ['admin'], detail: ['admin'], search: ['admin'] },
+    scripts: {
+      login: [
+        '# 登录：校验状态与 SM4 密码，签发带角色的 token（Redis 会话）',
+        'LET $u = QUERY SELECT id, password_hash, nickname, role, status FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;',
+        'IF LEN($u.rows) == 0',
+        '  RETURN 401 { "ok": false, "error": "INVALID_CREDENTIALS", "message": "用户名或密码错误" };',
+        'END',
+        'IF $u.rows[0].status != 1',
+        '  RETURN 403 { "ok": false, "error": "ACCOUNT_DISABLED", "message": "账号已停用" };',
+        'END',
+        "IF SM4_DEC($u.rows[0].password_hash, 'clickbuild-key') != {{body.password}}",
+        '  RETURN 401 { "ok": false, "error": "INVALID_CREDENTIALS", "message": "用户名或密码错误" };',
+        'END',
+        'LET $t = TOKEN NEW { "uid": $u.rows[0].id, "username": {{body.username}}, "nickname": $u.rows[0].nickname, "role": $u.rows[0].role };',
+        'RETURN 200 { "ok": true, "token": $t.token, "expiresIn": $t.ttl, "user": { "id": $u.rows[0].id, "nickname": $u.rows[0].nickname, "role": $u.rows[0].role } };',
+      ].join('\n'),
+      register: [
+        '# 注册：首个账号自动成为 admin，后续注册为 user；密码 SM4 加密并直接登录',
+        'LET $exists = QUERY SELECT id FROM {{t:main}} WHERE username = {{body.username}} LIMIT 1;',
+        'IF LEN($exists.rows) > 0',
+        '  RETURN 409 { "ok": false, "error": "USER_EXISTS", "message": "用户名已存在" };',
+        'END',
+        'LET $count = QUERY SELECT COUNT(*) AS n FROM {{t:main}};',
+        'IF $count.rows[0].n == 0',
+        '  LET $role = "admin";',
+        'ELSE',
+        '  LET $role = "user";',
+        'END',
+        "LET $ins = EXEC INSERT INTO {{t:main}} (username, password_hash, nickname, role, status) VALUES ({{body.username}}, SM4_ENC({{body.password}}, 'clickbuild-key'), {{body.nickname}}, $role, 1);",
+        'LET $t = TOKEN NEW { "uid": $ins.insertId, "username": {{body.username}}, "nickname": {{body.nickname}}, "role": $role };',
+        'RETURN 201 { "ok": true, "id": $ins.insertId, "token": $t.token, "expiresIn": $t.ttl, "role": $role };',
+      ].join('\n'),
+    },
   },
   search: {
     label: '信息搜索',
@@ -475,24 +535,37 @@ function newIface(name, categoryId, opts) {
       ...newField(key, type),
       comment: String(f.comment || ''),
       search: ['varchar', 'char', 'text'].includes(type),
+      hidden: ['password', 'password_hash', 'token', 'secret'].includes(key),
+      query: !['password', 'password_hash', 'token', 'secret'].includes(key),
     };
   }).filter(Boolean);
   main.fields = [...defaultFields(), ...custom];
-  const allowedKinds = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'login', 'register', 'search', 'health', 'redirect'];
+  const allowedKinds = ['list', 'detail', 'create', 'update', 'delete', 'upload', 'login', 'register', 'me', 'logout', 'search', 'health', 'redirect'];
   const wantedKinds = Array.isArray(o.routeKinds) && o.routeKinds.length
     ? o.routeKinds.filter((k) => allowedKinds.includes(k))
     : (sc.routes || allowedKinds);
   const kinds = wantedKinds.length ? Array.from(new Set(wantedKinds)) : allowedKinds;
-  const routes = kinds.map((k) => newRoute(k, { tables: [main] }));
+  const routeScripts = o.scripts || sc.scripts || {};
+  const routes = kinds.map((k) => {
+    const r = newRoute(k, { tables: [main] });
+    if (routeScripts[k]) r.script = routeScripts[k];
+    return r;
+  });
   let basePath = String(o.basePath || '').trim();
   if (basePath) {
     if (!basePath.startsWith('/')) basePath = '/' + basePath;
     basePath = basePath.replace(/\/+$/, '');
   }
-  const authMode = o.authMode === 'all' || o.authMode === 'write' ? o.authMode : 'none';
+  const authMode = ['all', 'write'].includes(o.authMode)
+    ? o.authMode
+    : (['all', 'write'].includes(sc.authMode) ? sc.authMode : 'none');
   const openKinds = ['login', 'register', 'health', 'redirect'];
+  const routeRoles = o.routeRoles || sc.routeRoles || {};
   routes.forEach((r) => {
     r.auth = !openKinds.includes(r.key) && (authMode === 'all' || (authMode === 'write' && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(r.method)));
+    const roles = Array.isArray(routeRoles[r.key]) ? routeRoles[r.key].map(String).filter(Boolean) : [];
+    r.roles = roles;
+    if (roles.length) r.auth = true;
   });
   return {
     id,

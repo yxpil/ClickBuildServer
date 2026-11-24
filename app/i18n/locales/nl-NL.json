@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Leest telkens uit de database; het meest stabiel, geschikt voor boekhouding en gegevens die real-time moeten zijn.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Webdienst en MariaDB / Redis / RustFS stoppen",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Stoppen stopt de webdienst en MariaDB / Redis / RustFS, zonder de database te verwijderen.",
-    "仍有服务未能停止": "Er zijn nog steeds services die niet zijn gestopt"
+    "仍有服务未能停止": "Er zijn nog steeds services die niet zijn gestopt",
+    "基础账号权限 · 推荐": "Basisaccountrechten · Aanbevolen",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Inloggen, registreren, huidige gebruiker, uitloggen, lijst, details en zoeken worden in één keer vooraf ingevuld; de token-sessie en de admin-/user-rollen zijn al geconfigureerd en direct bruikbaar na aanmaak.",
+    "使用账号权限预设": "Accountrechtenvoorinstelling gebruiken",
+    "账号权限": "Accountrechten",
+    "登录注册 + 当前用户 + 角色": "Inloggen/registreren + huidige gebruiker + rollen",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Inloggen/registreren, huidige gebruiker, uitloggen en admin-/user-rollen",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Accountrechtenvoorinstelling: inloggen/registreren is openbaar; voor huidige gebruiker/uitloggen en lijst/details zoeken is een token vereist; gebruikersbeheer is alleen voor admins.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Inloggen/registreren is openbaar; voor de rest is een token vereist, gebruikersbeheer is alleen voor admins.",
+    "用户账号表": "Gebruikersaccounttabel",
+    "当前用户": "Huidige gebruiker",
+    "退出登录": "Uitloggen",
+    "推荐": "Aanbevelingen",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Nadat u de werkruimte hebt geopend, klikt u op “Nieuwe interface” in het lint of drukt u op Ctrl+N. De wizard voor het aanmaken bestaat uit vier stappen: basisinformatie → hoofdtable → routing → bevestigen. Bovenaan de eerste stap staat “Aanbevolen basisaccountrechten”; klik hierop om inloggen, registratie, de huidige gebruiker, uitloggen en de rollen admin/user direct in te stellen. Hieronder staan 20 veelgebruikte bedrijfsvorlagen. Door erop te klikken worden tabelvelden, routing en authenticatie automatisch ingevuld, waarna u deze naar wens kunt aanpassen."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Stoppen mislukt: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "\"$1\" is aangemaakt: inloggen, registreren, huidige gebruiker, uitloggen en opvragen zijn al geconfigureerd; alleen admin kan gebruikers beheren."
     }
   ]
 }

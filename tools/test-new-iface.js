@@ -84,4 +84,32 @@ ok('引导创建工程校验无错误', () => {
   assert.deepStrictEqual(spec.validateProject(spec.normalizeProject(p)).errors, []);
 });
 
+const rbac = spec.newIface('账号权限', 'biz', { scenario: 'rbac' });
+ok('账号权限预设生成登录注册当前用户与退出', () => {
+  assert.deepStrictEqual(rbac.routes.map((r) => r.key), ['login', 'register', 'me', 'logout', 'list', 'detail', 'search']);
+});
+ok('账号权限预设按 token 与角色绑定路由', () => {
+  const byKey = Object.fromEntries(rbac.routes.map((r) => [r.key, r]));
+  assert.strictEqual(byKey.login.auth, false);
+  assert.strictEqual(byKey.register.auth, false);
+  for (const k of ['me', 'logout', 'list', 'detail', 'search']) assert.strictEqual(byKey[k].auth, true, k);
+  for (const k of ['list', 'detail', 'search']) assert.deepStrictEqual(byKey[k].roles, ['admin'], k);
+});
+ok('登录脚本把角色写进 token', () => {
+  const login = rbac.routes.find((r) => r.key === 'login');
+  assert.ok(login.script.includes('role, status') && login.script.includes('"role": $u.rows[0].role'));
+});
+ok('首个注册账号自动成为管理员', () => {
+  const register = rbac.routes.find((r) => r.key === 'register');
+  assert.ok(register.script.includes('COUNT(*) AS n') && register.script.includes('"admin"') && register.script.includes('"user"'));
+});
+ok('账号权限密码字段默认隐藏且不参与查询', () => {
+  const f = rbac.tables[0].fields.find((x) => x.name === 'password_hash');
+  assert.ok(f.hidden && !f.query);
+});
+ok('账号权限接口整工程校验通过', () => {
+  const p = spec.normalizeProject({ name: 'rbac-test', interfaces: [rbac] });
+  assert.deepStrictEqual(spec.validateProject(p).errors, []);
+});
+
 console.log(`通过 ${pass} / ${pass}`);

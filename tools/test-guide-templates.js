@@ -1,7 +1,7 @@
 // 作者：yxpil
 'use strict';
 
-// 创建引导的 20 个业务模板：从 renderer/wbench.js 读取常量并做结构回归。
+// 创建引导的 21 个模板：从 renderer/wbench.js 读取常量并做结构回归。
 // 不启动 Electron，检查字段类型、路由 key、表名唯一与分组覆盖。
 const fs = require('fs');
 const path = require('path');
@@ -28,10 +28,14 @@ function ok(name, cond, detail) {
   else { failed += 1; console.log(`  not ok - ${name}${detail ? `: ${detail}` : ''}`); }
 }
 
-ok('模板总数至少 20', templates.length >= 20, templates.length);
+ok('模板总数为 21', templates.length === 21, templates.length);
 ok('场景分组至少 5 组', groups.length >= 5, groups.length);
 ok('模板 key 唯一', new Set(templates.map((t) => t.key)).size === templates.length);
 ok('分组 key 唯一', new Set(groups.map((g) => g.key)).size === groups.length);
+const rbac = templates.find((t) => t.key === 'rbac');
+ok('账号权限预设存在并默认推荐', !!rbac && rbac.recommended === true);
+ok('账号权限预设覆盖登录注册与查询', !!rbac && ['login', 'register', 'me', 'logout', 'list', 'detail', 'search'].every((k) => rbac.routes.includes(k)), rbac && rbac.routes.join(','));
+ok('账号权限预设默认全部 token 鉴权', !!rbac && rbac.authMode === 'all', rbac && rbac.authMode);
 
 const groupKeys = new Set(groups.map((g) => g.key));
 const tableNames = new Set();

@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Läser från databasen varje gång, mest stabilt, lämpligt för bokföring och data som kräver realtid",
     "停止网页服务和 MariaDB / Redis / RustFS": "Stoppa webbtjänster och MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Stoppning stoppar webbtjänster och MariaDB / Redis / RustFS utan att radera databasen.",
-    "仍有服务未能停止": "Följande tjänster kunde inte stoppas"
+    "仍有服务未能停止": "Följande tjänster kunde inte stoppas",
+    "基础账号权限 · 推荐": "Grundläggande kontobehörigheter · Rekommenderat",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Inloggning, registrering, aktuell användare, utloggning, lista, detaljer och sökning förifylls en gång; token-sessionen och admin-/user-rollbehörigheterna konfigureras tillsammans och är redo att användas direkt efter skapande.",
+    "使用账号权限预设": "Använd förinställda kontobehörigheter",
+    "账号权限": "Kontobehörigheter",
+    "登录注册 + 当前用户 + 角色": "Inloggning/registrering + aktuell användare + roller",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Inloggning, registrering, aktuell användare, utloggning samt admin-/user-rollbehörigheter",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Förinställda kontobehörigheter: inloggning/registrering är offentlig; aktuell användare/utloggning samt lista/detaljer/sökning kräver token; användarhantering är endast för admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Inloggning/registrering är offentlig; övriga funktioner kräver token, och användarhantering är endast för admin.\"",
+    "用户账号表": "Användarkontotabell",
+    "当前用户": "Aktuell användare",
+    "退出登录": "Logga ut",
+    "推荐": "Rekommendera",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Klicka på ”Nytt gränssnitt” i Ribbon-menyn efter att du har gått in i arbetsytan, eller tryck på Ctrl+N. Skapandeguiden består av fyra steg: grundinformation → huvudtabell → routing → bekräftelse. Längst upp i första steget finns ”Grundläggande kontobehörigheter · rekommenderat”; klicka där för att snabbt konfigurera inloggning, registrering, aktuell användare, utloggning samt rollerna admin och user. Nedanför finns även 20 vanliga affärsmallar. Klicka på en mall för att automatiskt fylla i tabellfält, routing och behörigheter, och ändra sedan efter behov."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Stopp misslyckades: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "\"「$1」 har skapats: inloggning, registrering, aktuell användare, utloggning och sökning är redan konfigurerade; endast admin kan hantera användare.\""
     }
   ]
 }

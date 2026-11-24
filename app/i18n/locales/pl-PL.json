@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Za każdym razem odczyt z bazy danych – najbezpieczniejsze rozwiązanie, odpowiednie do danych księgowych i wymagających natychmiastowej aktualizacji",
     "停止网页服务和 MariaDB / Redis / RustFS": "Zatrzymaj usługi sieciowe oraz MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Zatrzymanie spowoduje wyłączenie usług sieciowych oraz MariaDB / Redis / RustFS bez usuwania baz danych.",
-    "仍有服务未能停止": "Niektóre usługi nie zostały zatrzymane"
+    "仍有服务未能停止": "Niektóre usługi nie zostały zatrzymane",
+    "基础账号权限 · 推荐": "Podstawowe uprawnienia konta · Zalecane",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Zaloguj się, zarejestruj, wyświetl bieżącego użytkownika, wyloguj, wyświetl listę, szczegóły i wyszukaj za jednym razem; sesja tokena oraz uprawnienia ról admin/user są skonfigurowane i gotowe do użycia po utworzeniu.",
+    "使用账号权限预设": "Użyj predefiniowanych uprawnień konta",
+    "账号权限": "Uprawnienia konta",
+    "登录注册 + 当前用户 + 角色": "Logowanie/rejestracja + bieżący użytkownik + role",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Logowanie/rejestracja, bieżący użytkownik, wylogowanie oraz uprawnienia ról admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Predefiniowane uprawnienia konta: logowanie/rejestracja są publiczne; bieżący użytkownik/wylogowanie oraz lista/szczegóły/wyszukiwanie wymagają tokena; zarządzanie użytkownikami jest dostępne tylko dla admina.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Logowanie/rejestracja publiczne; pozostałe funkcje wymagają tokena, zarządzanie użytkownikami tylko dla admina.",
+    "用户账号表": "Tabela kont użytkowników",
+    "当前用户": "Obecny użytkownik",
+    "退出登录": "Wyloguj",
+    "推荐": "Polecane",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Po wejściu do pulpitu pracy kliknij „Nowy interfejs” na wstążce lub naciśnij Ctrl+N. Kreator tworzenia składa się z czterech kroków: informacje podstawowe → tabela główna → routing → potwierdzenie. Na górze pierwszego kroku znajduje się opcja „Uprawnienia konta podstawowego · zalecane” — kliknij ją, aby skonfigurować logowanie, rejestrację, bieżącego użytkownika, wylogowanie oraz role admin i user. Poniżej dostępnych jest również 20 popularnych szablonów biznesowych; po kliknięciu zostaną wypełnione pola tabeli, routing i uwierzytelnianie, które następnie można dostosować do potrzeb."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Nie udało się zatrzymać: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "Utworzono „$1”: logowanie, rejestracja, bieżący użytkownik, wylogowanie i wyszukiwanie są już skonfigurowane; tylko użytkownik admin może zarządzać użytkownikami."
     }
   ]
 }

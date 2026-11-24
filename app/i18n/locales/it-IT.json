@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Legge sempre dal database: la soluzione più stabile, adatta a dati contabili e a quelli che richiedono aggiornamenti in tempo reale.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Interrompi i servizi web e MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "L'interrompimento fermerà i servizi web e MariaDB / Redis / RustFS, senza eliminare i database.",
-    "仍有服务未能停止": "Alcuni servizi non sono stati interrotti"
+    "仍有服务未能停止": "Alcuni servizi non sono stati interrotti",
+    "基础账号权限 · 推荐": "Autorizzazioni account di base · Consigliato",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Accesso, registrazione, utente corrente, uscita, elenco, dettagli e ricerca vengono precompilati in un'unica operazione; la sessione token e i permessi dei ruoli admin/user sono già configurati e utilizzabili subito dopo la creazione.",
+    "使用账号权限预设": "Utilizza le impostazioni predefinite delle autorizzazioni account",
+    "账号权限": "Autorizzazioni account",
+    "登录注册 + 当前用户 + 角色": "Accesso e registrazione + utente corrente + ruoli",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Accesso e registrazione, utente corrente, uscita e permessi dei ruoli admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Impostazioni predefinite autorizzazioni account: accesso/registrazione pubblici; utente corrente/uscita, elenco, dettagli e ricerca richiedono un token; la gestione utenti è riservata ad admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Accesso/registrazione pubblici; per il resto è richiesto un token, gestione utenti riservata ad admin",
+    "用户账号表": "Tabella account utente",
+    "当前用户": "Utente corrente",
+    "退出登录": "Esci",
+    "推荐": "Consigliato",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Dopo essere entrati nell'ambiente di lavoro, fare clic su \"Nuova interfaccia\" nella barra Ribbon oppure premere Ctrl+N. La procedura guidata di creazione prevede quattro passaggi: informazioni di base → tabella principale → routing → conferma; nella parte superiore del primo passaggio è presente la dicitura \"Autorizzazioni account di base · consigliate\": facendo clic su di essa è possibile configurare automaticamente l'accesso, la registrazione, l'utente corrente, la disconnessione e i ruoli admin/user; qui sotto sono inoltre disponibili 20 modelli operativi comuni, che, una volta selezionati, compilano i campi della tabella, il routing e l'autenticazione, per poi essere modificati secondo le esigenze."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Arresto fallito: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "È stato creato «$1»: accesso, registrazione, utente corrente, disconnessione e query sono già configurati; solo admin può gestire gli utenti."
     }
   ]
 }

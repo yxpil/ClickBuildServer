@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Read from the database every time for maximum reliability, suitable for financial data and data requiring real-time accuracy",
     "停止网页服务和 MariaDB / Redis / RustFS": "Stop Web Service and MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Stopping will stop the Web Service and MariaDB / Redis / RustFS without deleting the database.",
-    "仍有服务未能停止": "Some services could not be stopped"
+    "仍有服务未能停止": "Some services could not be stopped",
+    "基础账号权限 · 推荐": "Basic account permissions · Recommended",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Pre-fill login, registration, current user, logout, list, details, and search; configure token sessions and admin/user role permissions so they are ready to use after creation.",
+    "使用账号权限预设": "Use account permission presets",
+    "账号权限": "Account permissions",
+    "登录注册 + 当前用户 + 角色": "Login/Registration + Current User + Roles",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Login/Registration, current user, logout, and admin/user role permissions",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Account permission presets: login/registration are public; current user/logout and list/details/search require a token; user management is restricted to admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Login/registration are public; the rest require a token, and user management is restricted to admin.",
+    "用户账号表": "User Account Table",
+    "当前用户": "Current User",
+    "退出登录": "Sign Out",
+    "推荐": "Recommended",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "After entering the Workbench, click “New API” on the Ribbon or press Ctrl+N. The creation wizard has four steps: Basic Information → main table → route → Confirmation. At the top of the first step is “Recommended Basic Account Permissions”; click it to configure login, registration, current user, logout, and the admin/user roles. Below are 20 common business templates. Clicking one populates the table fields, route, and authentication, which you can then modify as needed."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Stop failed: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "$1 has been created: login, registration, current user, logout, and query are configured; only admin can manage users."
     }
   ]
 }

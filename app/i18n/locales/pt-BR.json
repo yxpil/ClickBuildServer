@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Ler da base de dados a cada vez é o mais estável, adequado para dados financeiros e que exigem tempo real.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Parar serviços web e MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Parar interromperá os serviços web e MariaDB / Redis / RustFS, sem excluir o banco de dados.",
-    "仍有服务未能停止": "Ainda há serviços que não puderam ser parados"
+    "仍有服务未能停止": "Ainda há serviços que não puderam ser parados",
+    "基础账号权限 · 推荐": "Permissões básicas de conta · Recomendado",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Login, registro, usuário atual, logout, lista, detalhes e busca são preenchidos previamente; a sessão de token e as permissões de função admin/user são configuradas e prontas para uso após a criação.",
+    "使用账号权限预设": "Usar predefinição de permissões de conta",
+    "账号权限": "Permissões de conta",
+    "登录注册 + 当前用户 + 角色": "Login/registro + usuário atual + funções",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Login/registro, usuário atual, logout e permissões de função admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Predefinição de permissões de conta: login/registro são públicos; usuário atual/logout e lista/detalhes/busca exigem token; gerenciamento de usuários é restrito a admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Login/registro são públicos; o restante exige token, e o gerenciamento de usuários é restrito a admin.\"",
+    "用户账号表": "Tabela de contas de usuário",
+    "当前用户": "Usuário atual",
+    "退出登录": "Sair",
+    "推荐": "Recomendações",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Após entrar na área de trabalho, clique em “Nova API” na faixa de opções ou pressione Ctrl+N. A criação guiada tem quatro etapas: Informações básicas → Tabela principal → Roteamento → Confirmação. Na parte superior da primeira etapa, há “Permissões de conta básicas · Recomendado”; clique para configurar login, registro, usuário atual, logout e os papéis admin/user. Abaixo, há 20 modelos de negócios comuns; ao clicar, os campos da tabela, roteamento e autenticação são preenchidos automaticamente, podendo ser alterados conforme necessário."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Falha ao parar: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "\"「$1」 criado: login, registro, usuário atual, logout e consulta já estão configurados; apenas o admin pode gerenciar usuários.\""
     }
   ]
 }

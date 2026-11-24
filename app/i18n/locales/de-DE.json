@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Immer aus der Datenbank lesen – am zuverlässigsten, geeignet für Buchungsdaten und Daten, die Echtzeit erfordern",
     "停止网页服务和 MariaDB / Redis / RustFS": "Webdienste und MariaDB / Redis / RustFS beenden",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Durch das Beenden werden die Webdienste sowie MariaDB / Redis / RustFS gestoppt, ohne die Datenbank zu löschen.",
-    "仍有服务未能停止": "Einige Dienste konnten nicht beendet werden"
+    "仍有服务未能停止": "Einige Dienste konnten nicht beendet werden",
+    "基础账号权限 · 推荐": "Basis-Kontoberechtigungen · Empfohlen",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Anmelden, Registrieren, aktueller Benutzer, Abmelden, Liste, Details und Suche werden einmal vorausgefüllt; die Token-Sitzung wird zusammen mit den admin-/User-Rollenberechtigungen konfiguriert und ist nach der Erstellung direkt einsatzbereit.",
+    "使用账号权限预设": "Kontoberechtigungen vordefinieren",
+    "账号权限": "Kontoberechtigungen",
+    "登录注册 + 当前用户 + 角色": "Anmelden/Registrieren + aktueller Benutzer + Rollen",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Anmelden/Registrieren, aktueller Benutzer, Abmelden sowie admin-/User-Rollenberechtigungen",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Kontoberechtigungen vordefinieren: Anmelden/Registrieren öffentlich; aktueller Benutzer/Abmelden sowie Liste/Details/Suche erfordern ein Token; die Benutzerverwaltung ist nur für Admins.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Anmelden/Registrieren öffentlich; der Rest erfordert ein Token, die Benutzerverwaltung ist nur für Admins.",
+    "用户账号表": "Benutzertabelle",
+    "当前用户": "Aktueller Benutzer",
+    "退出登录": "Abmelden",
+    "推荐": "Empfohlen",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Nach dem Betreten der Arbeitsfläche klicken Sie im Ribbon auf „Neue Schnittstelle“ oder drücken Sie Strg+N. Der Erstellungsassistent umfasst vier Schritte: Basisinformationen → Haupttabelle → Routing → Bestätigung. Im oberen Bereich des ersten Schritts befindet sich der Hinweis „Basis-Kontoberechtigungen · Empfohlen“; ein Klick konfiguriert automatisch Anmelden, Registrieren, aktuellen Benutzer, Abmelden sowie die Rollen admin/user. Darunter stehen 20 gängige Geschäftsvorlagen zur Verfügung. Ein Klick füllt Tabellenspalten, Routing und Berechtigungsprüfung voraus; anschließend können Sie diese nach Bedarf anpassen."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Stopp fehlgeschlagen: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "„$1“ wurde erstellt: Anmelden, Registrieren, aktueller Benutzer, Abmelden und Abfragen sind bereits konfiguriert. Nur der Benutzer „admin“ kann Benutzer verwalten."
     }
   ]
 }

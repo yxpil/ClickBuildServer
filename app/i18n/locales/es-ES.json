@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Leer siempre desde la base de datos: la opción más estable, adecuada para datos contables y aquellos que requieren actualización en tiempo real.",
     "停止网页服务和 MariaDB / Redis / RustFS": "Detener el servicio web y MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Al detenerse, se detendrán el servicio web y MariaDB / Redis / RustFS, sin eliminar la base de datos.",
-    "仍有服务未能停止": "Aún hay servicios que no se han podido detener"
+    "仍有服务未能停止": "Aún hay servicios que no se han podido detener",
+    "基础账号权限 · 推荐": "Permisos básicos de cuenta · Recomendado",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Iniciar sesión, registrarse, usuario actual, cerrar sesión, lista, detalles y búsqueda se prellen una vez; la sesión del token y los permisos de los roles admin/user se configuran juntos y están listos para usar tras la creación.",
+    "使用账号权限预设": "Usar preajustes de permisos de cuenta",
+    "账号权限": "Permisos de cuenta",
+    "登录注册 + 当前用户 + 角色": "Iniciar sesión y registrarse + usuario actual + roles",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Iniciar sesión, registrarse, usuario actual, cerrar sesión y permisos de los roles admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Preajustes de permisos de cuenta: inicio de sesión y registro públicos; usuario actual, cierre de sesión, lista, detalles y búsqueda requieren token; la gestión de usuarios es solo para admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Inicio de sesión y registro públicos; el resto requiere token; la gestión de usuarios es solo para admin.",
+    "用户账号表": "Tabla de cuentas de usuario",
+    "当前用户": "Usuario actual",
+    "退出登录": "Cerrar sesión",
+    "推荐": "Recomendado",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Tras acceder al espacio de trabajo, haga clic en «Nueva interfaz» en la cinta de opciones o pulse Ctrl+N. El asistente de creación consta de cuatro pasos: información básica → tabla principal → enrutamiento → confirmación. En la parte superior del primer paso aparece «Permisos de cuenta básicos · Recomendado»; al hacer clic, se configuran automáticamente el inicio de sesión, el registro, el usuario actual, el cierre de sesión y los roles admin/user. Debajo hay 20 plantillas de negocio habituales: al hacer clic en una, se completan los campos de la tabla, el enrutamiento y la autenticación, y luego puede modificarlos según sus necesidades."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Fallo al detener: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "Se ha creado «$1»: el inicio de sesión, el registro, el usuario actual, el cierre de sesión y la consulta ya están configurados; solo admin puede gestionar los usuarios."
     }
   ]
 }

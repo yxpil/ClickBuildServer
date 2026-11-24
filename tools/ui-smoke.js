@@ -361,8 +361,37 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('创建引导第一步有常用接口入口', await val(`!!document.querySelector('.guide-quick') && !!document.querySelector('#guideName') && document.querySelector('.guide-quick').innerText.includes('从常用接口开始')`));
   const guideTpl = await val(`(()=>{const cards=[...document.querySelectorAll('[data-guide-template]')];const groups=[...document.querySelectorAll('.guide-tpl-group')];const txt=document.querySelector('#modal').innerText;return JSON.stringify({cards:cards.length,groups:groups.length,names:['会员管理','订单管理','库存管理','预约管理','工单处理','配置中心','操作日志'].every(n=>txt.includes(n)),meta:cards[0]?cards[0].innerText.split('\\n').pop():''})})()`);
   const gt = JSON.parse(guideTpl || '{}');
-  t('创建引导提供 20 个常见业务模板并按场景分组', gt.cards >= 20 && gt.groups >= 5 && gt.names, guideTpl);
+  t('创建引导提供 21 个模板并按场景分组', gt.cards === 21 && gt.groups >= 5 && gt.names, guideTpl);
   t('模板卡片显示字段数与路由数', /\d+ 字段 · \d+ 路由/.test(gt.meta || ''), gt.meta);
+  t('创建引导有账号权限推荐预设', await val(`!!document.querySelector('#guideRbacUse') && document.querySelector('#modal').innerText.includes('基础账号权限')`));
+  await val(`document.querySelector('#guideRbacUse').click()`);
+  await wait(200);
+  t('账号权限预设自动填好接口名', await val(`document.querySelector('#guideName').value==='账号权限' && document.querySelector('#guideComment').value.includes('登录')`), await val(`document.querySelector('#guideName').value + ' / ' + document.querySelector('#guideComment').value`));
+  await val(`document.querySelector('#guideNext').click()`);
+  await wait(250);
+  const rbacStep = await val(`(()=>{const f=document.querySelector('#guideFields');return JSON.stringify({table:document.querySelector('#guideTable').value,fields:f?f.value.split('\\n').filter(Boolean).length:0,hasRole:!!f&&f.value.includes('role')})})()`);
+  t('账号权限预设预填 5 个账号字段', (() => { const x = JSON.parse(rbacStep || '{}'); return x.table === 'sys_account' && x.fields === 5 && x.hasRole; })(), rbacStep);
+  await val(`document.querySelector('#guideNext').click()`);
+  await wait(250);
+  const rbacAuth = await val(`(()=>{const checks=[...document.querySelectorAll('[data-guide-route]:checked')].map(x=>x.value);return JSON.stringify({n:checks.length,me:checks.includes('me'),logout:checks.includes('logout'),auth:document.querySelector('#guideAuth').value,note:document.querySelector('#guideBody').innerText.includes('用户管理仅 admin')})})()`);
+  t('账号权限预设预选 7 条路由并开启 token 鉴权', (() => { const x = JSON.parse(rbacAuth || '{}'); return x.n === 7 && x.me && x.logout && x.auth === 'all' && x.note; })(), rbacAuth);
+  await val(`document.querySelector('#guideCreate').click()`);
+  await wait(1400);
+  const rbacMade = await val(`(()=>{const i=S.project.interfaces.find(x=>x.name==='账号权限');return i?JSON.stringify({table:i.tables[0].name,fields:i.tables[0].fields.map(f=>f.name),hidden:i.tables[0].fields.filter(f=>f.hidden).map(f=>f.name),routes:i.routes.map(r=>({k:r.key,method:r.method,path:r.path,auth:r.auth,roles:r.roles})),perm:S.project.permissions}):'';})()`);
+  const rm = rbacMade ? JSON.parse(rbacMade) : {};
+  t('确认创建后账号权限接口直接可用',
+    rm.table === 'sys_account' && ['username', 'password_hash', 'nickname', 'role', 'status'].every((f) => rm.fields.includes(f)) && rm.hidden.includes('password_hash') &&
+    rm.routes.length === 7 && rm.routes.find((r) => r.k === 'login').auth === false && rm.routes.find((r) => r.k === 'register').auth === false &&
+    rm.routes.filter((r) => !['login', 'register'].includes(r.k)).every((r) => r.auth) &&
+    ['list', 'detail', 'search'].every((k) => { const r = rm.routes.find((x) => x.k === k); return r.roles.length === 1 && r.roles[0] === 'admin'; }),
+    rbacMade);
+  t('账号权限接口创建后自动补齐角色并启用权限',
+    rm.perm && rm.perm.enforce === true && ['admin', 'user'].every((k) => rm.perm.roles.some((r) => r.key === k)),
+    JSON.stringify(rm.perm || null));
+  await val(`(()=>{S.project.interfaces=S.project.interfaces.filter(x=>x.name!=='账号权限');S.selId=(S.project.interfaces[0]||{}).id||'';scheduleSave();render();return S.project.interfaces.length})()`);
+  await wait(300);
+  await val(`(()=>{act('newIface'); return 'opened';})()`);
+  await wait(500);
   await val(`document.querySelector('[data-guide-template="order"]').click()`);
   await wait(200);
   t('点订单模板自动填好接口名与说明', await val(`document.querySelector('#guideName').value==='订单管理' && document.querySelector('#guideComment').value.includes('订单号')`), await val(`document.querySelector('#guideName').value + ' / ' + document.querySelector('#guideComment').value`));

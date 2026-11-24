@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Luôn đọc từ cơ sở dữ liệu, ổn định nhất, phù hợp cho dữ liệu kế toán và dữ liệu yêu cầu thời gian thực bắt buộc",
     "停止网页服务和 MariaDB / Redis / RustFS": "Ngừng dịch vụ web và MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Thao tác này sẽ ngừng dịch vụ web và MariaDB / Redis / RustFS mà không xóa cơ sở dữ liệu.",
-    "仍有服务未能停止": "Vẫn còn dịch vụ chưa thể ngừng"
+    "仍有服务未能停止": "Vẫn còn dịch vụ chưa thể ngừng",
+    "基础账号权限 · 推荐": "Quyền tài khoản cơ bản · Đề xuất",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Đăng nhập, đăng ký, người dùng hiện tại, thoát, danh sách, chi tiết và tìm kiếm được điền trước một lần; phiên token và quyền vai trò admin/user được cấu hình sẵn, tạo xong là dùng ngay.",
+    "使用账号权限预设": "Sử dụng cài đặt trước quyền tài khoản",
+    "账号权限": "Quyền tài khoản",
+    "登录注册 + 当前用户 + 角色": "Đăng nhập/đăng ký + người dùng hiện tại + vai trò",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Đăng nhập/đăng ký, người dùng hiện tại, thoát và quyền vai trò admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Cài đặt trước quyền tài khoản: đăng nhập/đăng ký công khai, người dùng hiện tại/thoát và danh sách/chi tiết/tìm kiếm cần token; quản lý người dùng chỉ dành cho admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Đăng nhập/đăng ký công khai; các mục còn lại cần token, quản lý người dùng chỉ dành cho admin\"}",
+    "用户账号表": "Bảng tài khoản người dùng",
+    "当前用户": "Người dùng hiện tại",
+    "退出登录": "Đăng xuất",
+    "推荐": "Đề xuất",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Sau khi vào bàn làm việc, nhấp vào “Giao diện mới” trên Ribbon hoặc nhấn Ctrl+N. Quy trình tạo gồm bốn bước: Thông tin cơ bản → Bảng chính → Định tuyến → Xác nhận; ở đầu bước đầu tiên có mục “Quyền tài khoản cơ bản · Đề xuất”, nhấp vào để cấu hình sẵn đăng nhập, đăng ký, người dùng hiện tại, đăng xuất và các vai trò admin/user; bên dưới còn có 20 mẫu nghiệp vụ phổ biến, nhấp vào để điền sẵn trường bảng, định tuyến và xác thực, sau đó chỉnh sửa theo nhu cầu."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Dừng thất bại: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "Đã tạo “$1”: Đăng nhập, đăng ký, người dùng hiện tại, thoát và truy vấn đã được cấu hình sẵn; chỉ admin mới có thể quản lý người dùng."
     }
   ]
 }

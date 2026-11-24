@@ -63,6 +63,20 @@
 
 ![接口套件弹窗](docs/screenshots/iface-kits.png)
 
+## 创建引导：账号权限开箱即用（1.1.76）
+
+新建接口第一步新增「基础账号权限 · 推荐」快捷预设，点「使用账号权限预设」会一次填好 `sys_account` 账号表、7 条路由和鉴权；确认创建后不用再手工拼登录、token 或角色规则。
+
+- **7 条路由**：`POST /auth/login`、`POST /auth/register`、`GET /auth/me`、`POST /auth/logout`、`GET /sys_account`、`GET /sys_account/:id`、`GET /sys_account/search`。
+- **token 会话**：登录和注册成功即通过 `TOKEN NEW` 签发 token 并写入 Redis；当前用户和退出直接复用网关解析出的会话，退出时 `TOKEN DEL` 立即失效。
+- **角色权限**：首个注册账号自动成为 `admin`，后续注册为 `user`；用户列表、详情和搜索绑定 `admin`，普通用户访问返回 403 `FORBIDDEN`。创建时自动补齐 `admin/user` 两个工程角色并开启 `permissions.enforce`，不用再进权限页手动配。
+- **安全默认**：`password_hash` 自动隐藏且不参与查询；登录校验账号 `status`，密码用 SM4 存储；登录、注册公开，其余全部要求 token。
+- **手动改也不丢**：模板只是预填，接口名、表名、字段、路由脚本和角色都能在四步引导或创建后的编辑器里继续改；加路由下拉也补齐了登录、注册、当前用户、退出和搜索。
+
+![创建引导的账号权限预设](docs/screenshots/account-guide.png)
+
+真实服务验收用生成的 Node 服务连接 MariaDB + Redis，覆盖注册首账号为 admin、第二个账号为 user、token 读取当前用户、管理员列表/详情/搜索、普通用户 403、密码登录、错误密码 401、退出后 token 失效，`tools/test-rbac-live.js` **20/20** 通过。
+
 ## 表格套件：把物理表单独拿出来复用（1.1.75）
 
 接口套件解决“整套业务”，表格套件解决“我只要这几张表”。接口库新增「表格」页签，直接从 26 套内置工程模版里抽取物理表，不另写一份会和模版漂移的演示数据。前 8 组是带完整接口闭环的业务套件，后面补齐视频、音乐、小说、聊天、会议、餐饮、物流、挂号、报销、IoT、票务、网课、装修、印刷和报价等模版表组。
@@ -671,10 +685,11 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-help.js`（生成服务 `/help`、404/405/413、OpenAPI 默认响应） | **28/28** |
 | `tools/test-resources.js`（Electron 真实采样：CPU / 内存 / 磁盘 / 网络、tasklist 进程内存、分析结论、二次采样） | **1/1** |
 | `tools/test-testgen.js`（自动测试计划 / 只读写入计数 / 404 与 401 / 跳过原因 / 生成文件语法） | **19/19** |
-| `tools/test-new-iface.js`（新建接口默认路由、404 与创建引导参数） | **16/16** |
+| `tools/test-new-iface.js`（新建接口默认路由、404 与创建引导参数） | **22/22** |
 | `tools/test-script-dsl.js`（三元 / 空值合并 / 逻辑优先级 / IN / LIKE / BETWEEN / IS NULL / TRY / REPEAT / ASSERT / 嵌套赋值 / lint / 导出 JS 编译） | **20/20** |
 | `tools/test-table-import.js`（CSV 表头 / 引号换行 / 分号 / GBK / 重名避让 / xlsx 多工作表 / 共享与内联字符串 / 日期样式 / 损坏文件拒绝） | **10/10** |
-| `tools/test-guide-templates.js`（20 个创建引导模板 / 5 组场景 / 字段类型与路由白名单 / 表名唯一 / 系统字段冲突） | **126/126** |
+| `tools/test-guide-templates.js`（21 个创建引导模板 / 5 组场景 / 字段类型与路由白名单 / 表名唯一 / 系统字段冲突） | **135/135** |
+| `tools/test-rbac-live.js`（账号权限预设真实 Node 服务 + MariaDB + Redis：首账号 admin、普通用户 403、token 会话与退出失效） | **20/20** |
 | `tools/test-social.js`（社交接口库 86 条路由真实 HTTP） | **117/117** |
 | `tools/test-iface-library.js`（单接口库 75 内置 / 收藏 / 分类 / 改名 / 二次插入路由避重 / 删除） | **33/33** |
 | `tools/test-kits.js`（8 套接口套件目录 / 26 组模版表组 / 共享表 / 空工程不产生 `_2` / 碰撞避重与前缀 / 函数冲突 / 表格套件整组与单表接入 / 关系重映射 / 全部可校验生成） | **102/102** |
@@ -686,7 +701,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 20 个常见模板、未登录设首页、.yxpn 工程本体、接口套件整套接入、表格套件整组/单表/新建表接口） | **168/168**（源码版 1.1.75） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 21 个模板与账号权限预设落库、未登录设首页、.yxpn 工程本体、接口套件整套接入、表格套件整组/单表/新建表接口） | **174/174**（源码版 1.1.76） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |

@@ -1167,7 +1167,20 @@
     "每次都读库，最稳，适合账务和必须实时的数据": "Membaca dari basis data setiap kali, paling stabil, cocok untuk data akuntansi dan data yang harus real-time",
     "停止网页服务和 MariaDB / Redis / RustFS": "Hentikan layanan web dan MariaDB / Redis / RustFS",
     "停止会停网页服务和 MariaDB / Redis / RustFS，不删数据库。": "Menghentikan akan menghentikan layanan web dan MariaDB / Redis / RustFS, tanpa menghapus basis data.",
-    "仍有服务未能停止": "Masih ada layanan yang gagal dihentikan"
+    "仍有服务未能停止": "Masih ada layanan yang gagal dihentikan",
+    "基础账号权限 · 推荐": "Izin akun dasar · Direkomendasikan",
+    "登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。": "Login, daftar, pengguna saat ini, keluar, daftar, detail, dan pencarian diisi sebelumnya sekali; sesi token dan izin peran admin/user dikonfigurasi bersama, siap digunakan langsung setelah dibuat.",
+    "使用账号权限预设": "Gunakan prasetel izin akun",
+    "账号权限": "Izin akun",
+    "登录注册 + 当前用户 + 角色": "Login + daftar + pengguna saat ini + peran",
+    "登录注册、当前用户、退出登录与 admin/user 角色权限": "Login, daftar, pengguna saat ini, keluar, serta izin peran admin/user",
+    "账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。": "Prasetel izin akun: login/daftar terbuka untuk umum; pengguna saat ini/keluar serta daftar/detail/pencarian memerlukan token; manajemen pengguna hanya untuk admin.",
+    "登录/注册公开；其余需要 token，用户管理仅 admin": "Login/daftar terbuka untuk umum; sisanya memerlukan token, manajemen pengguna hanya untuk admin\"}",
+    "用户账号表": "Tabel Akun Pengguna",
+    "当前用户": "Pengguna Saat Ini",
+    "退出登录": "Keluar",
+    "推荐": "Rekomendasi",
+    "进入工作台后点 Ribbon 的“新建接口”，或按 Ctrl+N。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。": "Setelah masuk ke area kerja, klik “Antarmuka Baru” pada Ribbon atau tekan Ctrl+N. Proses pembuatan terdiri dari empat langkah: Informasi Dasar → Tabel Utama → Rute → Konfirmasi; pada bagian atas langkah pertama terdapat “Izin Akun Dasar · Rekomendasi”, klik untuk mengonfigurasi login, pendaftaran, pengguna saat ini, logout, serta peran admin/user; di bawahnya juga tersedia 20 templat bisnis umum, klik untuk mengisi kolom tabel, rute, dan otorisasi, lalu modifikasi sesuai kebutuhan."
   },
   "patterns": [
     {
@@ -1741,6 +1754,10 @@
     {
       "src": "停止失败：${err}",
       "dst": "Gagal dihentikan: $1"
+    },
+    {
+      "src": "已创建「${name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户",
+      "dst": "\"「$1」 telah dibuat: login, daftar, pengguna saat ini, keluar, dan kueri sudah dikonfigurasi; hanya admin yang dapat mengelola pengguna\""
     }
   ]
 }

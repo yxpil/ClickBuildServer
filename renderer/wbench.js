@@ -113,6 +113,7 @@ const I = {
   star: '<path d="M8 2.2l1.75 3.55 3.92.57-2.84 2.77.67 3.9L8 11.14l-3.5 1.85.67-3.9L2.33 6.32l3.92-.57z"/>',
   search: '<circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/>',
   upload: '<path d="M8 10V2.5M5 5.5L8 2.5l3 3M2.5 9v3.5h11V9"/>',
+  shield: '<path d="M8 2l5 2v4c0 3.2-2 5.4-5 6.5-3-1.1-5-3.3-5-6.5V4z"/><path d="M5.8 8l1.5 1.5 3-3"/>',
 };
 const icon = (k) => `<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">${I[k] || I.page}</svg>`;
 
@@ -199,6 +200,8 @@ const GUIDE_ROUTE_DEFS = [
   { key: 'upload', name: '附件', method: 'POST', path: '/:table/:id/file', desc: '上传文件并把对象键写回记录' },
   { key: 'login', name: '登录', method: 'POST', path: '/auth/login', desc: '校验密码并签发 token' },
   { key: 'register', name: '注册', method: 'POST', path: '/auth/register', desc: '查重、SM4 加密并直接登录' },
+  { key: 'me', name: '当前用户', method: 'GET', path: '/auth/me', desc: '带 token 读取当前登录用户' },
+  { key: 'logout', name: '退出登录', method: 'POST', path: '/auth/logout', desc: '删除 token 会话并清 Cookie' },
   { key: 'health', name: '健康检查', method: 'GET', path: '/:table/health', desc: '探活数据库并返回服务状态' },
   { key: 'redirect', name: '跳转', method: 'GET', path: '/go/:slug', desc: '查表后 302 跳转到目标地址' },
 ];
@@ -214,6 +217,12 @@ const GUIDE_TEMPLATES = [
     key: 'blank', group: 'base', label: '空白接口', hint: '基础五条路由', name: '', comment: '',
     tableName: '', tableComment: '', fields: 'name varchar 名称',
     routes: ['list', 'detail', 'create', 'update', 'delete'], authMode: 'none',
+  },
+  {
+    key: 'rbac', group: 'base', label: '账号权限', hint: '登录注册 + 当前用户 + 角色', name: '账号权限', comment: '登录注册、当前用户、退出登录与 admin/user 角色权限',
+    tableName: 'sys_account', tableComment: '用户账号表',
+    fields: 'username varchar 登录名\npassword_hash varchar 密码（SM4）\nnickname varchar 昵称\nrole varchar 角色 admin/user\nstatus tinyint 状态',
+    routes: ['login', 'register', 'me', 'logout', 'list', 'detail', 'search'], authMode: 'all', recommended: true,
   },
   {
     key: 'auth', group: 'base', label: '登录注册', hint: '用户名密码 + token', name: '登录注册', comment: '账号密码登录、注册即签发 token',
@@ -367,6 +376,18 @@ function guideBasePath(value) {
   return s.replace(/\/+$/, '');
 }
 
+// 账号权限预设的工程级角色矩阵：保留已有角色，只补 admin/user 并开启角色校验。
+function ensureBaseRoles() {
+  const p = S.project;
+  if (!p) return;
+  const perm = p.permissions && typeof p.permissions === 'object' ? p.permissions : (p.permissions = { roles: [], enforce: false });
+  const roles = Array.isArray(perm.roles) ? perm.roles : (perm.roles = []);
+  for (const [key, name] of [['admin', '管理员'], ['user', '普通用户']]) {
+    if (!roles.some((r) => r && r.key === key)) roles.push({ key, name });
+  }
+  perm.enforce = true;
+}
+
 async function newIfaceGuide(initialCat) {
   const cats = (S.project.categories || []).slice();
   let favoriteLib = [];
@@ -454,6 +475,7 @@ async function newIfaceGuide(initialCat) {
         .guide-tpl b{font-size:11.5px;font-weight:600;line-height:1.35}
         .guide-tpl span{font-size:9.5px;color:var(--cb-muted);line-height:1.4}
         .guide-tpl em{font:9px/1.3 Consolas,monospace;color:#9aa3b2;font-style:normal;margin-top:1px}
+        .guide-tpl-rec{display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;background:#fff3d6;color:#a56a00;font-size:9px;font-weight:600;vertical-align:1px}
         .guide-route-list{border:1px solid var(--cb-line);border-radius:9px;overflow:hidden;background:#fff}
         .guide-route-item{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--cb-line-soft);transition:background .12s}
         .guide-route-item:last-child{border-bottom:0}
@@ -630,6 +652,18 @@ async function newIfaceGuide(initialCat) {
               </div>`;
           body.innerHTML = `
             ${quick}
+            <div class="guide-quick">
+              <div class="guide-quick-head">
+                <span class="guide-quick-mark">${icon('shield')}</span>
+                <div>
+                  <div class="guide-quick-title">基础账号权限 · 推荐</div>
+                  <div class="guide-quick-sub">登录、注册、当前用户、退出、列表、详情和搜索一次预填；token 会话与 admin/user 角色权限一起配好，创建后直接能用。</div>
+                </div>
+              </div>
+              <div class="guide-quick-row">
+                <button type="button" class="btn solid" id="guideRbacUse">使用账号权限预设</button>
+              </div>
+            </div>
             <div class="guide-h" style="margin-top:2px">从业务模板开始</div>
             <div class="guide-p">登录、搜索、内容、商品、订单、库存、会员、预约、工单、文件、配置、日志等 20 个常用场景已经预填表字段和路由；点一下再按需改。</div>
             <div class="guide-tpl-groups">
@@ -642,7 +676,7 @@ async function newIfaceGuide(initialCat) {
                     ${list.map((t) => {
                       const nFields = String(t.fields || '').split(/\r?\n/).filter((x) => x.trim()).length;
                       return `<button type="button" class="guide-tpl ${state.scenario === t.key ? 'on' : ''}" data-guide-template="${esc(t.key)}">
-                        <b>${esc(t.label)}</b><span>${esc(t.hint)}</span><em>${nFields} 字段 · ${t.routes.length} 路由</em>
+                        <b>${esc(t.label)}${t.recommended ? ' <span class="guide-tpl-rec">推荐</span>' : ''}</b><span>${esc(t.hint)}</span><em>${nFields} 字段 · ${t.routes.length} 路由</em>
                       </button>`;
                     }).join('')}
                   </div>
@@ -685,6 +719,8 @@ async function newIfaceGuide(initialCat) {
           body.querySelectorAll('[data-guide-template]').forEach((b) => {
             b.onclick = () => applyTemplate(GUIDE_TEMPLATES.find((t) => t.key === b.dataset.guideTemplate) || GUIDE_TEMPLATES[0]);
           });
+          const rbacUse = body.querySelector('#guideRbacUse');
+          if (rbacUse) rbacUse.onclick = () => applyTemplate(GUIDE_TEMPLATES.find((t) => t.key === 'rbac'));
           const libUse = body.querySelector('#guideLibUse');
           if (libUse) {
             libUse.onclick = () => {
@@ -762,7 +798,9 @@ async function newIfaceGuide(initialCat) {
                 </select>
               </div>
               <div class="guide-note guide-note-blue" style="display:flex;align-items:center">
-                已选 <b id="guideRouteCount" style="margin:0 4px">${state.routeKinds.length}</b> 条路由；列表与详情默认启用 60 秒缓存。
+                ${state.scenario === 'rbac'
+                  ? '账号权限预设：登录/注册公开，当前用户/退出与列表/详情/搜索需要 token；用户管理仅 admin。'
+                  : `已选 <b id="guideRouteCount" style="margin:0 4px">${state.routeKinds.length}</b> 条路由；列表与详情默认启用 60 秒缓存。`}
               </div>
             </div>
           `;
@@ -776,7 +814,9 @@ async function newIfaceGuide(initialCat) {
           body.querySelector('#guideAuth').addEventListener('change', read);
         } else {
           const parsed = guideFields(state.fieldText);
-          const authText = state.authMode === 'all' ? '全部路由需要 token' : state.authMode === 'write' ? '写操作需要 token' : '公开';
+          const authText = state.scenario === 'rbac'
+            ? '登录/注册公开；其余需要 token，用户管理仅 admin'
+            : state.authMode === 'all' ? '全部路由需要 token' : state.authMode === 'write' ? '写操作需要 token' : '公开';
           const category = cats.find((c) => c.id === state.categoryId);
           const base = guideBasePath(state.prefix);
           body.innerHTML = `
@@ -2446,7 +2486,9 @@ function tabRoutes(it) {
         <select id="newRouteKind" class="border border-neutral-300 px-1 py-1 text-[12px]">
           <option value="custom">自定义</option><option value="list">列表</option><option value="detail">详情</option>
           <option value="create">新建</option><option value="update">更新</option><option value="delete">删除</option><option value="upload">附件</option>
-          <option value="proxy">上游转发</option><option value="objects">对象表</option><option value="crawl">抓取</option>
+          <option value="search">搜索</option><option value="login">登录</option><option value="register">注册</option>
+          <option value="me">当前用户</option><option value="logout">退出登录</option><option value="health">健康检查</option>
+          <option value="redirect">跳转</option><option value="proxy">上游转发</option><option value="objects">对象表</option><option value="crawl">抓取</option>
         </select>
         <button class="btn thin" data-action="addRoute">＋ 加路由</button>
       </div>
@@ -3377,7 +3419,7 @@ const HELP_SECTIONS = [
         <div class="hb-card"><b>开始前</b><p>不需要先装 MariaDB、Redis、S3。点“启动”时应用会拉起内置三台服务，实际端口以工作台右侧的“运行环境”为准。</p></div>
       </div>
       <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>新建一个任务</b><p>在工程历史页点右上角“新建任务”，任务类型选“只后端”（只做 API）或“混合任务”（API + 前端）。新建出来的是空白工程，没有接口是正常的。</p></div></div>
-      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>新建接口</b><p>进入工作台后点 Ribbon 的“新建接口”，或按 <span class="hb-kbd">Ctrl+N</span>。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步提供 20 个常见业务模板，点一下就会填好表字段、路由和鉴权，再按需修改。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>新建接口</b><p>进入工作台后点 Ribbon 的“新建接口”，或按 <span class="hb-kbd">Ctrl+N</span>。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。</p></div></div>
       <div class="hb-step"><span class="hb-step-n">3</span><div class="hb-step-body"><b>填主表字段</b><p>第二步每行一个字段，格式是“字段名 类型 注释”。可以直接粘贴：</p>
         <div class="hb-code"><div class="hb-code-head">初始业务字段</div><pre>name varchar 名称
 price decimal 价格
@@ -4278,8 +4320,12 @@ async function act(name, el) {
       return;
     }
     const blank = await api.blank(cfg);
+    if (cfg.scenario === 'rbac') ensureBaseRoles();
     S.project.interfaces.push(blank); S.cat = blank.categoryId; S.selId = blank.id;
-    openIface(blank.id); scheduleSave(); toast(`已创建接口「${blank.name}」`);
+    openIface(blank.id); scheduleSave();
+    toast(cfg.scenario === 'rbac'
+      ? `已创建「${blank.name}」：登录、注册、当前用户、退出和查询已配好，admin 才能管理用户`
+      : `已创建接口「${blank.name}」`);
     return;
   }
   if (name === 'dupIface' && it) {
