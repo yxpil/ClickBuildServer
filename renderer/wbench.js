@@ -2278,10 +2278,29 @@ function scriptTemplates(it) {
   ];
 }
 
+function crossTableChoices(it) {
+  const own = new Set(((it && it.tables) || []).map((t) => t.name));
+  const seen = new Set();
+  const out = [];
+  for (const iface of ((S.project && S.project.interfaces) || [])) {
+    if (!iface || iface.id === it.id) continue;
+    for (const t of iface.tables || []) {
+      if (!t.name || own.has(t.name)) continue;
+      const ref = t.schema ? `${t.schema}.${t.name}` : t.name;
+      if (seen.has(ref)) continue;
+      seen.add(ref);
+      out.push({ ref, name: t.name, iface: iface.name || '未命名接口', comment: t.comment || '', fields: (t.fields || []).filter((f) => !f.hidden) });
+    }
+  }
+  return out;
+}
+
 function scriptAssistHtml(it) {
   const t = scriptTable(it);
   const key = t.key || 'main';
   const fields = (t.fields || []).slice(0, 8);
+  const cross = crossTableChoices(it);
+  const crossOptions = cross.map((x) => `<option value="${esc(x.ref)}" data-fields="${esc((x.fields || []).slice(0, 10).map((f) => f.name).join('、'))}">${esc(x.iface)} · ${esc(x.comment || x.name)} (${esc(x.ref)}) · ${x.fields.length} 字段</option>`).join('');
   return `<aside id="scriptAssist" class="w-[264px] shrink-0 border-l border-neutral-300 bg-neutral-50 flex flex-col min-h-0">
     <div class="h-8 shrink-0 border-b border-neutral-300 px-2 flex items-center gap-2">
       <b class="text-[11px]">脚本助手</b>
@@ -2294,6 +2313,19 @@ function scriptAssistHtml(it) {
       <div class="grid grid-cols-2 gap-1 mb-3">
         ${scriptTemplates(it).map(([label, , code], i) => `<button class="btn thin text-left" data-snp="${i}" title="${esc(code)}">${esc(label)}</button>`).join('')}
       </div>
+      <div class="font-semibold border-b border-neutral-300 pb-1 mb-1">跨接口表 <span class="font-normal text-neutral-500">${cross.length}</span></div>
+      ${cross.length ? `
+        <div class="text-neutral-500 leading-5 mb-1">同一工程内所有接口的表都能直接查，不用先把表加到本接口。</div>
+        <select id="crossTableSelect" class="w-full border border-neutral-300 bg-white px-1 py-1 text-[11px] mb-1">${crossOptions}</select>
+        <div id="crossToken" class="mono text-[10px] break-all text-neutral-600 mb-1">{{t:${esc(cross[0].ref)}}}</div>
+        <div id="crossMeta" class="text-[10px] leading-4 text-neutral-500 mb-1">字段：${esc((cross[0].fields || []).slice(0, 10).map((f) => f.name).join('、') || '无')}</div>
+        <div class="flex flex-wrap gap-1 mb-3">
+          <button class="chip" data-cross="t" title="跨接口表名">插入表名</button>
+          <button class="chip" data-cross="columns" title="那张表的全部字段">字段</button>
+          <button class="chip" data-cross="where" title="按 query 生成条件">WHERE</button>
+          <button class="chip" data-cross="idColumn" title="那张表的主键">主键</button>
+        </div>
+      ` : `<div class="text-neutral-500 leading-5 mb-3">这个工程还没有其它接口的表。</div>`}
       <div class="font-semibold border-b border-neutral-300 pb-1 mb-1">当前表：<span class="mono">${esc(t.name)}</span></div>
       <div class="flex flex-wrap gap-1 mb-3">
         <button class="chip" data-chip="{{t:${esc(key)}}}" title="表名">表 {{t:${esc(key)}}}</button>
@@ -2852,6 +2884,25 @@ function bindRoutes(it) {
     });
     assist.querySelectorAll('[data-chip]').forEach((b) => {
       b.onclick = () => insertScriptText(b.dataset.chip || '');
+    });
+    const crossSel = $('#crossTableSelect');
+    const crossToken = $('#crossToken');
+    const crossMeta = $('#crossMeta');
+    const syncCross = () => {
+      const opt = crossSel && crossSel.selectedOptions && crossSel.selectedOptions[0];
+      if (!opt) return;
+      if (crossToken) crossToken.textContent = `{{t:${opt.value}}}`;
+      if (crossMeta) crossMeta.textContent = `字段：${opt.dataset.fields || '无'}`;
+    };
+    if (crossSel) {
+      crossSel.onchange = syncCross;
+      syncCross();
+    }
+    assist.querySelectorAll('[data-cross]').forEach((b) => {
+      b.onclick = () => {
+        const ref = crossSel && crossSel.value;
+        if (ref) insertScriptText(`{{${b.dataset.cross}:${ref}}}`);
+      };
     });
   }
   const scriptBox = $('#rScript');
@@ -3900,7 +3951,7 @@ UPDATE {{t:main}} SET {{updateSet:main}} WHERE {{idColumn:main}} = {{id}};
 DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};</pre></div>
       <div class="hb-h3">占位符清单</div>
       <table class="hb-table"><thead><tr><th>占位符</th><th>展开成什么</th></tr></thead><tbody>
-        <tr><td class="mono">{{t:main}} / {{t:item}}</td><td>按表键取真实表名，可带库前缀；不是用户输入。</td></tr>
+        <tr><td class="mono">{{t:main}} / {{t:item}}</td><td>按本接口表键取真实表名；也可以直接写同一工程其它接口的真实表名，如 <span class="hb-inline">{{t:sys_account}}</span>。</td></tr>
         <tr><td class="mono">{{columns:main}} / {{allColumns:main}}</td><td>可见字段列表 / 全部字段（含隐藏）。</td></tr>
         <tr><td class="mono">{{insertColumns:main}} / {{insertValues:main}}</td><td>可写字段列表与对应的 ? 参数；自动跳过主键、自增、不可写字段。</td></tr>
         <tr><td class="mono">{{updateSet:main}}</td><td>只把请求体里出现过的可写字段拼成“列 = ?”。</td></tr>
@@ -3928,6 +3979,17 @@ DELETE FROM {{t:main}} WHERE {{idColumn:main}} = {{id}};</pre></div>
         <tr><td class="mono">sort=amount:desc,id:asc</td><td>最多三个字段</td><td>?sort=amount:desc</td></tr>
       </tbody></table>
       <div class="hb-p">多表查询直接在 SQL 里 JOIN：<span class="hb-inline">FROM {{t:main}} o LEFT JOIN {{t:item}} i ON i.order_id = o.id</span>。列名要自己写别名，避免两张表都有 id 时混淆；WHERE 仍可接 <span class="hb-inline">{{where:main}}</span>。</div>
+      <div class="hb-h3">跨接口表查询（1.1.82）</div>
+      <div class="hb-p">同一个工程里，任意接口都能查其它接口的表，不需要先把表复制或加到本接口。写法是把本接口的表键换成目标表的真实表名：<span class="hb-inline">{{t:sys_account}}</span>。列占位符同理，<span class="hb-inline">{{columns:sys_account}}</span>、<span class="hb-inline">{{where:sys_account}}</span>、<span class="hb-inline">{{idColumn:sys_account}}</span> 都会展开目标表的字段。</div>
+      <div class="hb-code"><div class="hb-code-head">订单接口直接 LEFT JOIN 账号接口的表</div><pre>LET $rows = QUERY
+SELECT o.id, o.order_no, a.username
+FROM {{t:main}} o
+LEFT JOIN {{t:sys_account}} a ON a.id = o.user_id
+WHERE {{where:main}}
+ORDER BY o.id DESC LIMIT {{limit}} OFFSET {{offset}};
+RETURN 200 { "rows": $rows.rows };</pre></div>
+      <div class="hb-p">解析顺序：先找本接口表键（<span class="hb-inline">main / item</span> 这类短键），找不到再按项目内真实表名找。不同库同名表用 <span class="hb-inline">{{t:库名.表名}}</span> 全限定；内部诊断也可以用 <span class="hb-inline">{{t:接口id.表键}}</span>，但日常写表名就够。脚本助手里的「跨接口表」下拉可以直接插入这些占位符。</div>
+      <div class="hb-warn"><b>边界</b><div>只有同一工程内才能跨接口查；跨工程请用 HTTP 调对方接口。跨接口写表时，事务会按项目里所有表涉及的连接一起开；用 Redis / LRU 等纯表模式时，同一句 SQL 里的纯表仍然必须同一种存储模式。</div></div>
       <div class="hb-tip"><b>安全边界</b><div>表名、列名只接受已存在的标识符；所有 <span class="hb-inline">{{body.x}}</span>、<span class="hb-inline">{{query.x}}</span> 都会变成参数占位符，不用自己拼引号，也不容易 SQL 注入。</div></div>
     `,
   },
@@ -4697,7 +4759,7 @@ async function act(name, el) {
   }
   if (name === 'preview' && it) {
     const r = it.routes.find((x) => x.id === S.routeId) || it.routes[0];
-    const pv = await api.preview({ iface: it, routeId: r.id, query: { page: '1' }, bodyText: '{"username":"tom"}' });
+    const pv = await api.preview({ iface: it, project: S.project, routeId: r.id, query: { page: '1' }, bodyText: '{"username":"tom"}' });
     if (!pv.ok) return toast(pv.error);
     modal(`<div class="p-3"><div class="flex items-center gap-2 mb-2"><b>展开后的 SQL</b><span class="mono text-[11px] text-neutral-500">${esc(r.method)} ${esc(r.path)}</span><button class="btn thin ml-auto" id="pvClose">关闭</button></div>
       ${pv.statements.map((s) => `<div class="mb-3"><div class="text-[11px] text-neutral-500">${esc(s.mode)} ${esc(s.name)}</div><pre class="monoarea border border-neutral-300 p-2 bg-neutral-50 whitespace-pre-wrap">${esc(s.sql)}\n参数 ${esc(JSON.stringify(s.params))}</pre></div>`).join('')}

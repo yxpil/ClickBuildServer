@@ -29,12 +29,15 @@ type Field struct {
 }
 
 type Table struct {
-	Key     string  `json:"key"`
-	Name    string  `json:"name"`
-	Schema  string  `json:"schema"`
-	Comment string  `json:"comment"`
-	Store   Store   `json:"store"`
-	Fields  []Field `json:"fields"`
+	Key       string  `json:"key"`
+	Name      string  `json:"name"`
+	Schema    string  `json:"schema"`
+	Comment   string  `json:"comment"`
+	Store     Store   `json:"store"`
+	Fields    []Field `json:"fields"`
+	IfaceID   string  `json:"ifaceId"`
+	IfaceName string  `json:"ifaceName"`
+	Ref       string  `json:"ref"`
 }
 
 type Cache struct {
@@ -64,12 +67,13 @@ type Route struct {
 }
 
 type Interface struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Comment  string  `json:"comment"`
-	BasePath string  `json:"basePath"`
-	Tables   []Table `json:"tables"`
-	Routes   []Route `json:"routes"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Comment       string  `json:"comment"`
+	BasePath      string  `json:"basePath"`
+	Tables        []Table `json:"tables"`
+	ProjectTables []Table `json:"projectTables"`
+	Routes        []Route `json:"routes"`
 }
 
 type Function struct {

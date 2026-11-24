@@ -933,12 +933,13 @@ Write-Host "已创建登录自启任务：$TaskName"
   add('RUN.md', runLines.join('\n'));
 
   let routeNo = 0;
+  const tableCatalog = spec.projectTableCatalog(p);
   p.interfaces.forEach((it) => {
     const mainTable = ((it.tables || []).find((t) => (t.key || 'main') === 'main') || (it.tables || [])[0] || {}).name || '';
     (it.routes || []).forEach((r) => {
       routeNo += 1;
       const base = `${slug(mainTable || it.name, 'iface')}-${slug(r.kind || r.name, 'route')}-${routeNo}`;
-      if (wantNode) add(`export/js/${base}.js`, exportJs(it, r));
+      if (wantNode) add(`export/js/${base}.js`, exportJs({ ...it, projectTables: tableCatalog }, r));
       if (wantJava) add(`export/java/${pascal(base, 'Route')}.java`, exportJava(it, r, base));
       if (wantGo) add(`export/go/${base}.go`, exportGo(it, r, base));
     });

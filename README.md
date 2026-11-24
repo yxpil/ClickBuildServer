@@ -78,6 +78,33 @@
 
 回归：`tools/test-task-types.js` **23/23**，新增默认账号表、登录/注册/当前用户/退出、公开与鉴权边界、admin/user 角色、前端空白和落盘后不丢接口等断言；`tools/test-rbac-live.js` 直接使用新建工程默认内容生成 Node 服务，连接 MariaDB + Redis 跑通注册、登录、当前用户、管理员列表/详情/搜索、普通用户 403、退出失效，**21/21** 通过；本地完整 CI **16/16**，安装前 UI 冒烟 **175/175**。
 
+## 跨接口表查询：一个工程里的表都连起来（1.1.82）
+
+以前每个接口只能查自己挂着的表。订单接口想 JOIN 账号接口的 `sys_account`，得先把表复制一份，或者绕成两个 HTTP 接口再在代码里拼。1.1.82 把“接口”当成表的归属标签，而不是查询边界：**同一个工程里，任意接口的 SQL 都能直接用其它接口的表**。
+
+- **按真实表名引用**：表名在工程内全局唯一，所以最常用的是 `{{t:sys_account}}`。`{{columns:sys_account}}`、`{{where:sys_account}}`、`{{idColumn:sys_account}}` 也都能跨接口用。
+- **本接口优先**：本接口的表键（`main`、`item`）先解析，避免两个接口都叫 `main` 时打架；跨接口请写项目里的真实表名。
+- **解析顺序**：本接口表键 → 项目表 `ref`/`库名.表名` → 项目表真实表名 → `接口id.表键`（诊断用）。同一工程多个接口共用同一张物理表时，目录只留一条，并记下所有来源接口。
+- **全限定写法**：不同库存在同名表时写 `{{t:库名.表名}}`；同名多表会直接报“表名有歧义”，不会猜一张表执行。
+- **脚本助手**：路由脚本页新增「跨接口表」下拉，列出当前工程其它接口的表、注释、字段数和 `{{t:ref}}`，点一下插入表名 / 字段 / WHERE / 主键占位符，不用背表名。
+
+一个订单接口跨两张表联查的例子：
+
+```sql
+LET $rows = QUERY
+SELECT o.id, o.order_no, a.username, a.nickname
+FROM {{t:main}} o
+LEFT JOIN {{t:sys_account}} a ON a.id = o.user_id
+ORDER BY o.id DESC;
+RETURN 200 { "ok": true, "rows": $rows.rows };
+```
+
+边界也要说清楚：只有同一个工程内可以跨接口；跨工程仍然走 HTTP 接口或导入表。Node 生成服务、Go/Java/Python 原生运行时的 `service.json` 都带同一份项目表目录，所以四种运行时解析同一套占位符；跨库 JOIN 的连接按项目表目录找，不再只看当前接口的第一张表。
+
+![路由脚本页的跨接口表选择器](docs/screenshots/cross-table-assist.png)
+
+回归：新增 `tools/test-cross-table.js` **15/15**，覆盖目录、共享表合并、本接口优先、真实表名/`接口id.表键`、跨接口 `columns`/`where`/`idColumn`、完整 LEFT JOIN、未知表与歧义提示、原生快照；`tools/test-cross-live.js` 在真实 MariaDB 上生成服务、自动建表并跑通订单接口 LEFT JOIN 账号表，返回 3 行且 `alice`/`bob`/`null` 正确。完整 CI **19/19**，打包测试 **23/23**。
+
 ## 资源管理器右键新建（1.1.81）
 
 设置页新增「资源管理器右键新建」，位置在「本地服务端口」之后、「语言运行时」之前。它的作用不是做个按钮放说明，而是在 Windows 资源管理器里真正写一条 `ShellNew`：

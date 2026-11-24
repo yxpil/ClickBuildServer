@@ -37,6 +37,9 @@ public class Model {
         public String comment = "";
         public Store store = new Store();
         public List<Field> fields = new ArrayList<>();
+        public String ifaceId = "";
+        public String ifaceName = "";
+        public String ref = "";
     }
 
     public static class Cache {
@@ -64,6 +67,7 @@ public class Model {
         public String comment = "";
         public String basePath = "";
         public List<Table> tables = new ArrayList<>();
+        public List<Table> projectTables = new ArrayList<>();
         public List<Route> routes = new ArrayList<>();
     }
 

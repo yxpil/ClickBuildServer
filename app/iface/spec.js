@@ -1048,6 +1048,36 @@ function normalizeProject(project) {
   };
 }
 
+// 项目级表目录：同一工程内所有接口的表放在一起，供跨接口 SQL 引用。
+// 物理表名在工程里唯一；同表被多个接口复用时只保留一条，并记下 ifaceNames。
+function projectTableCatalog(project) {
+  const p = project && Array.isArray(project.interfaces) ? project : normalizeProject(project);
+  const out = [];
+  const seen = new Map();
+  for (const it of p.interfaces || []) {
+    for (const t of it.tables || []) {
+      if (!t || !t.name) continue;
+      const ref = t.schema ? `${t.schema}.${t.name}` : t.name;
+      if (seen.has(ref)) {
+        const hit = seen.get(ref);
+        if (it.name && !hit.ifaceNames.includes(it.name)) hit.ifaceNames.push(it.name);
+        continue;
+      }
+      const item = {
+        ...t,
+        ifaceId: String(it.id || ''),
+        ifaceName: String(it.name || ''),
+        ifaceBasePath: String(it.basePath || ''),
+        ifaceNames: it.name ? [String(it.name)] : [],
+        ref,
+      };
+      seen.set(ref, item);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 function validateProject(project) {
   const errors = [];
   const warnings = [];
@@ -1127,4 +1157,5 @@ module.exports = {
   safeIdent,
   defaultConnections, defaultGuard,
   normalizeProject, normalizeIface, normalizeTable, normalizeRoute, validateProject, ddlOf,
+  projectTableCatalog,
 };

@@ -604,28 +604,45 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const tryDlg = await val(`(async()=>{S.tab='routes';render();const b=document.querySelector('[data-action="tryRoute"]');if(!b)return '无按钮';b.click();await new Promise(r=>setTimeout(r,100));const m=document.querySelector('#modal');const t=m?m.innerText:'无弹窗';closeModal();return t;})()`, true);
   t('路由试运行弹窗可打开并含请求体/结果区', /试运行/.test(tryDlg) && /请求体/.test(tryDlg) && /发送/.test(tryDlg), tryDlg.slice(0, 100));
 
-  // 脚本助手：小白看得懂、点一下能插入
+  // 脚本助手：小白看得懂、点一下能插入；同一工程内可直接插其它接口的表
   const assist = await val(`(()=>{
-    S.mode='editor';S.tab='routes';render();
-    const r=S.project.interfaces[0].routes[0];
+    S.mode='editor';S.tab='routes';
+    const base=S.project.interfaces[0];
+    const extra=JSON.parse(JSON.stringify(base));
+    extra.id='iface_cross_smoke'; extra.name='跨接口测试'; extra.basePath='/cross';
+    extra.tables[0].key='main'; extra.tables[0].name='cross_account';
+    extra.tables[0].fields=[{name:'id',type:'bigint',pk:true},{name:'username',type:'varchar',query:true,writable:true,hidden:false,search:true}];
+    S.project.interfaces.push(extra);
+    S.selId=base.id; render();
+    const r=base.routes[0];
     S.routeId=r.id;render();
     const box=document.querySelector('#scriptAssist');
     const before=r.script;
     const tpl=box?box.querySelector('[data-snp="0"]'):null;
     if(tpl)tpl.click();
     const after=r.script;
-    r.script=before;render();
+    const crossSel=box?box.querySelector('#crossTableSelect'):null;
+    const crossBtn=box?box.querySelector('[data-cross="t"]'):null;
+    if(crossBtn)crossBtn.click();
+    const crossAfter=r.script;
+    r.script=before;
+    S.project.interfaces.pop(); S.selId=base.id; render();
     return JSON.stringify({
       box:!!box,
       templates:box?box.querySelectorAll('[data-snp]').length:0,
       chips:box?box.querySelectorAll('[data-chip]').length:0,
       inserted:after!==before,
+      crossOptions:crossSel?crossSel.options.length:0,
+      crossRefs:crossSel?[...crossSel.options].map(o=>o.value):[],
+      crossToken:crossSel?crossSel.value:'',
+      crossInserted:crossAfter!==after,
       guide:!!box&&/完整语法速查/.test(box.innerText)
     });
   })()`);
   const as = JSON.parse(assist);
   t('路由页有脚本助手与常用模板', as.box && as.templates >= 6 && as.chips >= 4 && as.guide, assist.slice(0, 120));
   t('脚本模板点一下能插入', as.inserted, assist.slice(0, 120));
+  t('脚本助手能插入同工程其它接口的表', as.crossOptions > 0 && as.crossRefs.includes('cross_account') && as.crossToken && as.crossInserted, assist.slice(0, 180));
   const guide = await val(`(()=>{act('scriptGuide');const t=document.querySelector('#modal').innerText;closeModal();return t;})()`);
   t('脚本速查覆盖事务/抓取/等待', /TX BEGIN/.test(guide) && /CRAWL/.test(guide) && /WAIT/.test(guide), guide.slice(0, 100));
 

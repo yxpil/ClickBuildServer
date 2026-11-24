@@ -59,6 +59,7 @@ function pickRoute(iface, routeId) {
 function preview(payload) {
   try {
     const { iface, route } = pickRoute(payload.iface, payload.routeId);
+    if (payload.project) iface.projectTables = spec.projectTableCatalog(payload.project);
     const ctx = ctxOf(payload);
     const ast = script.parseScript(route.script || '').ast;
     const statements = [];

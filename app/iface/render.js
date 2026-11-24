@@ -50,18 +50,39 @@ function cast(field, raw) {
   return String(raw);
 }
 
+function projectTableOf(root, key) {
+  const list = (root && root.projectTables) || [];
+  if (!key || !list.length) return null;
+  const scoped = list.find((t) => t.ifaceId && `${t.ifaceId}.${t.key}` === key);
+  if (scoped) return scoped;
+  const refs = list.filter((t) => (t.ref || (t.schema ? `${t.schema}.${t.name}` : t.name)) === key);
+  if (refs.length === 1) return refs[0];
+  if (refs.length > 1) throw new Error(`表名有歧义：${key}，请写成「库名.表名」`);
+  const sameName = list.filter((t) => t.name === key);
+  if (sameName.length === 1) return sameName[0];
+  if (sameName.length > 1) throw new Error(`表名有歧义：${key}，请写成「库名.表名」`);
+  return null;
+}
+
 function tableOf(root, key) {
   const tables = root && root.tables;
-  if (!Array.isArray(tables) || !tables.length) return null;
-  if (!key) return tables[0];
-  return tables.find((t) => t.key === key) || null;
+  if (Array.isArray(tables) && tables.length) {
+    if (!key) return tables[0];
+    const own = tables.find((t) => t.key === key);
+    if (own) return own;
+  }
+  // 本接口找不到时，按项目物理表名跨接口解析。表键优先，避免 main/item 这类短键互相抢。
+  return projectTableOf(root, key);
 }
 
 // 把接口 + 表键收敛成一份"单表视图"，供下面的拼装函数使用（也兼容旧的单表接口）
 function bindingOf(root, key) {
   const t = tableOf(root, key);
   if (!t) {
-    if (root && root.tables) throw new Error(`未知表键：${key || 'main'}`);
+    if (root && root.tables) {
+      const keys = (root.tables || []).map((x) => x.key).filter(Boolean);
+      throw new Error(`未知表键：${key || 'main'}（本接口表键：${keys.join('、') || '无'}；跨接口请写项目里的真实表名，例如 {{t:sys_account}}）`);
+    }
     return root;
   }
   return {
@@ -73,6 +94,8 @@ function bindingOf(root, key) {
     storage: root.storage,
     bindField: root.storage && root.storage.bindField,
     tables: root.tables,
+    projectTables: root.projectTables,
+    sourceIface: t.ifaceName || '',
   };
 }
 

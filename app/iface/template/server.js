@@ -113,6 +113,27 @@ IFACES.forEach((m) => {
   m.routes = Array.isArray(m.routes) ? m.routes : [];
   m.tables = Array.isArray(m.tables) ? m.tables : [];
 });
+// 项目级表目录：同一工程里所有接口的表都进同一份目录，SQL 占位符可跨接口按真实表名引用。
+const PROJECT_TABLES = [];
+{
+  const seen = new Map();
+  for (const it of IFACES) {
+    for (const t of it.tables || []) {
+      if (!t || !t.name) continue;
+      const ref = t.schema ? `${t.schema}.${t.name}` : t.name;
+      if (seen.has(ref)) {
+        const hit = seen.get(ref);
+        if (it.name && !hit.ifaceNames.includes(it.name)) hit.ifaceNames.push(it.name);
+        continue;
+      }
+      const item = { ...t, ifaceId: String(it.id || ''), ifaceName: String(it.name || ''), ifaceBasePath: String(it.basePath || ''), ifaceNames: it.name ? [it.name] : [], ref };
+      seen.set(ref, item);
+      PROJECT_TABLES.push(item);
+    }
+  }
+}
+IFACES.forEach((m) => { m.projectTables = PROJECT_TABLES; });
+project.projectTables = PROJECT_TABLES;
 project.interfaces = IFACES;
 const CONNS = project.connections || {};
 const LOG_CFG = project.log || {};
@@ -122,8 +143,9 @@ const CACHE_NS = String(cfg('CACHE_PREFIX', `icb:cache:${project.name || 'projec
 const STORE_MEM = new Map();
 const STORE_VER = new Map();
 function storePolicy(iface, sql) {
-  const tables = iface.tables || [];
-  let t = tables[0] || {};
+  // 跨接口 SQL 要按项目目录选表；否则读别的接口的表会误用本接口的缓存策略。
+  const tables = (iface && iface.projectTables) || (iface && iface.tables) || [];
+  let t = (iface.tables || [])[0] || tables[0] || {};
   if (sql) {
     // 按实际查询的表选择加速策略；联表时命中第一个出现的表，写操作仍整体失效。
     const hit = tables.find((x) => {
@@ -1095,14 +1117,16 @@ async function handle(req, res, item) {
   const dbHandle = await poolFor((iface.tables[0] && iface.tables[0].conn) || 'main');
   const txStates = new Map(); // connKey -> { conn, inTx, released }
   const txKeys = new Set();
-  (iface.tables || []).forEach((t) => txKeys.add(t.conn || 'main'));
+  // 跨接口写同一工程其它表时也要进事务，所以按项目目录收集连接，而不是只看本接口。
+  ((iface && iface.projectTables) || (iface && iface.tables) || []).forEach((t) => txKeys.add(t.conn || 'main'));
   if (!txKeys.size) txKeys.add('main');
 
   function connKeyForSql(sql) {
     const text = String(sql || '');
     let hit = null; let len = 0;
     let mainSeen = false;
-    for (const t of (iface.tables || [])) {
+    const pool = (iface && iface.projectTables) || (iface && iface.tables) || [];
+    for (const t of pool) {
       const n = t.name;
       if (!n) continue;
       const re = new RegExp('(^|[^A-Za-z0-9_])' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9_])', 'i');
@@ -1113,7 +1137,8 @@ async function handle(req, res, item) {
     // 跨库 JOIN：一句 SQL 同时命中主库表和辅库表时走 main。
     // 主库表通常未加 schema，换到辅库连接会把主库表名解析到辅库；辅库表在脚本里用 {{schema:item}} 全限定。
     if (mainSeen && hit !== 'main') return 'main';
-    return hit || ((iface.tables[0] && iface.tables[0].conn) || 'main');
+    const first = ((iface && iface.tables) || [])[0] || ((iface && iface.projectTables) || [])[0] || {};
+    return hit || (first.conn || 'main');
   }
 
   async function txBeginAll() {

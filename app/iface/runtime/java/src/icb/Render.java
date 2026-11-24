@@ -20,10 +20,20 @@ public class Render {
         return i >= 0 ? new String[]{token.substring(0, i), token.substring(i + 1)} : new String[]{token, ""};
     }
 
+    static boolean tableRefMatch(Model.Table t, String key) {
+        if (t == null) return false;
+        if (key.equals(t.key) || key.equals(t.name)) return true;
+        if (t.ref != null && !t.ref.isEmpty() && key.equals(t.ref)) return true;
+        if (t.schema != null && !t.schema.isEmpty() && key.equals(t.schema + "." + t.name)) return true;
+        return t.ifaceId != null && !t.ifaceId.isEmpty() && key.equals(t.ifaceId + "." + t.key);
+    }
+
     static Model.Table bindingOf(Model.Iface root, String key) {
         if (root == null || root.tables.isEmpty()) return null;
         if (key == null || key.isEmpty()) return root.tables.get(0);
         for (Model.Table t : root.tables) if (t.key.equals(key)) return t;
+        // 本接口没有这个表键时，按项目目录找其它接口的真实表名。
+        for (Model.Table t : root.projectTables) if (tableRefMatch(t, key)) return t;
         return null;
     }
 

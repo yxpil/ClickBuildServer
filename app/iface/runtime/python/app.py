@@ -244,6 +244,16 @@ def table_of(iface, key):
     for t in tables:
         if t.get("key") == key:
             return t
+    # 本接口没有这个表键时，按项目目录找其它接口的真实表名。
+    for t in iface.get("projectTables") or []:
+        names = (t.get("key"), t.get("name"), t.get("ref"))
+        if key in [x for x in names if x]:
+            return t
+        schema = str(t.get("schema") or "")
+        if schema and key == schema + "." + str(t.get("name") or ""):
+            return t
+        if t.get("ifaceId") and key == str(t.get("ifaceId")) + "." + str(t.get("key") or ""):
+            return t
     return None
 
 

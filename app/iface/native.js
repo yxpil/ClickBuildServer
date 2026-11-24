@@ -57,6 +57,13 @@ function routeMeta(r) {
 
 function serviceSnapshot(project) {
   const p = spec.normalizeProject(project);
+  // 项目级表目录，随每个接口下发：运行时的 {{t:表名}} 可以在同一工程内跨接口解析。
+  const projectTables = spec.projectTableCatalog(p).map((t, i) => ({
+    ...tableMeta(t, i),
+    ifaceId: String(t.ifaceId || ''),
+    ifaceName: String(t.ifaceName || ''),
+    ref: String(t.ref || t.name || ''),
+  }));
   return {
     format: 'clickbuild-native',
     version: 1,
@@ -80,6 +87,7 @@ function serviceSnapshot(project) {
       basePath: String(it.basePath || ''),
       objects: it.objects || { enabled: false },
       tables: (it.tables || []).map(tableMeta),
+      projectTables,
       routes: (it.routes || []).map(routeMeta),
     })),
     upstreams: p.upstreams || [],

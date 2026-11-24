@@ -48,6 +48,16 @@ func splitToken(token string) (string, string) {
 	return token, ""
 }
 
+func tableRefMatch(t Table, key string) bool {
+	if t.Key == key || t.Name == key || (t.Ref != "" && t.Ref == key) {
+		return true
+	}
+	if t.Schema != "" && t.Schema+"."+t.Name == key {
+		return true
+	}
+	return t.IfaceID != "" && t.IfaceID+"."+t.Key == key
+}
+
 func bindingOf(root *Interface, key string) *Table {
 	if len(root.Tables) == 0 {
 		return nil
@@ -58,6 +68,12 @@ func bindingOf(root *Interface, key string) *Table {
 	for i := range root.Tables {
 		if root.Tables[i].Key == key {
 			return &root.Tables[i]
+		}
+	}
+	// 本接口没有这个表键时，按项目目录找其它接口的真实表名。
+	for i := range root.ProjectTables {
+		if tableRefMatch(root.ProjectTables[i], key) {
+			return &root.ProjectTables[i]
 		}
 	}
 	return nil
