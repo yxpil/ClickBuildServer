@@ -63,6 +63,32 @@
 
 ![接口套件弹窗](docs/screenshots/iface-kits.png)
 
+## 表格套件：把物理表单独拿出来复用（1.1.74）
+
+接口套件解决“整套业务”，表格套件解决“我只要这几张表”。接口库新增「表格」页签，直接从 8 套已验收套件里抽取物理表，不另写一份会和套件漂移的演示数据。
+
+| 表组 | 物理表 / 表定义 / 字段 / 共享表 | 典型表 |
+| --- | --- | --- |
+| 商城交易系统表组 | 5 / 6 / 40 / 1 | 用户、商品、购物车、订单、订单明细 |
+| 内容博客系统表组 | 6 / 6 / 36 / 0 | 作者、文章、分类、标签、评论 |
+| 同频社区系统表组 | 18 / 46 / 129 / 10 | 账户、好友、私聊、群聊、动态、通知 |
+| 客服工单系统表组 | 3 / 3 / 21 / 0 | 客户、工单、回复 |
+| CRM 客户系统表组 | 4 / 4 / 25 / 0 | 客户、联系人、商机 |
+| 预约服务系统表组 | 3 / 4 / 21 / 1 | 服务项目、时段、预约 |
+| 在线课程系统表组 | 4 / 5 / 24 / 1 | 课程、章节、报名、进度 |
+| 问卷收集系统表组 | 3 / 3 / 18 / 0 | 问卷、题目、答卷 |
+
+共 8 组 / 46 张物理表 / 77 条表定义 / 314 个字段。同一张表被多个接口引用时只列一次，商城 `shop_product` 的共享关系会在卡片上标出。
+
+- **整组加到当前接口**：表结构直接并进当前接口，字段、索引、关系、连接方式和表键一起带过去；现有路由不变，不会为了加表硬改脚本。
+- **点单张表加入**：卡片里的表名就是按钮，点哪张只加哪张；适合已有接口只缺一张关联表。
+- **新建表接口**：新建一个归到「数据表」分类的接口，带 5 条基础 CRUD，第一张表为 `main`，打开就能查。当前在工程历史页时，会先建一个“XX表组工程”再落接口，不用先回工作台。
+- **避重**：表名按整个工程避重（撞名自动 `_2`），表键在目标接口内避重，关系 `target` 随表名同步重映射；目标接口已有的同名表直接跳过。
+
+![表格套件弹窗](docs/screenshots/table-kits.png)
+
+![接入后的表接口](docs/screenshots/table-kits-in-project.png)
+
 ## 控制台、脚本助手与搜索（1.1.26）
 
 - 底部控制台改成 IDEA 式的工具窗：可拖拽调高，可同时打开「生成服务 / MariaDB / Redis / RustFS」多个标签，支持过滤、自动滚动、清屏、复制和单标签关闭；`Alt+F12` 或 ``Ctrl+` `` 开关，服务 stdout / stderr 每秒增量刷新，不会整段重刷。
@@ -254,7 +280,9 @@ Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`�
 
 ![Excel / CSV 拖入后的建表预览](docs/screenshots/import-preview.png)
 
-1.1.67 把接口脚本 DSL 从“能用”补到“业务上够用”，并且每条能力都同时落到解析器、执行器、导出 JS、lint、脚本助手、帮助中心和永久回归里。表达式新增三元 `条件 ? 值1 : 值2`、空值合并 `??`、关键字 `AND / OR / NOT`、`IN / NOT IN`、`LIKE / NOT LIKE`、`BETWEEN / NOT BETWEEN`、`IS NULL / IS NOT NULL`；语句新增 `TRY / CATCH / FINALLY / END`、`ASSERT 条件, '失败信息';`、`REPEAT n TIMES [AS $i]`、`PREPEND`，以及 `$user.name = ...`、`$list[0] = ...`、`$user.score += ...` 这类嵌套赋值和嵌套 `INC / DEC / APPEND / PREPEND`。`NOT` 现在按整段比较取反，`REPEAT` 次数取整并夹在 0..1000，`CATCH` 变量可省略默认 `err`，`FINALLY` 在 return / break / continue / 继续抛错前都会执行。导出 JS 同步输出 `try / catch / finally`、`assert`、`repeat`、`prepend` 与嵌套赋值，并用 `truthy / BTW / LIKE` 兼容空数组、结果集对象和通配符，不再出现只有运行时认识、导出代码不认识的分支。脚本助手扩到 24 条模板，新增表达式判断、错误捕获、固定次数循环、嵌套对象数组、ASSERT 与空值/否定判断；关键字高亮、回车缩进、速查表和帮助中心同步更新，裸写 SQL 仍被明确拒绝。验收：`test:script-dsl` 20/20，`test:ci` 11/11，导出运行时 19/19，源码版、解包版与安装版 UI 冒烟均 141/141；真实生成服务 `GET /api/syntax/advanced` 返回 `sum=15`、`tags=[first, zero, last]`、`vip=true`、`like=true`，`ASSERT` 被 `CATCH` 后返回业务 400，未捕获断言返回 500 并带 `route / method / path / hint / traceId`，导出的高级语法路由也已在真实 `src` 环境执行通过。
+1.1.74 把 1.1.73 的接口套件再拆出一层「表格套件」：接口库新增「表格」页签，从 8 套已验收套件里抽取物理表，得到 8 组 / 46 张物理表 / 77 条表定义 / 314 个字段；同名共享表合并字段、索引与关系，并标出共享关系。整组可直接并进当前接口，现有路由不变；卡片里的表名按钮支持单张加入；「新建表接口」会落到「数据表」分类，带 5 条基础 CRUD、第一张表为 `main`，当前停在工程历史页时先建一个表组工程再进入工作台。表名按全工程避重、表键按接口避重、关系 `target/through` 随表名重映射，重复表直接跳过。实测商城表组接入空工程得到 5 表 / 5 路由并生成服务，`GET/POST /api/shop_user` 返回 200/201，PUT/DELETE 返回 200；按接口加入时路由数保持 11 不变；单表接入、撞名 `_2`、重复跳过全部通过。`test-kits` 74/74，源码版 UI 冒烟 168/168。
+
+
 
 1.1.66 补上真正的 HTTP 重定向：脚本 `RETURN 301 "/login";`、`RETURN 302 { "location": "https://example.com" };` 以及 303/307/308 都会自动写 `Location` 响应头并返回空响应体，浏览器和 `curl -L` 能直接跟随；对象里的 `location / Location / redirect / url` 都可识别，`__headers` 可附带额外响应头。自定义 `handler` 也能返回 `{ status, headers, body }`，3xx 带 `Location` 时同样不写响应体。3xx 路由不再读写 Redis 缓存，缓存 key 加入 method + path，避免多个路由共用同一张表模板时串读；导出的 JS 路由同步生成 `responseMeta`，301 不再丢 `Location`。同时修复 Windows 全新数据目录下 `mariadb-install-db` 不认识 `--no-defaults/--basedir` 导致 MariaDB 初始化失败的问题。验收：`test:ci` 10/10，源码版 UI 冒烟 141/141，真实生成服务 301/302/303/307/308 与自定义 handler 全部带 Location 并跟随到 200，普通列表缓存仍正常命中。1.1.66 同时把脚本解释器扩成更完整的业务语法：`ASSIGN / INC / DEC / APPEND / PUSH` 负责赋值和数组累积，`FOR / WHILE / SWITCH / CASE / DEFAULT / BREAK / CONTINUE` 负责区间循环、条件循环和多分支，`FUNC / RUN / INVOKE / THROW` 负责纯表达式函数、调用和主动报错；裸写 SQL 会被明确拒绝，必须走 `QUERY` / `EXEC`，函数调用用 `RUN` 避开 SQL 的 `CALL`。实测生成服务 `GET /api/syntax/demo` 返回 `{"sum":13,"list":[12],"db":0}`，`THROW` 路由返回 500 并带 `route / method / path / hint / traceId`；脚本助手新增「变量与函数 / FOR 循环 / WHILE 循环 / SWITCH 分支」四条模版。
 
@@ -614,7 +642,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 
 | 套件 | 结果 |
 | --- | --- |
-| `npm run test:ci`（CI 顺序执行 15 套核心回归，含停止按钮 / 多语言 / 表格导入 / 引导模板 / 接口套件） | **15/15** |
+| `npm run test:ci`（CI 顺序执行 15 套核心回归，含停止按钮 / 多语言 / 表格导入 / 引导模板 / 接口套件 / 表格套件） | **15/15** |
 | `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **194/194** |
 | `tools/test-plugins-v2.js`（命令 / 权限 / 钩子取消与改写 / 模版 / 脚手架 / 安装卸载 / 旧插件兼容） | **26/26** |
 | `tools/test-task-types.js`（三类任务常量 / 默认混合 / 落盘重读 / 非法回退 / 历史索引 / 复制保留） | **14/14** |
@@ -628,7 +656,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-guide-templates.js`（20 个创建引导模板 / 5 组场景 / 字段类型与路由白名单 / 表名唯一 / 系统字段冲突） | **126/126** |
 | `tools/test-social.js`（社交接口库 86 条路由真实 HTTP） | **117/117** |
 | `tools/test-iface-library.js`（单接口库 75 内置 / 收藏 / 分类 / 改名 / 二次插入路由避重 / 删除） | **33/33** |
-| `tools/test-kits.js`（8 套套件目录 / 共享表 / 空工程不产生 `_2` / 碰撞避重与前缀 / 函数冲突 / 全部可校验生成） | **50/50** |
+| `tools/test-kits.js`（8 套套件目录 / 共享表 / 空工程不产生 `_2` / 碰撞避重与前缀 / 函数冲突 / 表格套件整组与单表接入 / 关系重映射 / 全部可校验生成） | **74/74** |
 | `tools/smoke-survey.js`（问卷系统真实 HTTP：登录/建卷/发布/答卷/统计/删除保护/关闭） | **22/22** |
 | `tools/smoke-signup.js`（活动报名真实 HTTP：名额事务/重复手机号/满员/名单/删除保护） | **23/23** |
 | `tools/test-case-frontends.js`（26 套案例完整 .yxpp / 生成产物 / 真实 `/` / 全部接口健康检查 / 过滤正则） | **60/60** |
@@ -637,7 +665,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 20 个常见模板、未登录设首页、.yxpn 工程本体、接口套件整套接入） | **161/161**（源码版 1.1.73） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 20 个常见模板、未登录设首页、.yxpn 工程本体、接口套件整套接入、表格套件整组/单表/新建表接口） | **168/168**（源码版 1.1.74） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |

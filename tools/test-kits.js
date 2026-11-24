@@ -120,6 +120,55 @@ function main() {
   try { lib.kitGet('kit:not-exist'); } catch (e) { missing = e.message; }
   ok(missing && /没有/.test(missing), '不存在的套件返回明确错误', missing || '');
 
+  console.log('\n表格套件');
+  const tks = lib.tableKits();
+  ok(tks.length === 8, '表格套件 8 组', String(tks.length));
+  ok(tks.reduce((n, k) => n + k.counts.tables, 0) === 46, '8 组共 46 张物理表');
+  ok(tks.reduce((n, k) => n + k.counts.tableDefs, 0) === 77, '8 组共 77 条表定义');
+  ok(tks.reduce((n, k) => n + k.counts.fields, 0) === 314, '8 组共 314 个字段');
+  const tmall = tks.find((x) => x.id === 'tablekit:mall');
+  ok(tmall && tmall.counts.tables === 5 && tmall.counts.fields === 40 && tmall.counts.sharedTables === 1, '商城表组 5 表 / 40 字段 / 1 张共享');
+  const tsocial = tks.find((x) => x.id === 'tablekit:social');
+  ok(tsocial && tsocial.counts.tables === 18 && tsocial.counts.tableDefs === 46, '社区表组 46 条定义归并为 18 张表', `${tsocial && tsocial.counts.tableDefs} -> ${tsocial && tsocial.counts.tables}`);
+
+  const tEmpty = emptyProject('空工程接表');
+  const tNew = lib.insertTableKit(tEmpty, 'tablekit:mall');
+  ok(tNew.createdIface && tNew.project.interfaces.length === 1, '空工程整组接表会新建表接口', tNew.targetName);
+  ok(tNew.added.length === 5 && tNew.added.includes('shop_product'), '商城表组 5 张表全部接入');
+  ok(tNew.project.interfaces[0].routes.length === 5 && tNew.project.interfaces[0].routes[0].path === '/shop_user', '表接口带 5 条基础 CRUD，第一张表作为 main', tNew.project.interfaces[0].routes.map((r) => r.path).join(','));
+  ok(tNew.project.interfaces[0].tables[0].key === 'main', '第一张表保持 main 键');
+  ok(tNew.project.categories.some((x) => x.name === '数据表'), '新建表接口落到数据表分类');
+  ok(spec.validateProject(tNew.project).ok, '整组接表后的工程校验通过');
+
+  const tAgain = lib.insertTableKit(tNew.project, 'tablekit:mall', { ifaceId: tNew.ifaceId });
+  ok(tAgain.added.length === 0 && tAgain.skipped.length === 5, '同一表组重复加到同一接口会全部跳过', `skipped ${tAgain.skipped.length}`);
+
+  const tbase = spec.normalizeProject({
+    name: '已有接口接表', categories: [{ id: 'biz', name: '业务表格' }],
+    interfaces: [spec.newIface('订单服务', 'biz')],
+  });
+  const beforeRoutes = tbase.interfaces[0].routes.length;
+  const beforeCats = tbase.categories.length;
+  const tInto = lib.insertTableKit(tbase, 'tablekit:mall', { ifaceId: tbase.interfaces[0].id });
+  ok(tInto.added.length === 5 && tInto.createdIface === false, '整组表加到当前接口');
+  ok(tInto.project.categories.length === beforeCats, '往现有接口加表不新增“数据表”分类', `${beforeCats} -> ${tInto.project.categories.length}`);
+  ok(tInto.project.interfaces[0].routes.length === beforeRoutes, '加表不改现有路由', `${beforeRoutes} -> ${tInto.project.interfaces[0].routes.length}`);
+  ok(tInto.project.interfaces[0].tables.length === 6 && tInto.project.interfaces[0].tables.filter((t) => t.name === 'shop_product').length === 1, '商品表只加一次，不重复');
+  ok(tInto.project.interfaces[0].tables.map((t) => t.key).filter((k) => k === 'main').length === 1, '接口内表键仍唯一');
+
+  const tOne = lib.insertTableKit(emptyProject('单表'), 'tablekit:mall', { tableName: 'shop_order' });
+  ok(tOne.added.length === 1 && tOne.project.interfaces[0].tables[0].name === 'shop_order', '单张表接入', tOne.added[0]);
+  ok(tOne.project.interfaces[0].routes[0].path === '/shop_order', '单表接口的路由指向这张表', tOne.project.interfaces[0].routes[0].path);
+
+  const tCollide = lib.insertTableKit(tNew.project, 'tablekit:mall');
+  ok(tCollide.createdIface && tCollide.added.length === 5, '同工程再建一组商城表');
+  ok(tCollide.project.interfaces[1].tables.some((t) => t.name === 'shop_product_2'), '撞名表自动加 _2', tCollide.project.interfaces[1].tables.map((t) => t.name).join(','));
+  ok(spec.validateProject(tCollide.project).ok, '撞名后的工程校验通过');
+
+  let tMissing = null;
+  try { lib.tableKitGet('tablekit:not-exist'); } catch (e) { tMissing = e.message; }
+  ok(tMissing && /没有/.test(tMissing), '不存在的表格套件返回明确错误', tMissing || '');
+
   console.log(`\n结果：${checks - failures.length}/${checks} 通过`);
   if (failures.length) process.exitCode = 1;
 }

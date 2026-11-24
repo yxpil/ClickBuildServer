@@ -115,6 +115,25 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('整套复用后接口数 +4', kitAfter.n === beforeN + 4, kitAfter.n + ' vs ' + beforeN);
   t('商品与购物车共享 shop_product 表', kitAfter.shared >= 2 && /商品|购物车/.test(kitAfter.names.join('|')), JSON.stringify(kitAfter));
   t('整套复用给出接入摘要', /整套接入|商城交易/.test(kitAfter.toast || ''), kitAfter.toast);
+  await val(`showIfaceLibrary({view:'tables'})`);
+  await wait(500);
+  const tableView = JSON.parse(await val(`(()=>{const m=document.querySelector('#libTitle');const cards=document.querySelectorAll('[data-table-kit-card]');const mall=document.querySelector('[data-table-kit-card="tablekit:mall"]');return JSON.stringify({title:m&&m.textContent,cards:cards.length,mall:mall?mall.innerText:'',chips:mall?mall.querySelectorAll('[data-table-add]').length:0,buttons:mall?mall.querySelectorAll('[data-table-use],[data-table-new]').length:0})})()`));
+  t('接口库有表格视图与 8 组预设', tableView.title === '表格套件' && tableView.cards === 8, JSON.stringify(tableView).slice(0, 180));
+  t('商城表组列出 5 张表 / 40 字段与两个动作', /5 张表/.test(tableView.mall) && /40 字段/.test(tableView.mall) && tableView.chips === 5 && tableView.buttons === 2, tableView.mall.slice(0, 240));
+  const tableN0 = await val(`S.project.interfaces.length`);
+  await val(`document.querySelector('[data-table-new="tablekit:blog"]').click()`);
+  await wait(1900);
+  const tableNew = JSON.parse(await val(`(()=>{const t=S.project.interfaces.find(x=>x.id===S.selId);const cat=S.project.categories.find(c=>c.id===t.categoryId);return JSON.stringify({n:S.project.interfaces.length,tables:t.tables.length,routes:t.routes.length,name:t.name,cat:cat&&cat.name,toast:document.querySelector('#toast').innerText})})()`));
+  t('新建表接口 +1，带 6 张表与 5 条 CRUD', tableNew.n === tableN0 + 1 && tableNew.tables === 6 && tableNew.routes === 5, JSON.stringify(tableNew));
+  t('新建表接口落到数据表分类', tableNew.cat === '数据表', tableNew.cat);
+  t('新建表接口提示摘要', /已新建表接口|内容博客表组/.test(tableNew.toast || ''), tableNew.toast);
+  await val(`showIfaceLibrary({view:'tables'})`);
+  await wait(500);
+  await val(`document.querySelector('[data-table-add="crm_customer"]').click()`);
+  await wait(1700);
+  const tableOne = JSON.parse(await val(`(()=>{const t=S.project.interfaces.find(x=>x.id===S.selId);return JSON.stringify({tables:t.tables.length,routes:t.routes.length,last:t.tables[t.tables.length-1].name,toast:document.querySelector('#toast').innerText})})()`));
+  t('点表名单张加入当前接口且不改路由', tableOne.tables === tableNew.tables + 1 && tableOne.routes === 5 && tableOne.last === 'crm_customer', JSON.stringify(tableOne));
+  t('单表接入给出表名提示', /crm_customer/.test(tableOne.toast || ''), tableOne.toast);
   await val(`(async()=>{S.project=JSON.parse(${JSON.stringify(kitBefore)});S.dirty=false;S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;await api.save(S.project);render();return true})()`, true);
   await wait(600);
 

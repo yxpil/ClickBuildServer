@@ -179,6 +179,102 @@ function kitProject(def) {
   return templates.get(def.templateId).project;
 }
 
+// 表格套件和接口套件共用同一批已验收案例，但只抽“物理表”这一层：
+// 同一张表在多个接口里重复定义（如商品表被商品和购物车引用）时只留一份。
+function tableKitSource(def) {
+  const project = kitProject(def);
+  const tableDefs = new Map();
+  const tables = new Map();
+  const union = (list, key) => {
+    const seen = new Set();
+    return (list || []).filter((x) => {
+      const k = key(x);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+  for (const iface of project.interfaces) {
+    for (const t of iface.tables) {
+      tableDefs.set(t.name, (tableDefs.get(t.name) || 0) + 1);
+      const prev = tables.get(t.name);
+      if (!prev) {
+        tables.set(t.name, JSON.parse(JSON.stringify(t)));
+        continue;
+      }
+      // 同一张表在多个接口里有不同定义时合并，而不是只看字段最多的那一份：
+      // 字段按名字并集，索引与关系按结构并集，连接/store/注释保留最完整的一份。
+      const fields = new Set((prev.fields || []).map((f) => f.name));
+      for (const f of t.fields || []) {
+        if (!fields.has(f.name)) {
+          prev.fields = prev.fields || [];
+          prev.fields.push(JSON.parse(JSON.stringify(f)));
+          fields.add(f.name);
+        }
+      }
+      prev.indexes = union([...(prev.indexes || []), ...(t.indexes || [])], (x) => JSON.stringify(x));
+      prev.relations = union([...(prev.relations || []), ...(t.relations || [])], (x) => JSON.stringify(x));
+      if (!prev.comment && t.comment) prev.comment = t.comment;
+      if ((!prev.conn || prev.conn === 'main') && t.conn) prev.conn = t.conn;
+      if (t.store && (!prev.store || prev.store.mode === 'mysql')) prev.store = JSON.parse(JSON.stringify(t.store));
+    }
+  }
+  return { project, tableDefs, tables: [...tables.values()] };
+}
+
+function tableKitDef(id) {
+  const key = String(id || '').replace(/^tablekit:/, '');
+  return KITS.find((k) => k.key === key) || null;
+}
+
+function tableKitEntry(def, meta) {
+  const { project, tableDefs, tables } = tableKitSource(def);
+  const count = (fn) => tables.reduce((n, t) => n + fn(t), 0);
+  const m = (meta || readMeta())[`tablekit:${def.key}`] || {};
+  return {
+    id: `tablekit:${def.key}`,
+    kind: 'tablekit',
+    name: `${def.name}表组`,
+    summary: def.summary,
+    tags: def.tags,
+    useCases: def.useCases,
+    source: project.name,
+    counts: {
+      tables: tables.length,
+      tableDefs: [...tableDefs.values()].reduce((n, x) => n + x, 0),
+      fields: count((t) => (t.fields || []).length),
+      indexes: count((t) => (t.indexes || []).length),
+      relations: count((t) => (t.relations || []).length),
+      sharedTables: [...tableDefs.values()].filter((n) => n > 1).length,
+    },
+    tables: tables.map((t) => ({
+      name: t.name,
+      comment: t.comment || '',
+      fields: (t.fields || []).length,
+      indexes: (t.indexes || []).length,
+      relations: (t.relations || []).length,
+      shared: (tableDefs.get(t.name) || 0) > 1,
+      fieldNames: (t.fields || []).map((f) => f.name),
+    })),
+    uses: Number(m.uses) || 0,
+    lastUsedAt: m.lastUsedAt || '',
+  };
+}
+
+function tableKits() {
+  const meta = readMeta();
+  return KITS.map((def) => {
+    try { return tableKitEntry(def, meta); } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
+function tableKitGet(id) {
+  const def = tableKitDef(id);
+  if (!def) throw new Error('没有这个表格套件');
+  return tableKitEntry(def);
+}
+
+
 // 套件不是静态清单：接口、共享表、路由和“是否带演示数据/页面”都从真实案例算出来。
 function kitEntry(def, meta) {
   const project = kitProject(def);
@@ -391,6 +487,16 @@ function uniqueBasePath(base, used) {
   return p;
 }
 
+function uniqueTableKey(base, used) {
+  let key = String(base || 'tbl').replace(/[^A-Za-z0-9_]/g, '_');
+  if (!/^[A-Za-z_]/.test(key)) key = `t_${key}`;
+  if (!key) key = 'tbl';
+  let i = 2;
+  while (used.has(key)) key = `${String(base || 'tbl').replace(/[^A-Za-z0-9_]/g, '_')}_${i++}`;
+  used.add(key);
+  return key;
+}
+
 function uniqueRoutePath(base, method, used, prefix) {
   let p = String(base || '').trim() || '/';
   const keyOf = (x) => `${String(method || 'GET').toUpperCase()} ${String(prefix || '')}${String(x).replace(/\/+$/, '')}`;
@@ -601,5 +707,112 @@ function insertKit(project, id) {
   };
 }
 
-module.exports = { list, get, save, update, remove, insert, kits, kitGet, insertKit, counts, DIR, KITS };
+function insertTableKit(project, id, opts) {
+  const def = tableKitDef(id);
+  if (!def) throw new Error('没有这个表格套件');
+  const o = opts || {};
+  const p = spec.normalizeProject(project);
+  const { tables: sourceTables } = tableKitSource(def);
+  const wanted = o.tableName
+    ? sourceTables.filter((t) => t.name === String(o.tableName))
+    : sourceTables.slice();
+  if (!wanted.length) throw new Error('没有这张预设表');
+
+  const ifaceNames = new Set(p.interfaces.map((x) => normName(x.name)));
+  const catIds = new Set(p.categories.map((c) => c.id));
+  const catName = '数据表';
+
+  let createdIface = false;
+  let target = o.ifaceId ? p.interfaces.find((x) => x.id === String(o.ifaceId)) : null;
+  const allNames = new Set(p.interfaces.flatMap((x) => x.tables.map((t) => t.name)));
+  const targetNames = new Set(target ? target.tables.map((t) => t.name) : []);
+  const keys = new Set(target ? target.tables.map((t) => t.key) : []);
+  const nameMap = new Map();
+  const plan = [];
+  for (const t of wanted) {
+    if (targetNames.has(t.name)) {
+      nameMap.set(t.name, t.name);
+      plan.push({ src: t, name: t.name, skip: true });
+      continue;
+    }
+    const name = uniqueTableName(t.name, allNames);
+    nameMap.set(t.name, name);
+    plan.push({ src: t, name, skip: false });
+  }
+
+  if (!target) {
+    // 只有新建表接口才需要「数据表」分类；往现有接口加表不应该凭空多出一个分类。
+    let cat = p.categories.find((c) => normName(c.name) === normName(catName));
+    if (!cat) {
+      let cid = 'data';
+      let n = 2;
+      while (catIds.has(cid)) cid = `data_${n++}`;
+      cat = { id: cid, name: catName };
+      p.categories.push(cat);
+      catIds.add(cid);
+    }
+    const first = plan.find((x) => !x.skip);
+    const name = uniqueIfaceName(`${def.name.replace(/系统$/, '')}表组`, ifaceNames);
+    // 表组接口保留一组基础 CRUD 路由，第一张表仍是 main；这样表接进来就能直接查。
+    target = spec.newIface(name, cat.id, {
+      scenario: 'blank',
+      tableName: first ? first.name : undefined,
+      routeKinds: ['list', 'detail', 'create', 'update', 'delete'],
+    });
+    target.tables = [];
+    target.basePath = '';
+    target.docs = { ...(target.docs || {}), summary: `预设表组：${def.summary}`, description: '' };
+    p.interfaces.push(target);
+    createdIface = true;
+  }
+
+  const added = [];
+  const skipped = [];
+  let addedFields = 0;
+  for (const item of plan) {
+    if (item.skip) { skipped.push(item.src.name); continue; }
+    const key = keys.size === 0 ? 'main' : uniqueTableKey(item.name, keys);
+    if (keys.size === 0) keys.add(key);
+    const copy = JSON.parse(JSON.stringify(item.src));
+    copy.name = item.name;
+    copy.key = key;
+    copy.relations = (copy.relations || []).map((r) => ({
+      ...r,
+      target: nameMap.get(r.target) || r.target,
+      through: nameMap.get(r.through) || r.through,
+    }));
+    target.tables.push(copy);
+    targetNames.add(item.name);
+    added.push(item.name);
+    addedFields += (copy.fields || []).length;
+  }
+
+  const next = spec.normalizeProject(p);
+  const v = spec.validateProject(next);
+  if (!v.ok) throw new Error(v.errors.join('\n'));
+
+  if (added.length) {
+    const meta = readMeta();
+    const tm = { ...(meta[`tablekit:${def.key}`] || {}) };
+    tm.uses = (Number(tm.uses) || 0) + 1;
+    tm.lastUsedAt = new Date().toISOString();
+    meta[`tablekit:${def.key}`] = tm;
+    writeMeta(meta);
+  }
+
+  return {
+    ok: true,
+    project: next,
+    tableKit: tableKitEntry(def),
+    ifaceId: target.id,
+    targetName: target.name,
+    createdIface,
+    added,
+    skipped,
+    counts: { tables: added.length, fields: addedFields },
+    warnings: v.warnings,
+  };
+}
+
+module.exports = { list, get, save, update, remove, insert, kits, kitGet, insertKit, tableKits, tableKitGet, insertTableKit, counts, DIR, KITS };
 

@@ -1330,6 +1330,7 @@ function showMoreMenu() {
       <div class="more-grid">
         ${item('templates', '模版库', '套用内置业务工程')}
         ${item('ifaceKits', '接口套件', '商城、博客、社区整套接入')}
+        ${item('ifaceTables', '表格套件', '用户、商品、订单等表组加入接口')}
         ${item('favLib', '常用接口', '收藏、分类、搜索、复用')}
         ${item('ifaceLib', '接口库', '浏览全部内置与我的接口')}
         ${item('saveTemplate', '存为模版', '把当前工程收进模版库')}
@@ -3768,6 +3769,13 @@ RETURN 200 { "user": $user };</pre></div>
         <div class="hb-card"><b>新建系统</b><p>用套件对应模板新建工程，seed 演示数据和 .yxpp 业务页面一起生成，创建完直接打开页面点。</p></div>
         <div class="hb-card"><b>路由冲突</b><p>整套共用的根路由撞上现有工程时，给整套加业务前缀（如 /mall），不会把 /products 改成 /products-2。</p></div>
       </div>
+      <div class="hb-h3">表格套件（1.1.74）</div>
+      <div class="hb-p">「套件」旁边的「表格」页签把 8 套业务里的物理表单独列出来：8 组、46 张表、77 条表定义、314 个字段。同一张表被多个接口引用时只列一次，共享表会标黄；字段、索引、关系、连接方式都保留。</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>加到当前接口</b><p>整组表直接并进当前接口，现有路由不变；表名按全工程避重，关系 target 跟着表名重映射。</p></div>
+        <div class="hb-card"><b>单张表加入</b><p>点卡片里的表名按钮，只加那一张；适合已有接口只缺一张关联表。</p></div>
+        <div class="hb-card"><b>新建表接口</b><p>新建「数据表」分类的接口，带 5 条基础 CRUD，第一张表为 main。当前在工程历史页时会先建一个表组工程。</p></div>
+      </div>
       <div class="hb-h3">AI 与插件</div>
       <div class="hb-grid">
         <div class="hb-card"><b>AI 生成</b><p>“更多 → AI 生成”用自然语言生成接口工程。设置里选 Ollama、OpenAI 兼容或本地模拟；先“测试连接”再保存。失败可勾“退回本地模拟”。</p></div>
@@ -4529,6 +4537,7 @@ async function act(name, el) {
   if (name === 'saveTemplate') return showSaveTemplate();
   if (name === 'ifaceLib') return showIfaceLibrary();
   if (name === 'ifaceKits') return showIfaceLibrary({ view: 'kits' });
+  if (name === 'ifaceTables') return showIfaceLibrary({ view: 'tables' });
   if (name === 'favLib') return showIfaceLibrary({ view: 'favorite' });
   if (name === 'saveIface') return showSaveIface();
   if (name === 'plugins') return showPlugins();
@@ -4730,11 +4739,13 @@ async function showIfaceLibrary(opts) {
   const r = await api.ifaceLibrary();
   if (!r.ok) return toast('读取接口库失败：' + r.error);
   const kr = await api.ifaceLibraryKits();
+  const tr = await api.ifaceLibraryTableKits();
   const state = {
     view: o.view || 'all',
     q: o.q || '',
     category: o.category || 'all',
     kits: kr && kr.ok ? (kr.list || []) : [],
+    tableKits: tr && tr.ok ? (tr.list || []) : [],
   };
   let entries = (r.list || []).slice();
   const root = modal(`<div class="lib-shell">
@@ -4799,17 +4810,24 @@ async function showIfaceLibrary(opts) {
       .kit-acts .btn{font-size:11px;padding:6px 10px}
       .kit-new{border-color:#dfe4ec!important;background:#fff!important;color:#4d596b!important}
       .kit-shared{font-size:9.5px;color:#9a6a16;background:#fff9ec;border:1px solid #f2e4bd;border-radius:8px;padding:1px 6px}
+      .tbl-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;max-height:76px;overflow:auto;padding-right:2px}
+      .tbl-chip{border:1px solid #e7ebf2;border-radius:5px;background:#fbfcfe;color:#4f5a6d;font-size:10px;line-height:1.5;padding:2px 6px;cursor:pointer;display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+      .tbl-chip:hover{border-color:#cfe0ff;background:#f3f8ff;color:#2361d6}
+      .tbl-chip.shared{border-color:#f2e4bd;background:#fffbf1;color:#8a6115}
+      .tbl-chip i{font-style:normal;color:#9aa3b2;font-size:9px}
+      .tbl-hint{font-size:9.5px;color:#9aa3b2;margin-top:5px}
       .lib-foot{display:flex;align-items:center;gap:10px;padding:10px 20px;border-top:1px solid #edf0f4;font-size:10.5px;color:#8b93a1;background:#fcfdfe}
     </style>
     <div class="lib-head">
       <div class="lib-mark">${icon('star')}</div>
-      <div><div class="lib-title" id="libTitle">${state.view === 'favorite' ? '常用接口' : state.view === 'kits' ? '接口套件' : '接口库'}</div><div class="lib-sub" id="libSub">收藏、分类、搜索；编辑好的接口可以直接复用到当前工程</div></div>
+      <div><div class="lib-title" id="libTitle">${state.view === 'favorite' ? '常用接口' : state.view === 'kits' ? '接口套件' : state.view === 'tables' ? '表格套件' : '接口库'}</div><div class="lib-sub" id="libSub">收藏、分类、搜索；编辑好的接口可以直接复用到当前工程</div></div>
       <div class="acts"><button class="btn thin" id="libSave">＋ 存当前接口</button><button class="btn thin" id="libClose">关闭</button></div>
     </div>
     <div class="lib-toolbar">
       <div class="lib-search">${icon('search')}<input id="libQ" placeholder="搜索名称 / 分类 / 说明 / 来源"></div>
       <div class="lib-tabs">
         <button class="lib-tab" data-lib-view="kits">套件</button>
+        <button class="lib-tab" data-lib-view="tables">表格</button>
         <button class="lib-tab" data-lib-view="favorite">常用</button>
         <button class="lib-tab" data-lib-view="all" data-lib-kind="all">全部</button>
         <button class="lib-tab" data-lib-view="user" data-lib-kind="user">我的</button>
@@ -4886,21 +4904,68 @@ async function showIfaceLibrary(opts) {
       </div>`;
     };
 
+    const tableKitCard = (k) => {
+      const shared = k.counts.sharedTables
+        ? `<span class="kit-shared">${k.counts.sharedTables} 张表共享</span>`
+        : '';
+      const chips = (k.tables || []).map((t) => {
+        const info = `${t.comment || t.name} · ${t.fields} 字段${t.indexes ? ` · ${t.indexes} 索引` : ''}${t.relations ? ` · ${t.relations} 关系` : ''}`;
+        return `<button class="tbl-chip ${t.shared ? 'shared' : ''}" data-table-add="${esc(t.name)}" data-table-kit="${esc(k.id)}" title="加这张表到当前接口 · ${esc(info)}">${esc(t.name)}<i>${t.fields}</i></button>`;
+      }).join('');
+      return `<div class="kit-card" data-table-kit-card="${esc(k.id)}">
+        <div class="kit-top">
+          <div class="kit-mark">表</div>
+          <div style="min-width:0;flex:1">
+            <div class="kit-name">${esc(k.name)}</div>
+            <div class="kit-tags">${(k.tags || []).map((t) => `<span class="kit-tag">${esc(t)}</span>`).join('')}${shared}</div>
+          </div>
+        </div>
+        <div class="kit-sum">${esc(k.summary || '')}</div>
+        <div class="kit-counts"><b>${k.counts.tables}</b> 张表${k.counts.tableDefs !== k.counts.tables ? `（${k.counts.tableDefs} 条定义）` : ''} · <b>${k.counts.fields}</b> 字段${k.counts.indexes ? ` · ${k.counts.indexes} 索引` : ''}${k.counts.relations ? ` · ${k.counts.relations} 关系` : ''}</div>
+        <div class="tbl-list">${chips}</div>
+        <div class="tbl-hint">点表名单张加入；整组会保留字段、索引、关系和连接。</div>
+        <div class="kit-acts">
+          <button class="btn thin lib-use" data-table-use="${esc(k.id)}">加到当前接口</button>
+          <button class="btn thin kit-new" data-table-new="${esc(k.id)}">新建表接口</button>
+        </div>
+      </div>`;
+    };
+
+
     const render = () => {
       const isKits = state.view === 'kits';
-      if (!isKits) updateCats();
-      catEl.style.display = isKits ? 'none' : '';
-      titleEl.textContent = isKits ? '接口套件' : state.view === 'favorite' ? '常用接口' : '接口库';
+      const isTables = state.view === 'tables';
+      if (!isKits && !isTables) updateCats();
+      catEl.style.display = isKits || isTables ? 'none' : '';
+      titleEl.textContent = isKits ? '接口套件' : isTables ? '表格套件' : state.view === 'favorite' ? '常用接口' : '接口库';
       subEl.textContent = isKits
         ? '一套共享表、登录态与路由的业务闭环；整套接入当前工程，或直接新建一个能跑的系统'
-        : state.view === 'favorite'
-          ? '给常用接口点星标，之后一键复用到当前工程'
-          : '收藏、分类、搜索；单个接口可复用，成套业务请切到「套件」';
+        : isTables
+          ? '按业务分组的预设表；整组或单张表直接加到当前接口，字段、索引、关系统一带过去'
+          : state.view === 'favorite'
+            ? '给常用接口点星标，之后一键复用到当前工程'
+            : '收藏、分类、搜索；单个接口可复用，成套业务请切到「套件」';
       footEl.textContent = isKits
         ? '整套复用会共享同一批表、函数与登录态；表名、接口名、basePath 自动避重。新建系统会带演示数据和业务页面。'
-        : '复用会完整复制表、字段、路由、脚本和文档；名称、表名、basePath 自动避重。';
+        : isTables
+          ? '表格套件只带表结构，不动现有路由；加到当前接口后可直接在脚本里联查，新建表接口会带一组基础 CRUD。'
+          : '复用会完整复制表、字段、路由、脚本和文档；名称、表名、basePath 自动避重。';
       box.querySelectorAll('[data-lib-view]').forEach((b) => b.classList.toggle('on', b.dataset.libView === state.view));
       const q = state.q.trim().toLowerCase();
+
+      if (isTables) {
+        const shown = state.tableKits.filter((k) => {
+          const hay = [k.name, k.summary, (k.tags || []).join(' '), (k.tables || []).map((x) => x.name + ' ' + (x.comment || '')).join(' ')].join(' ').toLowerCase();
+          return !q || hay.includes(q);
+        });
+        statsEl.textContent = `${state.tableKits.length} 组 · ${state.tableKits.reduce((n, k) => n + k.counts.tables, 0)} 表 · ${state.tableKits.reduce((n, k) => n + k.counts.fields, 0)} 字段`;
+        countEl.textContent = `显示 ${shown.length} / ${state.tableKits.length} 组`;
+        listEl.className = 'lib-list';
+        listEl.innerHTML = shown.length
+          ? `<div class="kit-grid">${shown.map(tableKitCard).join('')}</div>`
+          : `<div class="lib-empty"><div class="ic">${icon('table')}</div><b>没有符合条件的表格套件</b><span>换个关键词再试试，或切到「全部」看单个接口。</span></div>`;
+        return;
+      }
 
       if (isKits) {
         const shown = state.kits.filter((k) => {
@@ -4979,7 +5044,64 @@ async function showIfaceLibrary(opts) {
       await hubUseTemplate(kit.templateId);
     };
 
+    const useTableKit = async (id, opts) => {
+      const o = opts || {};
+      const hadProject = !!(S.project && S.project.name);
+      if (!hadProject && !o.newIface) {
+        return toast('当前没有打开的工程：先打开一个工程，或点「新建表接口」直接建一个数据表工程', 5200);
+      }
+      const cur = hadProject ? activeIface() : null;
+      let project = S.project;
+      if (!hadProject) {
+        const kit = state.tableKits.find((x) => x.id === id);
+        project = await api.seed();
+        project.taskType = 'backend';
+        project.name = uniqueProjectName(`${kit ? String(kit.name).replace(/系统表组$|表组$/g, '') : '数据表'}工程`);
+        project.description = '预置表格套件 · 数据表接口';
+        project.interfaces = [];
+        project.functions = [];
+        delete project.frontend;
+      }
+      const got = await api.ifaceLibraryTableKitInsert(project, id, {
+        ifaceId: o.newIface ? '' : (cur ? cur.id : ''),
+        tableName: o.tableName || '',
+      });
+      if (!got.ok) return toast('接表失败：' + String(got.error || '').slice(0, 240), 7000);
+      if (!got.added || !got.added.length) {
+        return toast(`这${o.tableName ? '张' : '组'}表已经在目标接口里了，没有重复添加`, 4200);
+      }
+      const saved = await api.save(got.project);
+      if (saved && saved.ok === false) return toast('表组保存失败：' + String(saved.error || ''), 6000);
+      const finalProject = (saved && saved.project) || got.project;
+      const what = o.tableName ? `表「${o.tableName}」` : `${got.counts.tables} 张表 / ${got.counts.fields} 字段`;
+      const skipped = (got.skipped || []).length ? `，${got.skipped.length} 张已存在` : '';
+      if (!hadProject) {
+        closeModal();
+        await enterWorkspace(finalProject);
+        S.selId = got.ifaceId;
+        S.cat = (finalProject.interfaces.find((x) => x.id === got.ifaceId) || {}).categoryId || S.cat;
+        S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
+        if (window.render) window.render();
+        toast(`已新建工程「${finalProject.name}」和表接口「${got.targetName}」：${what}`, 5600);
+        return;
+      }
+      S.project = finalProject;
+      const target = finalProject.interfaces.find((x) => x.id === got.ifaceId);
+      S.cat = target ? target.categoryId : (finalProject.categories[0] || {}).id || '';
+      S.selId = got.ifaceId;
+      S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
+      closeModal();
+      if (window.render) window.render();
+      toast(`${got.createdIface ? `已新建表接口「${got.targetName}」：` : `已加到「${got.targetName}」：`}${what}${skipped}`, 5200);
+    };
+
     listEl.addEventListener('click', async (e) => {
+      const tableUse = e.target.closest('[data-table-use]');
+      if (tableUse) return useTableKit(tableUse.dataset.tableUse);
+      const tableNew = e.target.closest('[data-table-new]');
+      if (tableNew) return useTableKit(tableNew.dataset.tableNew, { newIface: true });
+      const tableAdd = e.target.closest('[data-table-add]');
+      if (tableAdd) return useTableKit(tableAdd.dataset.tableKit, { tableName: tableAdd.dataset.tableAdd });
       const kitUse = e.target.closest('[data-kit-use]');
       if (kitUse) return useKit(kitUse.dataset.kitUse);
       const kitNew = e.target.closest('[data-kit-new]');

@@ -502,6 +502,15 @@ function registerIpc() {
   ipcMain.handle('iface:library:kitInsert', (e, project, id) => {
     try { return { ok: true, ...ifaceLibrary.insertKit(project, id) }; } catch (e) { return { ok: false, error: e.message }; }
   });
+  ipcMain.handle('iface:library:tableKits', () => {
+    try { return { ok: true, list: ifaceLibrary.tableKits() }; } catch (e) { return { ok: false, error: e.message, list: [] }; }
+  });
+  ipcMain.handle('iface:library:tableKitGet', (e, id) => {
+    try { return { ok: true, ...ifaceLibrary.tableKitGet(id) }; } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('iface:library:tableKitInsert', (e, project, id, opts) => {
+    try { return { ok: true, ...ifaceLibrary.insertTableKit(project, id, opts || {}) }; } catch (e) { return { ok: false, error: e.message }; }
+  });
 
   ipcMain.handle('iface:plugins:list', () => ({ ok: true, list: plugins.list(), repoDir: plugins.repoPluginsDir(), userDir: plugins.userPluginsDir() }));
   ipcMain.handle('iface:plugins:summary', () => plugins.summary());
