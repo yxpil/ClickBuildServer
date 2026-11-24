@@ -45,14 +45,12 @@ function payload(r) {
     const bad = Object.entries(started).filter(([, v]) => !v || !v.ok);
     if (bad.length) throw new Error('服务未就绪：' + bad.map(([k, v]) => `${k}:${v && v.error}`).join('；'));
 
-    const project = spec.normalizeProject({
-      name: '账号权限真实验收', categories: [], interfaces: [], functions: [],
-      permissions: { roles: [{ key: 'admin', name: '管理员' }, { key: 'user', name: '普通用户' }], enforce: true },
-    });
-    project.interfaces.push(spec.newIface('账号权限', 'biz', { scenario: 'rbac' }));
+    const project = spec.starterProject('backend');
+    project.name = '账号权限真实验收';
     const iface = project.interfaces[0];
     const routes = iface.routes.map((r) => `${r.method} ${r.path} auth=${r.auth} roles=${r.roles.join(',')}`);
     console.log('路由：\n  ' + routes.join('\n  '));
+    ok('新建后端工程默认带账号接口', project.interfaces.length === 1 && iface.name === '账号权限', project.interfaces.map((x) => x.name));
     ok('预设生成 7 条账号路由',
       iface.routes.length === 7 && ['login', 'register', 'me', 'logout', 'list', 'detail', 'search'].every((k) => iface.routes.some((r) => r.key === k)));
     ok('登录注册公开，其余全部要求 token',

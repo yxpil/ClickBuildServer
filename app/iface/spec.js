@@ -744,6 +744,30 @@ function seedProject() {
   };
 }
 
+// 新建任务默认内容：不再给空工程。后端 / 混合任务自带一套可直接跑通的账号接口，
+// 只前端任务仍然保持空白画布（接口编辑入口本来也收起）。
+function starterProject(taskType) {
+  const kind = TASK_TYPES.includes(taskType) ? taskType : 'mixed';
+  const p = seedProject();
+  p.name = '新建工程';
+  p.taskType = kind;
+  p.description = kind === 'frontend' ? '只前端任务 · 空白画布' : '自带账号权限接口的新工程';
+  p.categories = [{ id: 'base', name: '基础' }];
+  p.functions = [];
+  delete p.frontend;
+  p.interfaces = [];
+  if (kind === 'frontend') return p;
+
+  const account = newIface('账号权限', 'base', { scenario: 'rbac' });
+  account.comment = '新建工程自带：登录、注册、当前用户、退出；管理员可管理用户';
+  p.interfaces = [account];
+  p.permissions = {
+    roles: [{ key: 'admin', name: '管理员' }, { key: 'user', name: '普通用户' }],
+    enforce: true,
+  };
+  return p;
+}
+
 function normalizeTable(t, idx, used) {
   const fields = (Array.isArray(t.fields) && t.fields.length ? t.fields : defaultFields()).map((f, i) => {
     const type = TYPE_KEYS.includes(f.type) ? f.type : 'varchar';
@@ -1098,7 +1122,7 @@ function ddlOf(iface) {
 module.exports = {
   TYPES, TYPE_KEYS, TASK_TYPES, ROUTE_KINDS, ROUTE_META, ROUTE_TEMPLATES, IFACE_SCENARIOS,
   IO_RESPONSES, IO_STORES, FILE_KINDS,
-  newField, defaultFields, newTable, newRoute, newIface, cloneIface, seedProject,
+  newField, defaultFields, newTable, newRoute, newIface, cloneIface, seedProject, starterProject,
   defaultIoTypes, normalizeIoTypes, ioOf,
   safeIdent,
   defaultConnections, defaultGuard,

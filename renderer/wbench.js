@@ -56,9 +56,9 @@ function fieldTone(type) {
 }
 
 const TASK_KINDS = {
-  mixed: { label: '混合任务', short: '混', hint: '前后端一起写，接口和前端工坊都能用' },
-  backend: { label: '只后端任务', short: '后', hint: '只写接口、表结构和脚本，前端入口收起' },
-  frontend: { label: '只前端任务', short: '前', hint: '只写页面，接口编辑和生成服务收起' },
+  mixed: { label: '混合任务', short: '混', hint: '前后端一起写，默认自带账号登录接口' },
+  backend: { label: '只后端任务', short: '后', hint: '只写接口、表结构和脚本，默认自带账号登录接口' },
+  frontend: { label: '只前端任务', short: '前', hint: '只写页面，接口编辑收起，保持空白画布' },
 };
 const TASK_ORDER = ['mixed', 'backend', 'frontend'];
 function taskKindOf(p) {
@@ -1206,7 +1206,7 @@ function chooseTaskKind(title) {
     }).join('');
     modal(`<div class="p-5 w-[560px] max-w-[94vw]">
       <div class="text-[14px] font-semibold">${esc(title || '新建任务')}</div>
-      <div class="text-[11px] text-neutral-500 mt-1 mb-4">先定这次要写什么：只写页面、只写接口，还是两边一起。以后可以在标题栏改。</div>
+      <div class="text-[11px] text-neutral-500 mt-1 mb-4">先定这次要写什么：只写页面、只写接口，还是两边一起。以后可以在标题栏改。后端与混合任务会自带账号权限接口（登录、注册、当前用户、退出）。</div>
       <div class="task-kind-grid">${cards}</div>
       <div class="flex justify-end mt-4"><button class="btn thin" id="tkCancel">取消</button></div>
     </div>`, (root) => {
@@ -1225,18 +1225,18 @@ async function newTaskFlow(kind) {
     toast('当前工程没有保存成功，已取消新建；改动还在当前工程里', 6000);
     return false;
   }
-  const p = await api.seed();
+  const p = await api.starter(chosen);
   p.taskType = chosen;
   p.name = uniqueProjectName(chosen === 'frontend' ? '前端任务' : chosen === 'backend' ? '后端任务' : '混合任务');
-  p.description = `${TASK_KINDS[chosen].label} · 空白工程`;
-  p.interfaces = [];
-  p.functions = [];
-  delete p.frontend;
+  p.description = chosen === 'frontend'
+    ? `${TASK_KINDS[chosen].label} · 空白画布`
+    : `${TASK_KINDS[chosen].label} · 自带账号权限接口`;
   const r = await api.save(p);
   if (r && r.ok === false) return toast('新任务保存失败：' + (r.error || '未知错误'), 6000);
   const proj = (r && r.project) || p;
   await enterWorkspace(proj);
-  toast(`已新建「${proj.name}」· ${TASK_KINDS[chosen].label}`, 3500);
+  const account = (proj.interfaces || []).find((x) => x.name === '账号权限');
+  toast(`已新建「${proj.name}」· ${TASK_KINDS[chosen].label}${account ? ' · 已带登录接口' : ''}`, 4000);
   return true;
 }
 
@@ -3418,7 +3418,7 @@ const HELP_SECTIONS = [
         <div class="hb-card"><b>你会得到</b><p>一个「订单」接口、一张 orders 表、五条基础路由，以及能在浏览器和 curl 里访问的列表 / 新建接口。</p></div>
         <div class="hb-card"><b>开始前</b><p>不需要先装 MariaDB、Redis、S3。点“启动”时应用会拉起内置三台服务，实际端口以工作台右侧的“运行环境”为准。</p></div>
       </div>
-      <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>新建一个任务</b><p>在工程历史页点右上角“新建任务”，任务类型选“只后端”（只做 API）或“混合任务”（API + 前端）。新建出来的是空白工程，没有接口是正常的。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>新建一个任务</b><p>在工程历史页点右上角“新建任务”，任务类型选“只后端”（只做 API）或“混合任务”（API + 前端）。新建出来默认带一个「账号权限」接口，登录、注册、当前用户、退出和管理员用户管理都能直接用；“只前端”任务仍保持空白画布。</p></div></div>
       <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>新建接口</b><p>进入工作台后点 Ribbon 的“新建接口”，或按 <span class="hb-kbd">Ctrl+N</span>。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步顶部有“基础账号权限 · 推荐”，点一下就能配好登录、注册、当前用户、退出和 admin/user 角色；下面还有 20 个常见业务模板，点一下会填好表字段、路由和鉴权，再按需修改。</p></div></div>
       <div class="hb-step"><span class="hb-step-n">3</span><div class="hb-step-body"><b>填主表字段</b><p>第二步每行一个字段，格式是“字段名 类型 注释”。可以直接粘贴：</p>
         <div class="hb-code"><div class="hb-code-head">初始业务字段</div><pre>name varchar 名称
@@ -7384,6 +7384,7 @@ async function enterWorkspace(p, opts) {
   S.selId = (p.interfaces[0] || {}).id || '';
   S.mode = 'grid'; S.tab = 'tables'; S.tableKey = ''; S.routeId = '';
   S.problems = (await api.validate(p)).errors || [];
+  setSaveState('saved', S.problems.length ? `已保存 · ${S.problems.length} 问题` : '已保存');
   S.view = 'api';
   S.studioProject = null; studioLoaded = false; studioDirty = false;
   if (!S.help) S.help = await api.help();

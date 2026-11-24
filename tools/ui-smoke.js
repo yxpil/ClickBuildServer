@@ -150,10 +150,15 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const ip = JSON.parse(importPreview || '{}');
   t('Excel 导入预览含表数/字段/样例/覆盖当前表', ip.open && ip.count && ip.newBtn && ip.replaceBtn && ip.preview, importPreview);
   await val(`closeModal()`);
-  const newFlow = await val(`(async()=>{S.project.description='UNSAVED_BEFORE_NEW';const old=${JSON.stringify(smokeName)};document.querySelector('[data-action="seed"]').click();await new Promise(r=>setTimeout(r,300));const card=document.querySelector('[data-task-kind="mixed"]');if(card)card.click();await new Promise(r=>setTimeout(r,1200));const next=S.project.name;const oldProject=await api.load(old);await enterWorkspace(await api.load(old));await new Promise(r=>setTimeout(r,300));return JSON.stringify({next,savedDesc:oldProject&&oldProject.description,oldExists:!!oldProject,tabs:TABS.items.map(x=>x.name),active:TABS.active,tabBar:!document.querySelector('#taskTabs').classList.contains('hidden')})})()`);
+  const newFlow = await val(`(async()=>{S.project.description='UNSAVED_BEFORE_NEW';const old=${JSON.stringify(smokeName)};document.querySelector('[data-action="seed"]').click();await new Promise(r=>setTimeout(r,300));const card=document.querySelector('[data-task-kind="mixed"]');if(card)card.click();await new Promise(r=>setTimeout(r,1200));const next=S.project.name;const oldProject=await api.load(old);const created=await api.load(next);await enterWorkspace(await api.load(old));await new Promise(r=>setTimeout(r,300));return JSON.stringify({next,savedDesc:oldProject&&oldProject.description,oldExists:!!oldProject,newIfaces:created&&created.interfaces?created.interfaces.map(x=>x.name):[],newRoutes:created&&created.interfaces&&created.interfaces[0]?created.interfaces[0].routes.map(x=>x.key):[],newRoles:created&&created.permissions?created.permissions.roles.map(x=>x.key):[],tabs:TABS.items.map(x=>x.name),active:TABS.active,tabBar:!document.querySelector('#taskTabs').classList.contains('hidden')})})()`);
   const nf = JSON.parse(newFlow);
   newProjectName = nf.next;
   t('新建先保存当前工程再开新工程', nf.next !== smokeName && nf.savedDesc === 'UNSAVED_BEFORE_NEW' && nf.oldExists, newFlow);
+  t('新建混合任务默认带账号权限接口',
+    nf.newIfaces.includes('账号权限') &&
+    ['login', 'register', 'me', 'logout'].every((k) => nf.newRoutes.includes(k)) &&
+    nf.newRoles.join(',') === 'admin,user',
+    newFlow);
   t('新建任务先选三类任务再开新标签', nf.tabs.length >= 2 && nf.active === smokeName && nf.tabBar, newFlow);
   const tabSwitch = await val(`(async()=>{document.querySelector('.task-tab[data-tab-name='+JSON.stringify(${JSON.stringify(nf.next)})+']').click();await new Promise(r=>setTimeout(r,900));const a=S.project.name;document.querySelector('.task-tab[data-tab-name='+JSON.stringify(${JSON.stringify(smokeName)})+']').click();await new Promise(r=>setTimeout(r,900));return JSON.stringify({a,b:S.project.name,active:TABS.active})})()`);
   const ts = JSON.parse(tabSwitch);

@@ -63,6 +63,21 @@
 
 ![接口套件弹窗](docs/screenshots/iface-kits.png)
 
+## 新建工程自带账号接口（1.1.78）
+
+“新建任务”不再给一个后端空白工程。选“只后端”或“混合任务”后，工程保存下来就已经有一个可直接运行的「账号权限」接口，省掉每个新项目都要手工补登录的问题。
+
+- **默认表**：`sys_account`，字段包括 `username`、`password_hash`、`nickname`、`role`、`status`，密码字段隐藏且不参与查询。
+- **核心路由**：`POST /auth/register`、`POST /auth/login`、`GET /auth/me`、`POST /auth/logout` 四条直接可用；注册即登录，登录签发 Redis 会话 token。
+- **用户管理**：同一接口还带 `GET /sys_account`、`GET /sys_account/:id`、`GET /sys_account/search`，默认只允许 `admin`；首个注册账号自动成为管理员，后续注册为普通用户。
+- **工程级权限**：新建时自动写入 `admin/user` 两个角色并开启 `permissions.enforce`，不用再进权限页手动配；登录、注册公开，当前用户、退出和用户管理需要 token。
+- **只前端例外**：只前端任务仍然保持空白画布，不塞后端接口，接口编辑入口本来也收起。
+- **入口统一**：新建任务弹窗、工程历史页“新建任务”、标签栏加号和帮助中心都走同一个 `starterProject()`，不会再出现某个入口建出空工程。
+
+![新建工程默认账号权限接口](docs/screenshots/starter-account.png)
+
+回归：`tools/test-task-types.js` **23/23**，新增默认账号表、登录/注册/当前用户/退出、公开与鉴权边界、admin/user 角色、前端空白和落盘后不丢接口等断言；`tools/test-rbac-live.js` 直接使用新建工程默认内容生成 Node 服务，连接 MariaDB + Redis 跑通注册、登录、当前用户、管理员列表/详情/搜索、普通用户 403、退出失效，**21/21** 通过；本地完整 CI **16/16**，安装前 UI 冒烟 **175/175**。
+
 ## 脚本解释器强化：把“能跑”补成“好用”（1.1.77）
 
 这轮没有加新语法堆料，而是把解释器里容易静默出错、或者写起来别扭的地方补齐：
