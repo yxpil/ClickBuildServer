@@ -6106,7 +6106,7 @@ const THEME_PALETTES = [
 ];
 
 function themeDefaults() {
-  return { v: 2, head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff', font: '' };
+  return { v: 2, mode: 'light', head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff', font: '' };
 }
 function themePalette(id) {
   return THEME_PALETTES.find((p) => p.id === id) || THEME_PALETTES[0];
@@ -6117,26 +6117,88 @@ function hexToRgba(hex, alpha) {
   const n = parseInt(h, 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
+function lightenHex(hex, ratio) {
+  const h = String(hex || '').replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return '#6ea8ff';
+  const n = parseInt(h, 16);
+  const lift = (v) => Math.round(v + (255 - v) * ratio);
+  return '#' + [lift((n >> 16) & 255), lift((n >> 8) & 255), lift(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+function shadeHex(hex, ratio) {
+  const h = String(hex || '').replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return '#2458bf';
+  const n = parseInt(h, 16);
+  const drop = (v) => Math.round(v * (1 - ratio));
+  return '#' + [drop((n >> 16) & 255), drop((n >> 8) & 255), drop(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+function themeMode(t) {
+  const mode = (t && t.mode) || 'light';
+  if (mode !== 'auto') return mode === 'dark' ? 'dark' : 'light';
+  try { return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) { return 'light'; }
+}
 function isLegacyDefaultTheme(t) {
   return !(t && t.v)
     && (!t || !t.accent || t.accent === '#111111')
     && (!t || !t.headText || t.headText === '#111111')
     && (!t || !t.footer || t.footer === '#f4f4f4');
 }
+function syncThemeToggle(dark) {
+  const b = document.querySelector('#themeToggle');
+  if (!b) return;
+  b.title = dark ? '切换到浅色模式' : '切换到深色模式';
+  b.setAttribute('aria-label', b.title);
+  b.innerHTML = dark
+    ? '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>'
+    : '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.2 10.6a5.6 5.6 0 0 1-7.8-7.8 5.6 5.6 0 1 0 7.8 7.8Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+}
+function syncStudioDark() {
+  try {
+    const sf = document.querySelector('#studioFrame');
+    const d = sf && sf.contentDocument;
+    if (d && d.documentElement) d.documentElement.dataset.appDark = document.documentElement.classList.contains('cb-dark') ? '1' : '0';
+  } catch (e) { /* iframe 还没加载完 */ }
+}
 function applyTheme(t) {
   const th = { ...themeDefaults(), ...(t || {}) };
   // 旧版的“黑白纸张”默认主题自动迁移到 WPS 式浅色默认主题；用户自定义主题保留。
   if (isLegacyDefaultTheme(t)) Object.assign(th, themeDefaults());
+  const mode = themeMode(th);
+  const dark = mode === 'dark';
+  document.documentElement.classList.toggle('cb-dark', dark);
+  document.documentElement.dataset.theme = mode;
   const root = document.documentElement.style;
-  root.setProperty('--cb-head', th.head || '#ffffff');
-  root.setProperty('--cb-headtext', th.headText || '#20242b');
-  root.setProperty('--cb-accent', th.accent || '#2f6bdc');
-  root.setProperty('--cb-accent-soft', hexToRgba(th.accent, 0.1));
-  root.setProperty('--cb-accent-ring', hexToRgba(th.accent, 0.18));
-  root.setProperty('--cb-footer', th.footer || '#ffffff');
+  const accent = dark ? lightenHex(th.accent || '#2f6bdc', 0.46) : (th.accent || '#2f6bdc');
+  root.setProperty('--cb-head', dark ? '#171c24' : (th.head || '#ffffff'));
+  root.setProperty('--cb-headtext', dark ? '#e7ecf3' : (th.headText || '#20242b'));
+  root.setProperty('--cb-accent', accent);
+  root.setProperty('--cb-accent-strong', dark ? shadeHex(th.accent || '#2f6bdc', 0.16) : shadeHex(th.accent || '#2f6bdc', 0.2));
+  root.setProperty('--cb-accent-soft', dark ? hexToRgba(accent, 0.14) : hexToRgba(th.accent || '#2f6bdc', 0.1));
+  root.setProperty('--cb-accent-ring', dark ? hexToRgba(accent, 0.28) : hexToRgba(th.accent || '#2f6bdc', 0.18));
+  root.setProperty('--cb-footer', dark ? '#12171e' : (th.footer || '#ffffff'));
   root.setProperty('--cb-font', th.font || '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif');
+  syncThemeToggle(dark);
+  syncStudioDark();
   if (th.titleSuffix) document.title = `ClickBuildServer · ${th.titleSuffix}`;
 }
+let themeMediaBound = false;
+function bindThemeMedia() {
+  if (themeMediaBound) return;
+  themeMediaBound = true;
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      const th = { ...themeDefaults(), ...((S.settings && S.settings.theme) || {}) };
+      if ((th.mode || 'light') === 'auto') applyTheme(th);
+    });
+  } catch (e) { themeMediaBound = false; }
+}
+async function saveThemeMode(mode) {
+  const th = { ...themeDefaults(), ...((S.settings && S.settings.theme) || {}), mode };
+  const next = await api.theme(th);
+  S.settings.theme = next;
+  applyTheme(next);
+  return next;
+}
+
 
 /* ---------------- 设置 ---------------- */
 function aiDefaults() {
@@ -6697,9 +6759,18 @@ function showTheme() {
   const saved = S.settings.theme || {};
   const t = { ...themeDefaults(), ...saved };
   if (isLegacyDefaultTheme(saved)) Object.assign(t, themeDefaults());
+  const mode = t.mode || 'light';
   modal(`<div class="p-4 w-[560px]">
     <div class="text-[13px] font-semibold mb-3">界面主题</div>
     <div class="text-[11px] text-neutral-500 mb-2">一键切换整套配色，也可以单独微调页眉、强调色和页脚。</div>
+    <div class="theme-mode-row">
+      <span>外观</span>
+      <div class="theme-mode-seg" id="thMode">
+        <button type="button" data-mode="light" class="${mode === 'light' ? 'on' : ''}">浅色</button>
+        <button type="button" data-mode="dark" class="${mode === 'dark' ? 'on' : ''}">深色</button>
+        <button type="button" data-mode="auto" class="${mode === 'auto' ? 'on' : ''}">跟随系统</button>
+      </div>
+    </div>
     <div class="grid grid-cols-4 gap-2 mb-4">
       ${THEME_PALETTES.map((p) => `<button type="button" class="btn thin justify-start gap-1.5 theme-palette" data-theme-preset="${p.id}" title="${esc(p.name)}">
         <span class="inline-block w-3 h-3 rounded-full border border-black/10" style="background:${p.accent}"></span>
@@ -6713,20 +6784,29 @@ function showTheme() {
       <label>页脚底色 <input type="color" id="thFooter" value="${esc(t.footer)}" class="ml-2 align-middle"></label>
     </div>
     <div class="mt-3 text-[12px]">字体 <input id="thFont" class="w-full border border-neutral-300 px-2 py-1 mt-1 mono" value="${esc(t.font || '')}" placeholder="留空用系统默认，例如 Georgia, serif"></div>
-    <div class="mt-3 text-[11px] text-neutral-500">主题存在本机设置里，只影响界面，不影响生成的服务。</div>
+    <div class="mt-3 text-[11px] text-neutral-500">深色模式会保留你选的强调色，页眉和页脚自动换成深色面板；生成的服务和前端页面不受影响。</div>
+    <div class="mt-2 text-[11px] text-neutral-500">主题存在本机设置里，只影响界面。</div>
     <div class="flex gap-2 mt-4 justify-end">
       <button class="btn thin" id="thReset">恢复默认</button>
       <button class="btn thin" id="thClose">取消</button>
       <button class="btn solid" id="thSave">应用</button>
     </div>
   </div>`, (root) => {
+    const readMode = () => (root.querySelector('#thMode .on') || {}).dataset?.mode || 'light';
     const read = () => ({
       v: 2,
+      mode: readMode(),
       head: root.querySelector('#thHead').value,
       headText: root.querySelector('#thHeadText').value,
       accent: root.querySelector('#thAccent').value,
       footer: root.querySelector('#thFooter').value,
       font: root.querySelector('#thFont').value,
+    });
+    root.querySelectorAll('#thMode button').forEach((b) => {
+      b.onclick = () => {
+        root.querySelectorAll('#thMode button').forEach((x) => x.classList.toggle('on', x === b));
+        applyTheme(read());
+      };
     });
     root.querySelectorAll('[data-theme-preset]').forEach((btn) => {
       btn.onclick = () => {
@@ -7257,8 +7337,11 @@ async function ensureStudio() {
     f.srcdoc = studioHtmlCache;
     f.addEventListener('load', () => {
       if (!studioLoaded) return;
+      syncStudioDark();
       setTimeout(() => { if (studioLoaded) syncStudioFromProject(true); }, 500);
     }, { once: true });
+    setTimeout(syncStudioDark, 300);
+    setTimeout(syncStudioDark, 900);
     if (!studioAutoTimer) {
       studioAutoTimer = setInterval(() => {
         if (studioDirty && S.view === 'studio') saveStudioToProject('定时保存');
@@ -7836,7 +7919,7 @@ window.addEventListener('blur', hideHubMenu);
     try { S.pluginInfo = await api.pluginSummary(); } catch (e) { S.pluginInfo = { list: [], commands: [], hooks: [] }; }
     try { S.runtimes = await api.runtimes(); } catch (e) { S.runtimes = []; }
     try { await applyStartupReport(await api.startupReport()); } catch (e) { /* 启动报告不存在时忽略 */ }
-    let bootTheme = S.settings.theme || {};
+    let bootTheme = b.theme || (S.settings && S.settings.theme) || {};
     if (isLegacyDefaultTheme(bootTheme)) {
       try {
         bootTheme = await api.theme(themeDefaults());
@@ -7845,7 +7928,20 @@ window.addEventListener('blur', hideHubMenu);
         bootTheme = themeDefaults();
       }
     }
+    S.settings.theme = bootTheme;
+    bindThemeMedia();
     applyTheme(bootTheme);
+    const themeBtn = $('#themeToggle');
+    if (themeBtn) {
+      themeBtn.onclick = async () => {
+        const th = { ...themeDefaults(), ...((S.settings && S.settings.theme) || {}) };
+        const cur = themeMode(th);
+        try {
+          const next = await saveThemeMode(cur === 'dark' ? 'light' : 'dark');
+          toast(next.mode === 'dark' ? '已切换到深色模式' : '已切换到浅色模式', 2600);
+        } catch (e) { toast(`切换主题失败：${e.message || e}`, 4000); }
+      };
+    }
     S.help = await api.help();
 
     const wanted = new URLSearchParams(location.search).get('project');

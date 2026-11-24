@@ -1080,6 +1080,7 @@
   tr[data-ftone="json"] { --ft-fg: #7c3aed; --ft-line: #d5c3f8; }
   @media (max-width: 1200px) { .editor-tabbar .count-chip { display: none; } }
 </style>
+<link rel="stylesheet" href="wbench-dark.css">
 </head>
 <body class="bg-white text-neutral-900 h-full overflow-hidden">
 
@@ -1103,6 +1104,9 @@
       <input id="search" class="searchbox border border-neutral-400 px-2 py-1 text-[12px]" placeholder="搜索接口 / 表 / 字段 / 路由 / SQL    (Ctrl+K)">
       <div id="searchPanel" class="hidden absolute right-0 top-8 w-[480px] max-h-[380px] overflow-auto border border-neutral-900 bg-white z-30"></div>
     </div>
+    <button class="btn thin theme-toggle" id="themeToggle" title="切换深色 / 浅色" aria-label="切换深色 / 浅色">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.2 10.6a5.6 5.6 0 0 1-7.8-7.8 5.6 5.6 0 1 0 7.8 7.8Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+    </button>
     <button class="btn thin" data-action="save">保存</button>
     <button class="btn thin" data-action="generate">生成服务</button>
     <button class="btn solid" data-action="deployUpdate">更新部署</button>

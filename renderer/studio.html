@@ -1238,6 +1238,59 @@ body.cbs-embedded #btnTemplates,
 body.cbs-embedded #btnProjectFile,
 body.cbs-embedded #btnAiLayout,
 body.cbs-embedded .cbs-site-only{display:none!important}
+
+/* 应用深色模式：只换工坊外框，设计画布保持真实页面颜色 */
+html[data-app-dark="1"]{
+  --paper:#0e1218;--paper-2:#161c24;--panel:#171d26;--ink:#e7ecf3;--ink-2:#b6c0ce;--ink-3:#7f8da0;
+  --line:#2b3440;--line-2:#232b36;
+}
+html[data-app-dark="1"] body.cbs-embedded{
+  --paper:#0e1218;--paper-2:#161c24;--panel:#171d26;--ink:#e7ecf3;--ink-2:#b6c0ce;--ink-3:#7f8da0;
+  --line:#2b3440;--line-2:#232b36;
+}
+html[data-app-dark="1"] body{background:var(--paper);color:var(--ink)}
+html[data-app-dark="1"] .topbar{background:#141a21;border-bottom-color:#2b3440}
+html[data-app-dark="1"] .rail{background:#141a21}
+html[data-app-dark="1"] .panel{background:#141a21;border-color:#2b3440}
+html[data-app-dark="1"] .stage{background:#0e1218}
+html[data-app-dark="1"] .pages-bar{background:#141a21;border-bottom-color:#2b3440}
+html[data-app-dark="1"] .statusbar{background:#121820;border-top-color:#2b3440}
+html[data-app-dark="1"] .page-ruler{background:#141a21;color:#718092}
+html[data-app-dark="1"] .ruler-corner{background:#1b232d}
+html[data-app-dark="1"] .page-tab,
+html[data-app-dark="1"] .pages-bar .mini,
+html[data-app-dark="1"] .seg,
+html[data-app-dark="1"] .btn,
+html[data-app-dark="1"] .search,
+html[data-app-dark="1"] .page-jump,
+html[data-app-dark="1"] .tb-more-menu { background:#10161d; border-color:#35404d; color:#b6c0ce; }
+html[data-app-dark="1"] .page-tab:hover,
+html[data-app-dark="1"] .pages-bar .mini:hover,
+html[data-app-dark="1"] .btn:hover,
+html[data-app-dark="1"] .page-jump:focus { border-color:#4c617e; color:#e7ecf3; }
+html[data-app-dark="1"] .page-tab.is-active,
+html[data-app-dark="1"] .pages-bar .mini.is-home,
+html[data-app-dark="1"] .seg button.is-active,
+html[data-app-dark="1"] .btn--solid,
+html[data-app-dark="1"] .btn--account.is-authed,
+html[data-app-dark="1"] .icon-cell:hover,
+html[data-app-dark="1"] .cbs-ops #cbsDeploy { background:#275ab9!important; border-color:#275ab9!important; color:#fff!important; }
+html[data-app-dark="1"] .tool:hover,
+html[data-app-dark="1"] .block:hover,
+html[data-app-dark="1"] .tool-back:hover { background:#275ab9; border-color:#275ab9; color:#fff; }
+html[data-app-dark="1"] .tool:hover span,
+html[data-app-dark="1"] .tool:hover em,
+html[data-app-dark="1"] .block:hover em { color:#fff; }
+html[data-app-dark="1"] .rail input:not([type="color"]),
+html[data-app-dark="1"] .rail select,
+html[data-app-dark="1"] .rail textarea { background:#10161d; border-color:#35404d; color:#e7ecf3; }
+html[data-app-dark="1"] .rail input::placeholder,
+html[data-app-dark="1"] .rail textarea::placeholder { color:#6f7d8e; }
+html[data-app-dark="1"] .asset-row .thumb,
+html[data-app-dark="1"] .asset-preset-card,
+html[data-app-dark="1"] .tool-cat .cat-thumb { background:#10161d; border-color:#303b48; }
+html[data-app-dark="1"] .tool-pv .pv { background:#10161d; border-bottom-color:#2b3440; }
+html[data-app-dark="1"] ::selection { background:#275ab9; color:#fff; }
 </style>
 </head>
 <body class="cbs-embedded">

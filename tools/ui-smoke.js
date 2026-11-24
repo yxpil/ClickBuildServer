@@ -253,7 +253,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('监控显示健康状态', await val(`document.querySelector('#monHealth').textContent.length > 0`), await val(`document.querySelector('#monHealth').textContent`));
   await val(`document.querySelector('#monClose').click()`);
 
-  // 主题：改强调色
+  // 主题：先回到浅色，再改强调色
+  await val(`saveThemeMode('light')`, true);
+  await wait(400);
   await val(`act('theme')`);
   await wait(300);
   t('主题弹窗出现', await val(`!!document.querySelector('#thAccent')`));
@@ -263,6 +265,26 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('CSS 变量生效', await val(`getComputedStyle(document.documentElement).getPropertyValue('--cb-accent').trim()`) === '#444444', await val(`getComputedStyle(document.documentElement).getPropertyValue('--cb-accent')`));
   // 恢复默认浅色主题
   await val(`api.theme(themeDefaults()).then(t=>{S.settings.theme=t;applyTheme(t)})`, true);
+
+  // 深色模式：切换、整套表面、设置项与持久化
+  await val(`saveThemeMode('dark')`, true);
+  await wait(500);
+  t('深色模式挂到 html 根元素', await val(`document.documentElement.classList.contains('cb-dark')`));
+  t('深色模式写入设置', await val(`S.settings.theme.mode === 'dark'`), await val(`JSON.stringify(S.settings.theme)`));
+  t('深色模式压暗工作台而不是只换页眉', await val(`getComputedStyle(document.querySelector('#workspace')).backgroundColor !== 'rgb(255, 255, 255)'`), await val(`getComputedStyle(document.querySelector('#workspace')).backgroundColor`));
+  t('深色模式强调色自动提亮', await val(`getComputedStyle(document.documentElement).getPropertyValue('--cb-accent').trim() !== '#444444'`), await val(`getComputedStyle(document.documentElement).getPropertyValue('--cb-accent')`));
+  t('深色模式切换按钮显示回到浅色', await val(`document.querySelector('#themeToggle').title.includes('浅色')`));
+  await val(`act('theme')`);
+  await wait(300);
+  t('主题弹窗有浅色/深色/跟随系统三项', await val(`document.querySelectorAll('#thMode button').length === 3`));
+  t('主题弹窗回显当前深色', await val(`document.querySelector('#thMode .on').dataset.mode === 'dark'`));
+  await val(`closeModal()`);
+  await val(`saveThemeMode('auto')`, true);
+  await wait(400);
+  t('跟随系统模式可保存并解析', await val(`S.settings.theme.mode === 'auto' && ['light','dark'].includes(document.documentElement.dataset.theme)`), await val(`JSON.stringify({mode:S.settings.theme.mode,theme:document.documentElement.dataset.theme})`));
+  await val(`saveThemeMode('light')`, true);
+  await wait(400);
+  t('切回浅色撤掉深色类', await val(`!document.documentElement.classList.contains('cb-dark')`));
 
   await val(`showSettings()`);
   await wait(350);

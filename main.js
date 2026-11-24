@@ -3,11 +3,19 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, nativeTheme } = require('electron');
 const { registerIpc } = require('./app/ipc');
 const { registerIpc: registerIfaceIpc } = require('./app/iface/ipc');
 const { runStartup, STEPS } = require('./app/startup');
 const services = require('./app/iface/services');
+const store = require('./app/store');
+
+function themeWindowBackground() {
+  try {
+    const mode = (store.readSettings().theme || {}).mode || 'light';
+    return mode === 'dark' || (mode === 'auto' && nativeTheme.shouldUseDarkColors) ? '#0e1218' : '#ffffff';
+  } catch (e) { return '#ffffff'; }
+}
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -267,7 +275,7 @@ if (!gotLock) {
       height: 940,
       minWidth: 1080,
       minHeight: 700,
-      backgroundColor: '#ffffff',
+      backgroundColor: themeWindowBackground(),
       title: 'ClickBuildServer · 接口工作台',
       icon: windowIcon(),
       frame: false,

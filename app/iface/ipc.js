@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ipcMain, dialog, shell, BrowserWindow, app, screen } = require('electron');
+const { ipcMain, dialog, shell, BrowserWindow, app, screen, nativeTheme } = require('electron');
 
 const spec = require('./spec');
 const render = require('./render');
@@ -28,6 +28,13 @@ const tableImport = require('./table-import');
 const tableData = require('./table-data');
 const shellNew = require('./shell-new');
 const store = require('../store');
+
+function themeWindowBackground() {
+  try {
+    const mode = (store.readSettings().theme || {}).mode || 'light';
+    return mode === 'dark' || (mode === 'auto' && nativeTheme.shouldUseDarkColors) ? '#0e1218' : '#ffffff';
+  } catch (e) { return '#ffffff'; }
+}
 const i18n = require('../i18n');
 
 function ctxOf(payload) {
@@ -188,11 +195,15 @@ async function tryRoute(project, ifaceId, routeId, bodyText, query) {
 
 
 function registerIpc() {
+  try {
+    const mode = (store.readSettings().theme || {}).mode || 'light';
+    nativeTheme.themeSource = mode === 'auto' ? 'system' : (mode === 'dark' ? 'dark' : 'light');
+  } catch (e) { /* 设置还没写入时按浅色 */ }
   ipcMain.handle('iface:boot', async () => {
     const name = projects.boot();
     const stored = projects.load(name) || spec.seedProject();
     const project = spec.normalizeProject(stored);
-    return { name, project, list: projects.list(), services: await services.status(), settings: services.settings() };
+    return { name, project, list: projects.list(), services: await services.status(), settings: services.settings(), theme: store.readSettings().theme || {} };
   });
 
   ipcMain.handle('iface:projects', () => projects.list());
@@ -478,6 +489,12 @@ function registerIpc() {
 
   ipcMain.handle('iface:theme', (e, patch) => {
     const next = store.writeSettings({ theme: { ...(store.readSettings().theme || {}), ...(patch || {}) } });
+    // 同步 Chromium / 原生控件配色；窗口底色跟着换，缩放和重绘时不会闪出白块。
+    const mode = (next.theme && next.theme.mode) || 'light';
+    nativeTheme.themeSource = mode === 'auto' ? 'system' : (mode === 'dark' ? 'dark' : 'light');
+    const dark = mode === 'dark' || (mode === 'auto' && nativeTheme.shouldUseDarkColors);
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win && !win.isDestroyed()) win.setBackgroundColor(dark ? '#0e1218' : '#ffffff');
     return next.theme || {};
   });
 
@@ -593,7 +610,7 @@ function registerIpc() {
     const win = new BrowserWindow({
       width, height, x: Math.max(area.x, x), y: Math.max(area.y, y),
       minWidth: 1080, minHeight: 700, show: false,
-      backgroundColor: '#ffffff',
+      backgroundColor: themeWindowBackground(),
       title: `ClickBuildServer · ${projectName || '项目工作台'}`,
       icon: path.join(__dirname, '..', '..', 'assets', 'logo.png'),
       frame: false, thickFrame: true, autoHideMenuBar: true,
