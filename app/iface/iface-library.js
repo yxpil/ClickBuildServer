@@ -17,6 +17,51 @@ const META_FILE = '_meta.json';
 const MAX_TABLE = 64;
 const MAX_CATEGORY = 20;
 
+// 预设接口套件：不是散装接口，而是一套共享同一批表、登录态和路由的业务闭环。
+// 每个套件直接复用已经验收过的内置案例，避免另造一份会漂移的数据。
+const KITS = [
+  {
+    key: 'mall', templateId: 'builtin:mall', name: '商城交易系统',
+    summary: '注册登录、商品库存、购物车、下单，一条完整的交易闭环；商品表被购物车和订单共用。',
+    tags: ['电商', '交易', '库存'], useCases: ['网店', '内部采购', '积分兑换'],
+  },
+  {
+    key: 'blog', templateId: 'builtin:blog', name: '内容博客系统',
+    summary: '作者、文章、分类、标签、评论；发布、浏览、评论和标签联查都能直接跑。',
+    tags: ['内容', 'CMS', '评论'], useCases: ['公司博客', '知识库', '个人站点'],
+  },
+  {
+    key: 'social', templateId: 'builtin:social', name: '同频社区系统',
+    summary: '账户身份、好友、私聊、群聊、动态、搜索、通知、文件与统计，一套完整社区后端。',
+    tags: ['社区', '社交', 'IM'], useCases: ['兴趣社区', '内部论坛', '会员空间'],
+  },
+  {
+    key: 'ticket', templateId: 'builtin:ticket', name: '客服工单系统',
+    summary: '客户、工单、回复；派单、回复回写与状态统计相互咬合，不再是一张孤立工单表。',
+    tags: ['客服', '工单', 'B2B'], useCases: ['售后', 'IT 支持', '内部流转'],
+  },
+  {
+    key: 'crm', templateId: 'builtin:crm', name: 'CRM 客户系统',
+    summary: '客户、联系人、商机阶段与金额统计；一个客户挂多个联系人和多条商机。',
+    tags: ['CRM', '销售', '客户'], useCases: ['销售管理', '渠道跟进', '客户台账'],
+  },
+  {
+    key: 'booking', templateId: 'builtin:booking', name: '预约服务系统',
+    summary: '服务项目、时段、预约；名额容量校验、取消释放和事务提交都已配好。',
+    tags: ['预约', '本地生活', '库存'], useCases: ['门店预约', '体检挂号', '场地预订'],
+  },
+  {
+    key: 'edu', templateId: 'builtin:edu', name: '在线课程系统',
+    summary: '课程、课时、报名与学习进度；报名事务校验名额，重复报名会拦下。',
+    tags: ['教育', '课程', '报名'], useCases: ['培训平台', '企业学习', '网课'],
+  },
+  {
+    key: 'survey', templateId: 'builtin:survey', name: '问卷收集系统',
+    summary: '公开填写、后台编辑、答卷统计与 CSV 导出；前后端和演示问卷都齐。',
+    tags: ['问卷', '表单', '统计'], useCases: ['满意度调查', '需求收集', '活动登记'],
+  },
+];
+
 function dir() {
   const d = path.join(store.root(), DIR);
   fs.mkdirSync(d, { recursive: true });
@@ -123,6 +168,82 @@ function list() {
 function nameExists(name, exceptId) {
   const key = normName(name);
   return list().some((x) => x.id !== exceptId && normName(x.name) === key);
+}
+
+function kitDef(id) {
+  const key = String(id || '').replace(/^kit:/, '');
+  return KITS.find((k) => k.key === key || k.templateId === id) || null;
+}
+
+function kitProject(def) {
+  return templates.get(def.templateId).project;
+}
+
+// 套件不是静态清单：接口、共享表、路由和“是否带演示数据/页面”都从真实案例算出来。
+function kitEntry(def, meta) {
+  const project = kitProject(def);
+  const tableUse = new Map();
+  const physical = new Set();
+  let authed = false;
+  let upload = false;
+  for (const iface of project.interfaces) {
+    for (const t of iface.tables) {
+      physical.add(t.name);
+      tableUse.set(t.name, (tableUse.get(t.name) || 0) + 1);
+    }
+    for (const r of iface.routes || []) {
+      if (/\bTOKEN\s+NEW\b/i.test(String(r.script || ''))) authed = true;
+      if (r.io && (r.io.response === 'file' || String(r.io.storage || '') === 's3')) upload = true;
+    }
+  }
+  const shared = [...tableUse].filter(([, n]) => n > 1).map(([name, n]) => ({ name, definitions: n }));
+  const m = (meta || readMeta())[`kit:${def.key}`] || {};
+  return {
+    id: `kit:${def.key}`,
+    kind: 'kit',
+    name: def.name,
+    summary: def.summary,
+    description: def.summary,
+    tags: def.tags,
+    useCases: def.useCases,
+    templateId: def.templateId,
+    source: project.name,
+    counts: {
+      interfaces: project.interfaces.length,
+      tables: physical.size,
+      tableDefs: project.interfaces.reduce((n, i) => n + i.tables.length, 0),
+      routes: project.interfaces.reduce((n, i) => n + (i.routes || []).length, 0),
+      sharedTables: shared.length,
+    },
+    readiness: {
+      auth: authed,
+      seed: !!(project.seed && project.seed.sql),
+      frontend: !!(project.frontend && project.frontend.html),
+      upload,
+    },
+    shared,
+    interfaces: project.interfaces.map((i) => ({
+      name: i.name,
+      basePath: i.basePath || '',
+      tables: i.tables.map((t) => ({ key: t.key, name: t.name })),
+      routes: (i.routes || []).length,
+    })),
+    uses: Number(m.uses) || 0,
+    lastUsedAt: m.lastUsedAt || '',
+  };
+}
+
+function kits() {
+  const meta = readMeta();
+  return KITS.map((def) => {
+    try { return kitEntry(def, meta); } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
+function kitGet(id) {
+  const def = kitDef(id);
+  if (!def) throw new Error('没有这个接口套件');
+  return kitEntry(def);
 }
 
 function get(id) {
@@ -270,9 +391,9 @@ function uniqueBasePath(base, used) {
   return p;
 }
 
-function uniqueRoutePath(base, method, used) {
+function uniqueRoutePath(base, method, used, prefix) {
   let p = String(base || '').trim() || '/';
-  const keyOf = (x) => `${String(method || 'GET').toUpperCase()} ${String(x).replace(/\/+$/, '')}`;
+  const keyOf = (x) => `${String(method || 'GET').toUpperCase()} ${String(prefix || '')}${String(x).replace(/\/+$/, '')}`;
   if (!used.has(keyOf(p))) { used.add(keyOf(p)); return p; }
   let i = 2;
   const original = p;
@@ -343,4 +464,142 @@ function insert(project, id) {
   return { ok: true, project: next, ifaceId: src.id, category: src.categoryId, name: src.name, renamed: src.name !== origName, routesRenamed, warnings: v.warnings };
 }
 
-module.exports = { list, get, save, update, remove, insert, counts, DIR };
+function insertKit(project, id) {
+  const def = kitDef(id);
+  if (!def) throw new Error('没有这个接口套件');
+  const p = spec.normalizeProject(project);
+  const source = kitProject(def);
+  const srcIfaces = JSON.parse(JSON.stringify(source.interfaces));
+
+  const ifaceNames = new Set(p.interfaces.map((x) => normName(x.name)));
+  const tableNames = new Set(p.interfaces.flatMap((x) => x.tables.map((t) => t.name)));
+  const basePaths = new Set(p.interfaces.map((x) => String(x.basePath || '').replace(/\/+$/, '')).filter(Boolean));
+  const routeKeys = new Set(p.interfaces.flatMap((x) => (x.routes || []).map((r) => `${String(r.method || 'GET').toUpperCase()} ${String(x.basePath || '')}${String(r.path || '').replace(/\/+$/, '')}`)));
+
+  // 分类：同名直接归并，同名不同 id 新建一个分类，保证接口仍能落到正确分类。
+  const catMap = new Map();
+  const catIds = new Set(p.categories.map((c) => c.id));
+  for (const c of source.categories) {
+    const same = p.categories.find((x) => normName(x.name) === normName(c.name));
+    if (same) { catMap.set(c.id, same.id); continue; }
+    let cid = String(c.id || `cat${p.categories.length + 1}`);
+    let n = 2;
+    while (catIds.has(cid)) cid = `${String(c.id || 'cat')}_${n++}`;
+    catIds.add(cid);
+    p.categories.push({ id: cid, name: c.name });
+    catMap.set(c.id, cid);
+  }
+
+  // 自定义函数：同实现只留一份；同名不同实现就改名，脚本里同步替换。
+  const fnRename = new Map();
+  for (const fn of source.functions || []) {
+    const same = p.functions.find((x) => x.name === fn.name);
+    if (same) {
+      if (JSON.stringify(same.params) === JSON.stringify(fn.params) && same.body === fn.body) continue;
+      let name = `${fn.name}_KIT`;
+      let n = 2;
+      while (p.functions.some((x) => x.name === name)) name = `${fn.name}_KIT${n++}`;
+      fnRename.set(fn.name, name);
+      p.functions.push({ ...fn, name });
+      continue;
+    }
+    p.functions.push(JSON.parse(JSON.stringify(fn)));
+  }
+
+  // 共享表：同一个物理表在一套件里出现多次（如商品表同时被商品、购物车引用）只改一次名。
+  const tableMap = new Map();
+  const tableUse = new Map();
+  for (const iface of srcIfaces) {
+    for (const t of iface.tables) {
+      const old = t.name;
+      tableUse.set(old, (tableUse.get(old) || 0) + 1);
+      if (!tableMap.has(old)) tableMap.set(old, uniqueTableName(old, tableNames));
+    }
+  }
+
+  const replaceIdent = (text, oldName, nextName) => {
+    if (!text || oldName === nextName) return text;
+    const esc = String(oldName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return String(text).replace(new RegExp(`(^|[^A-Za-z0-9_])${esc}(?![A-Za-z0-9_])`, 'g'), `$1${nextName}`);
+  };
+
+  const added = [];
+  const renamedTableSet = new Set();
+  let renamedIfaces = 0;
+  let renamedBasePaths = 0;
+  let routesRenamed = 0;
+
+  // 套件接口原本共用根路径时，如果当前工程已经有同 method + path，就给整套加一个业务前缀，
+  // 而不是把 /register 改成 /register-2 这种越来越难认的路径。
+  const rootCollision = srcIfaces.some((i) => !String(i.basePath || '')
+    && (i.routes || []).some((r) => routeKeys.has(`${String(r.method || 'GET').toUpperCase()} ${String(r.path || '').replace(/\/+$/, '')}`)));
+  const fallbackBase = rootCollision ? uniqueBasePath(`/${def.key}`, basePaths) : '';
+
+  for (const src of srcIfaces) {
+    const origName = src.name;
+    src.id = crypto.randomUUID().replace(/-/g, '');
+    src.name = uniqueIfaceName(src.name, ifaceNames);
+    if (src.name !== origName) renamedIfaces++;
+    if (src.docs && src.docs.title === origName) src.docs.title = src.name;
+    src.categoryId = catMap.get(src.categoryId) || (p.categories[0] && p.categories[0].id) || '';
+
+    const oldBase = String(src.basePath || '');
+    if (!oldBase && fallbackBase) src.basePath = fallbackBase;
+    else src.basePath = uniqueBasePath(src.basePath, basePaths);
+    if (src.basePath !== oldBase) renamedBasePaths++;
+
+    for (const t of src.tables) {
+      const old = t.name;
+      const next = tableMap.get(old) || old;
+      if (next !== old) renamedTableSet.add(old);
+      t.name = next;
+    }
+
+    for (const r of (src.routes || [])) {
+      const before = String(r.path || '');
+      let path = before;
+      for (const [old, next] of tableMap) path = replaceIdent(path, old, next);
+      let script = String(r.script || '');
+      for (const [old, next] of tableMap) script = replaceIdent(script, old, next);
+      for (const [old, next] of fnRename) script = replaceIdent(script, old, next);
+      r.script = script;
+      const safe = uniqueRoutePath(path, r.method, routeKeys, src.basePath);
+      r.path = safe;
+      if (safe !== before) routesRenamed++;
+    }
+    p.interfaces.push(src);
+    added.push(src.name);
+  }
+
+  const next = spec.normalizeProject(p);
+  const v = spec.validateProject(next);
+  if (!v.ok) throw new Error(v.errors.join('\n'));
+
+  const meta = readMeta();
+  const km = { ...(meta[`kit:${def.key}`] || {}) };
+  km.uses = (Number(km.uses) || 0) + 1;
+  km.lastUsedAt = new Date().toISOString();
+  meta[`kit:${def.key}`] = km;
+  writeMeta(meta);
+
+  const shared = [...tableUse].filter(([, n]) => n > 1).map(([name, n]) => ({ name, target: tableMap.get(name), definitions: n }));
+  const addedTables = new Set(next.interfaces.slice(-srcIfaces.length).flatMap((i) => i.tables.map((t) => t.name)));
+  return {
+    ok: true,
+    project: next,
+    kit: kitEntry(def, meta),
+    added,
+    ifaceIds: next.interfaces.slice(-srcIfaces.length).map((i) => i.id),
+    counts: {
+      interfaces: srcIfaces.length,
+      tables: addedTables.size,
+      routes: srcIfaces.reduce((n, i) => n + (i.routes || []).length, 0),
+    },
+    shared,
+    renamed: { interfaces: renamedIfaces, tables: renamedTableSet.size, basePaths: renamedBasePaths, routes: routesRenamed },
+    warnings: v.warnings,
+  };
+}
+
+module.exports = { list, get, save, update, remove, insert, kits, kitGet, insertKit, counts, DIR, KITS };
+

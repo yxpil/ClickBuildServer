@@ -1329,6 +1329,7 @@ function showMoreMenu() {
       <h5>内容与复用</h5>
       <div class="more-grid">
         ${item('templates', '模版库', '套用内置业务工程')}
+        ${item('ifaceKits', '接口套件', '商城、博客、社区整套接入')}
         ${item('favLib', '常用接口', '收藏、分类、搜索、复用')}
         ${item('ifaceLib', '接口库', '浏览全部内置与我的接口')}
         ${item('saveTemplate', '存为模版', '把当前工程收进模版库')}
@@ -3760,12 +3761,19 @@ RETURN 200 { "user": $user };</pre></div>
       <div class="hb-p">路由顶部“Redis 缓存”控制整条响应缓存，列表/详情默认开 60 秒。表结构页的“加速”下拉控制表数据怎么读写：直连 MySQL、MySQL + Redis 查询缓存、Redis 表、Redis 热读 + MySQL 权威、LRU 内存表、LRU + Redis 持久、内存表 + 定期写 Redis。TTL、上限、刷盘间隔就在表头改。</div>
       <div class="hb-h3">对象存储</div>
       <div class="hb-p">文件不进数据库，只存对象键。上传路由成功后可用 <span class="hb-inline">{{objectKey}}</span> 入库；对象表路由直接列桶；下载/预览地址用 <span class="hb-inline">{{objectUrl}}</span> 或前端自己拼。默认桶 clickbuild，可在设置和导出配置里改。</div>
+      <div class="hb-h3">接口套件（1.1.73）</div>
+      <div class="hb-p">“更多 → 接口库”打开后第一个页签是「套件」：商城、博客、社区、工单、CRM、预约、课程、问卷，共 8 套、29 接口、177 路由。套件不是单接口打包，而是一套共享表、共享登录态和业务页面的闭环，每套都带演示数据和可直接点的页面。</div>
+      <div class="hb-grid">
+        <div class="hb-card"><b>整套复用</b><p>并进当前工程。同名共享表只建一次，商城的商品表被商品和购物车共用，接入后仍是同一张；接口名、分类、basePath、路由分别避重。</p></div>
+        <div class="hb-card"><b>新建系统</b><p>用套件对应模板新建工程，seed 演示数据和 .yxpp 业务页面一起生成，创建完直接打开页面点。</p></div>
+        <div class="hb-card"><b>路由冲突</b><p>整套共用的根路由撞上现有工程时，给整套加业务前缀（如 /mall），不会把 /products 改成 /products-2。</p></div>
+      </div>
       <div class="hb-h3">AI 与插件</div>
       <div class="hb-grid">
         <div class="hb-card"><b>AI 生成</b><p>“更多 → AI 生成”用自然语言生成接口工程。设置里选 Ollama、OpenAI 兼容或本地模拟；先“测试连接”再保存。失败可勾“退回本地模拟”。</p></div>
         <div class="hb-card"><b>插件</b><p>“更多 → 插件”启停插件、看命令与日志、管理信任目录。插件命令最多三个显示在 Ribbon，其余在插件面板。</p></div>
         <div class="hb-card"><b>上游</b><p>接口“上游”页配置 baseUrl 和鉴权，proxy 路由才能选；适合挂已有 REST 服务。</p></div>
-        <div class="hb-card"><b>模版 / 接口库</b><p>“更多”里可套用模版、插入现成接口，或把当前工程/接口存进库，方便复用。</p></div>
+        <div class="hb-card"><b>模版 / 接口库</b><p>“更多”里可套用模版、插入现成单接口或整套业务套件，也可把当前工程/接口存进库。</p></div>
       </div>
       <div class="hb-warn"><b>AI 产物要验收</b><div>AI 只负责生成结构，不保证业务正确。生成后逐条看表字段、路由脚本、鉴权，再启动试运行；不要直接把未验收的工程部署到生产。</div></div>
     `,
@@ -4520,6 +4528,7 @@ async function act(name, el) {
   if (name === 'templates') return showTemplates();
   if (name === 'saveTemplate') return showSaveTemplate();
   if (name === 'ifaceLib') return showIfaceLibrary();
+  if (name === 'ifaceKits') return showIfaceLibrary({ view: 'kits' });
   if (name === 'favLib') return showIfaceLibrary({ view: 'favorite' });
   if (name === 'saveIface') return showSaveIface();
   if (name === 'plugins') return showPlugins();
@@ -4720,10 +4729,12 @@ async function showIfaceLibrary(opts) {
   const o = opts || {};
   const r = await api.ifaceLibrary();
   if (!r.ok) return toast('读取接口库失败：' + r.error);
+  const kr = await api.ifaceLibraryKits();
   const state = {
     view: o.view || 'all',
     q: o.q || '',
     category: o.category || 'all',
+    kits: kr && kr.ok ? (kr.list || []) : [],
   };
   let entries = (r.list || []).slice();
   const root = modal(`<div class="lib-shell">
@@ -4769,16 +4780,36 @@ async function showIfaceLibrary(opts) {
       .lib-empty b{display:block;font-size:13px;color:#3d4554;margin-bottom:5px}
       .lib-empty span{font-size:11.5px;line-height:1.6}
       .lib-empty button{margin-top:13px}
+      .kit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px 20px 18px}
+      .kit-card{border:1px solid #e4e9f1;border-radius:11px;background:#fff;padding:14px 14px 12px;display:flex;flex-direction:column;min-height:198px;box-shadow:0 2px 8px rgba(31,45,61,.04)}
+      .kit-card:hover{border-color:#cbd7ea;box-shadow:0 6px 16px rgba(31,45,61,.08)}
+      .kit-top{display:flex;align-items:flex-start;gap:9px}
+      .kit-mark{width:30px;height:30px;border-radius:8px;background:#eef4ff;color:#2f6fe4;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}
+      .kit-name{font-size:13.5px;font-weight:700;line-height:1.3}
+      .kit-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+      .kit-tag{font-size:9.5px;color:#6d7788;background:#f3f5f9;border-radius:9px;padding:1px 7px}
+      .kit-sum{font-size:11px;color:#737d8e;line-height:1.65;margin-top:9px;min-height:36px}
+      .kit-counts{font-size:10.5px;color:#58647a;margin-top:8px}
+      .kit-counts b{color:#2f3542;font-size:12px}
+      .kit-ifaces{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+      .kit-iface{font-size:10px;border:1px solid #e7ebf2;border-radius:5px;padding:2px 6px;color:#4f5a6d;background:#fbfcfe;white-space:nowrap}
+      .kit-ready{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+      .kit-ready span{font-size:9.5px;color:#2e7d4f;background:#f0faf4;border:1px solid #d8efe1;border-radius:8px;padding:1px 6px}
+      .kit-acts{display:flex;gap:7px;margin-top:auto;padding-top:11px}
+      .kit-acts .btn{font-size:11px;padding:6px 10px}
+      .kit-new{border-color:#dfe4ec!important;background:#fff!important;color:#4d596b!important}
+      .kit-shared{font-size:9.5px;color:#9a6a16;background:#fff9ec;border:1px solid #f2e4bd;border-radius:8px;padding:1px 6px}
       .lib-foot{display:flex;align-items:center;gap:10px;padding:10px 20px;border-top:1px solid #edf0f4;font-size:10.5px;color:#8b93a1;background:#fcfdfe}
     </style>
     <div class="lib-head">
       <div class="lib-mark">${icon('star')}</div>
-      <div><div class="lib-title" id="libTitle">${state.view === 'favorite' ? '常用接口' : '接口库'}</div><div class="lib-sub">收藏、分类、搜索；编辑好的接口可以直接复用到当前工程</div></div>
+      <div><div class="lib-title" id="libTitle">${state.view === 'favorite' ? '常用接口' : state.view === 'kits' ? '接口套件' : '接口库'}</div><div class="lib-sub" id="libSub">收藏、分类、搜索；编辑好的接口可以直接复用到当前工程</div></div>
       <div class="acts"><button class="btn thin" id="libSave">＋ 存当前接口</button><button class="btn thin" id="libClose">关闭</button></div>
     </div>
     <div class="lib-toolbar">
       <div class="lib-search">${icon('search')}<input id="libQ" placeholder="搜索名称 / 分类 / 说明 / 来源"></div>
       <div class="lib-tabs">
+        <button class="lib-tab" data-lib-view="kits">套件</button>
         <button class="lib-tab" data-lib-view="favorite">常用</button>
         <button class="lib-tab" data-lib-view="all" data-lib-kind="all">全部</button>
         <button class="lib-tab" data-lib-view="user" data-lib-kind="user">我的</button>
@@ -4788,7 +4819,7 @@ async function showIfaceLibrary(opts) {
       <span class="lib-stats" id="libStats"></span>
     </div>
     <div class="lib-list" id="libList"></div>
-    <div class="lib-foot"><span>复用会完整复制表、字段、路由、脚本和文档；名称、表名、basePath 自动避重。</span><span id="libCount" style="margin-left:auto"></span></div>
+    <div class="lib-foot"><span id="libFootText">复用会完整复制表、字段、路由、脚本和文档；名称、表名、basePath 自动避重。</span><span id="libCount" style="margin-left:auto"></span></div>
   </div>`, (box) => {
     const listEl = box.querySelector('#libList');
     const qEl = box.querySelector('#libQ');
@@ -4796,6 +4827,8 @@ async function showIfaceLibrary(opts) {
     const statsEl = box.querySelector('#libStats');
     const countEl = box.querySelector('#libCount');
     const titleEl = box.querySelector('#libTitle');
+    const subEl = box.querySelector('#libSub');
+    const footEl = box.querySelector('#libFootText');
 
     const cats = () => [...new Set(entries.map((x) => x.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
     const updateCats = () => {
@@ -4806,7 +4839,8 @@ async function showIfaceLibrary(opts) {
     };
 
     const row = (x) => {
-      const desc = [x.description, x.source && x.source !== x.name ? '来源：' + x.source : ''].filter(Boolean).join(' · ');
+      const kitName = x.kind === 'builtin' ? ((state.kits.find((k) => k.templateId === x.sourceId) || {}).name || '') : '';
+      const desc = [x.description, kitName ? '套件：' + kitName : '', x.source && x.source !== x.name ? '来源：' + x.source : ''].filter(Boolean).join(' · ');
       return `<div class="lib-row ${x.favorite ? 'is-fav' : ''}" data-lib-row="${esc(x.id)}" data-kind="${esc(x.kind)}" data-name="${esc(x.name)}" data-source="${esc(x.source || '')}">
         <button class="lib-star ${x.favorite ? 'on' : ''}" data-lib-star="${esc(x.id)}" title="${x.favorite ? '取消常用' : '加入常用'}">${icon('star')}</button>
         <div class="lib-kind ${x.kind}">${x.kind === 'builtin' ? '内置' : '我的'}</div>
@@ -4823,17 +4857,71 @@ async function showIfaceLibrary(opts) {
       </div>`;
     };
 
+    const kitCard = (k) => {
+      const ready = [
+        k.readiness.auth ? '登录态' : '',
+        k.readiness.seed ? '演示数据' : '',
+        k.readiness.frontend ? '业务页面' : '',
+        k.readiness.upload ? '文件上传' : '',
+      ].filter(Boolean);
+      const shared = (k.shared || []).length
+        ? `<span class="kit-shared" title="${esc((k.shared || []).map((s) => s.name).join('、'))}">${k.counts.sharedTables} 张表共享</span>`
+        : '';
+      return `<div class="kit-card" data-kit-card="${esc(k.id)}">
+        <div class="kit-top">
+          <div class="kit-mark">套</div>
+          <div style="min-width:0;flex:1">
+            <div class="kit-name">${esc(k.name)}</div>
+            <div class="kit-tags">${(k.tags || []).map((t) => `<span class="kit-tag">${esc(t)}</span>`).join('')}${shared}</div>
+          </div>
+        </div>
+        <div class="kit-sum">${esc(k.summary || '')}</div>
+        <div class="kit-counts"><b>${k.counts.interfaces}</b> 接口 · <b>${k.counts.tables}</b> 张表${k.counts.tableDefs !== k.counts.tables ? `（${k.counts.tableDefs} 条表定义）` : ''} · <b>${k.counts.routes}</b> 路由</div>
+        <div class="kit-ifaces">${(k.interfaces || []).map((x) => `<span class="kit-iface">${esc(x.name)}</span>`).join('')}</div>
+        <div class="kit-ready">${ready.map((x) => `<span>${esc(x)}</span>`).join('')}${k.uses ? `<span style="color:#5b6475;background:#f4f6fa;border-color:#e5e9f0">用过 ${k.uses} 次</span>` : ''}</div>
+        <div class="kit-acts">
+          <button class="btn thin lib-use" data-kit-use="${esc(k.id)}">整套复用</button>
+          <button class="btn thin kit-new" data-kit-new="${esc(k.id)}" data-kit-tpl="${esc(k.templateId)}">新建系统</button>
+        </div>
+      </div>`;
+    };
+
     const render = () => {
-      updateCats();
-      titleEl.textContent = state.view === 'favorite' ? '常用接口' : '接口库';
+      const isKits = state.view === 'kits';
+      if (!isKits) updateCats();
+      catEl.style.display = isKits ? 'none' : '';
+      titleEl.textContent = isKits ? '接口套件' : state.view === 'favorite' ? '常用接口' : '接口库';
+      subEl.textContent = isKits
+        ? '一套共享表、登录态与路由的业务闭环；整套接入当前工程，或直接新建一个能跑的系统'
+        : state.view === 'favorite'
+          ? '给常用接口点星标，之后一键复用到当前工程'
+          : '收藏、分类、搜索；单个接口可复用，成套业务请切到「套件」';
+      footEl.textContent = isKits
+        ? '整套复用会共享同一批表、函数与登录态；表名、接口名、basePath 自动避重。新建系统会带演示数据和业务页面。'
+        : '复用会完整复制表、字段、路由、脚本和文档；名称、表名、basePath 自动避重。';
+      box.querySelectorAll('[data-lib-view]').forEach((b) => b.classList.toggle('on', b.dataset.libView === state.view));
       const q = state.q.trim().toLowerCase();
+
+      if (isKits) {
+        const shown = state.kits.filter((k) => {
+          const hay = [k.name, k.summary, (k.tags || []).join(' '), (k.interfaces || []).map((x) => x.name).join(' ')].join(' ').toLowerCase();
+          return !q || hay.includes(q);
+        });
+        statsEl.textContent = `${state.kits.length} 套件 · ${state.kits.reduce((n, k) => n + k.counts.interfaces, 0)} 接口 · ${state.kits.reduce((n, k) => n + k.counts.routes, 0)} 路由`;
+        countEl.textContent = `显示 ${shown.length} / ${state.kits.length} 套`;
+        listEl.className = 'lib-list';
+        listEl.innerHTML = shown.length
+          ? `<div class="kit-grid">${shown.map(kitCard).join('')}</div>`
+          : `<div class="lib-empty"><div class="ic">${icon('iface')}</div><b>没有符合条件的套件</b><span>换个关键词再试试，或切到「全部」看单个接口。</span></div>`;
+        return;
+      }
+
       const shown = entries.filter((x) => {
         const byView = state.view === 'all' ? true : state.view === 'favorite' ? x.favorite : x.kind === state.view;
         const byCat = state.category === 'all' || x.category === state.category;
         const hay = [x.name, x.category, x.description, x.source].join(' ').toLowerCase();
         return byView && byCat && (!q || hay.includes(q));
       }).sort((a, b) => (Number(b.favorite) - Number(a.favorite)) || ((b.uses || 0) - (a.uses || 0)) || (a.kind === b.kind ? 0 : a.kind === 'user' ? -1 : 1));
-      box.querySelectorAll('[data-lib-view]').forEach((b) => b.classList.toggle('on', b.dataset.libView === state.view));
       const fav = entries.filter((x) => x.favorite).length;
       const mine = entries.filter((x) => x.kind === 'user').length;
       statsEl.textContent = `${fav} 常用 · ${mine} 我的 · ${entries.length - mine} 内置`;
@@ -4862,11 +4950,43 @@ async function showIfaceLibrary(opts) {
       S.selId = got.ifaceId;
       S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
       await api.save(S.project);
-      closeModal(); render();
+      closeModal(); if (window.render) window.render();
       toast(`已复用「${got.name}」${got.renamed ? '（同名，已自动加序号）' : ''}${got.routesRenamed ? `（${got.routesRenamed} 条路由已避重）` : ''}`, 3200);
     };
 
+    const useKit = async (id) => {
+      const got = await api.ifaceLibraryKitInsert(S.project, id);
+      if (!got.ok) return toast('整套接入失败：' + String(got.error || '').slice(0, 200), 7000);
+      S.project = got.project;
+      const first = got.project.interfaces.find((x) => x.id === (got.ifaceIds || [])[0]);
+      S.cat = first ? first.categoryId : (got.project.categories[0] || {}).id || '';
+      S.selId = first ? first.id : '';
+      S.mode = 'editor'; S.tab = 'tables'; S.problems = [];
+      await api.save(S.project);
+      closeModal();
+      if (window.render) window.render();
+      const rename = got.renamed || {};
+      const bits = [];
+      if (rename.interfaces) bits.push(`${rename.interfaces} 个接口名避重`);
+      if (rename.tables) bits.push(`${rename.tables} 张表避重`);
+      if (rename.basePaths) bits.push(`${rename.basePaths} 个接口加了 /${String(id).replace('kit:', '')} 前缀`);
+      toast(`已整套接入「${got.kit ? got.kit.name : id}」：${got.counts.interfaces} 接口 / ${got.counts.tables} 表 / ${got.counts.routes} 路由${bits.length ? ' · ' + bits.join('，') : ''}`, 5200);
+    };
+
+    const newSystem = async (kit) => {
+      if (!kit) return;
+      closeModal();
+      await hubUseTemplate(kit.templateId);
+    };
+
     listEl.addEventListener('click', async (e) => {
+      const kitUse = e.target.closest('[data-kit-use]');
+      if (kitUse) return useKit(kitUse.dataset.kitUse);
+      const kitNew = e.target.closest('[data-kit-new]');
+      if (kitNew) {
+        const kit = state.kits.find((x) => x.id === kitNew.dataset.kitNew);
+        return newSystem(kit || { templateId: kitNew.dataset.kitTpl });
+      }
       const star = e.target.closest('[data-lib-star]');
       if (star) {
         const x = entries.find((y) => y.id === star.dataset.libStar);

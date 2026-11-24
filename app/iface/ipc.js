@@ -493,6 +493,15 @@ function registerIpc() {
   ipcMain.handle('iface:library:insert', (e, project, id) => {
     try { return { ok: true, ...ifaceLibrary.insert(project, id) }; } catch (e) { return { ok: false, error: e.message }; }
   });
+  ipcMain.handle('iface:library:kits', () => {
+    try { return { ok: true, list: ifaceLibrary.kits() }; } catch (e) { return { ok: false, error: e.message, list: [] }; }
+  });
+  ipcMain.handle('iface:library:kitGet', (e, id) => {
+    try { return { ok: true, ...ifaceLibrary.kitGet(id) }; } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('iface:library:kitInsert', (e, project, id) => {
+    try { return { ok: true, ...ifaceLibrary.insertKit(project, id) }; } catch (e) { return { ok: false, error: e.message }; }
+  });
 
   ipcMain.handle('iface:plugins:list', () => ({ ok: true, list: plugins.list(), repoDir: plugins.repoPluginsDir(), userDir: plugins.userPluginsDir() }));
   ipcMain.handle('iface:plugins:summary', () => plugins.summary());

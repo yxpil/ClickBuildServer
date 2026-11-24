@@ -100,6 +100,24 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('创建隔离 UI 测试工程', !!(sm.file && sm.name === smokeName && sm.n >= 1), smoke);
   t('工程本体是 .yxpn 包', /\.yxpn$/i.test(sm.file), sm.file);
 
+  // 预设接口套件：真实打开套件视图，整套复用商城，并确认商品/购物车共享同一张表。
+  const kitBefore = await val(`JSON.stringify(S.project)`);
+  await val(`showIfaceLibrary({view:'kits'})`);
+  await wait(500);
+  const kitView = await val(`(()=>{const m=document.querySelector('#libTitle');const cards=document.querySelectorAll('[data-kit-card]');const mall=document.querySelector('[data-kit-card="kit:mall"]');return JSON.stringify({title:m&&m.textContent,cards:cards.length,mall:mall?mall.innerText:'',buttons:mall?mall.querySelectorAll('[data-kit-use],[data-kit-new]').length:0})})()`);
+  const kv = JSON.parse(kitView);
+  t('接口库有套件视图与 8 套预设', kv.title === '接口套件' && kv.cards === 8, kitView.slice(0, 180));
+  t('商城套件卡片列出整套接口与两个动作', /商城交易系统/.test(kv.mall) && /4 接口/.test(kv.mall) && /用户注册/.test(kv.mall) && /购物车/.test(kv.mall) && kv.buttons === 2, kitView.slice(0, 220));
+  const beforeN = await val(`S.project.interfaces.length`);
+  await val(`document.querySelector('[data-kit-use="kit:mall"]').click()`);
+  await wait(1700);
+  const kitAfter = JSON.parse(await val(`(()=>{const owner=x=>x.tables.filter(t=>t.name==='shop_product').length;const ifs=S.project.interfaces;return JSON.stringify({n:ifs.length,shared:ifs.filter(owner).length,names:ifs.slice(-4).map(x=>x.name),toast:document.querySelector('#toast').innerText})})()`));
+  t('整套复用后接口数 +4', kitAfter.n === beforeN + 4, kitAfter.n + ' vs ' + beforeN);
+  t('商品与购物车共享 shop_product 表', kitAfter.shared >= 2 && /商品|购物车/.test(kitAfter.names.join('|')), JSON.stringify(kitAfter));
+  t('整套复用给出接入摘要', /整套接入|商城交易/.test(kitAfter.toast || ''), kitAfter.toast);
+  await val(`(async()=>{S.project=JSON.parse(${JSON.stringify(kitBefore)});S.dirty=false;S.cat=(S.project.categories[0]||{}).id;S.selId=(S.project.interfaces[0]||{}).id;await api.save(S.project);render();return true})()`, true);
+  await wait(600);
+
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);
   t('Ribbon 收敛为 6 组常用入口 + 插件组', await val(`(()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));const baseActs=base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0);return g.length===7 && base.length===6 && baseActs<=18 && document.querySelectorAll('#ribbon [data-plugin-run]').length>0;})()`), await val(`((()=>{const g=[...document.querySelectorAll('#ribbon .ribbon-group')];const base=g.filter(x=>!x.querySelector('[data-plugin-run]'));return g.length+' 组 / 基础按钮 '+base.reduce((n,x)=>n+x.querySelectorAll('[data-action]').length,0)+' 项 / 插件命令 '+document.querySelectorAll('#ribbon [data-plugin-run]').length;})())`));
