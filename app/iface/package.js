@@ -2,6 +2,8 @@
 'use strict';
 
 // .yxpn 工程包：一个 zip，里面装工程定义、SQL、文档和导出代码。
+// 工程本体保存走 buildProject/writeProject：只放 manifest、project、前端和说明，不跑代码生成。
+// 分享/导出走 build/writeYxpn：会调 codegen 生成全部代码和原生资产。
 // 结构：
 //   manifest.json      格式版本、生成时间、工程摘要
 //   project.json       完整工程（可直接导入）
@@ -126,6 +128,93 @@ function unzip(buf) {
   return out;
 }
 
+function stamp(value) {
+  if (!value) return new Date().toISOString();
+  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
+    const ms = Number(value);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+function projectManifest(project, opts) {
+  const p = spec.normalizeProject(project);
+  const o = opts || {};
+  return {
+    format: 'yxpn',
+    version: 1,
+    kind: 'project',
+    scope: 'project',
+    name: p.name,
+    createdAt: stamp(o.createdAt || p.createdAt),
+    updatedAt: stamp(o.updatedAt || p.updatedAt),
+    counts: {
+      interfaces: p.interfaces.length,
+      tables: p.interfaces.reduce((n, i) => n + i.tables.length, 0),
+      routes: p.interfaces.reduce((n, i) => n + i.routes.length, 0),
+      functions: p.functions.length,
+    },
+    runtime: { node: '>=18', deps: ['mysql2', 'ioredis', 'minio'] },
+    frontend: p.frontend ? { format: 'yxpp', name: p.frontend.name, framework: p.frontend.framework, file: 'frontend/index.yxpp' } : null,
+  };
+}
+
+function frontendEntries(project, entries) {
+  const p = spec.normalizeProject(project);
+  if (!p.frontend || !p.frontend.project) return;
+  const yxpp = {
+    format: 'yxpp',
+    version: 1,
+    name: p.frontend.name || `${p.name} 前端`,
+    framework: p.frontend.framework || 'tailwind',
+    createdAt: p.frontend.createdAt || p.frontend.updatedAt || new Date().toISOString(),
+    updatedAt: p.frontend.updatedAt || new Date().toISOString(),
+    project: p.frontend.project,
+    html: p.frontend.html || '',
+  };
+  entries.push({ name: 'frontend/index.yxpp', data: JSON.stringify(yxpp, null, 2) });
+  entries.push({ name: 'frontend/project.json', data: JSON.stringify(p.frontend.project, null, 2) });
+  entries.push({ name: 'frontend/README.md', data: [
+    `# ${yxpp.name}`,
+    '',
+    '这是 .yxpn 工程里的前端工程（.yxpp），可直接在 ClickBuild 的「前端」模式打开。',
+  ].join('\n') });
+}
+
+function buildProject(project, opts) {
+  const p = spec.normalizeProject(project);
+  const o = opts || {};
+  const manifest = projectManifest(p, o);
+  const entries = [
+    { name: 'manifest.json', data: JSON.stringify(manifest, null, 2) },
+    { name: 'project.json', data: JSON.stringify(p, null, 2) },
+    { name: 'README.md', data: [
+      `# ${p.name}`,
+      '',
+      '这是 ClickBuild 的 .yxpn 工程文件，工程定义、前端和 SQL 文档都在包内。',
+      '请用 ClickBuild 打开和编辑；直接解压修改不会被应用自动合并。',
+      '',
+      `- 接口：${manifest.counts.interfaces}`,
+      `- 表：${manifest.counts.tables}`,
+      `- 路由：${manifest.counts.routes}`,
+    ].join('\n') },
+  ];
+  frontendEntries(p, entries);
+  return { buffer: zip(entries), manifest, files: entries.map((e) => e.name) };
+}
+
+function writeProject(project, outFile, opts) {
+  const o = { ...(opts || {}) };
+  if (!o.createdAt) {
+    try { o.createdAt = fs.statSync(outFile).birthtime.toISOString(); } catch (e) { /* 新文件，manifest 自己取当前时间 */ }
+  }
+  const built = buildProject(project, o);
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(outFile, built.buffer);
+  return { file: outFile, size: built.buffer.length, manifest: built.manifest, files: built.files };
+}
+
 function build(project, opts) {
   const p = spec.normalizeProject(project);
   const o = opts || {};
@@ -165,4 +254,4 @@ function readYxpn(file) {
   return { project: JSON.parse(entries['project.json'].toString('utf8')), manifest: entries['manifest.json'] ? JSON.parse(entries['manifest.json'].toString('utf8')) : null, files: Object.keys(entries) };
 }
 
-module.exports = { zip, unzip, build, writeYxpn, readYxpn, crc32 };
+module.exports = { zip, unzip, build, buildProject, writeProject, writeYxpn, readYxpn, crc32 };

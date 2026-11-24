@@ -3393,7 +3393,7 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
     id: 'concept', group: '开始', nav: '六个概念', num: '02', title: '先弄懂六个概念', lead: '后面所有操作都围绕这六个对象，先分清“接口”和“路由”就不会迷路。',
     body: `
       <div class="hb-grid">
-        <div class="hb-card"><b>工程 Project</b><p>一个可保存、可切换的工作单元。工程名显示在标题栏，自动保存成工程 JSON，也能打包成 .yxpn。</p></div>
+        <div class="hb-card"><b>工程 Project</b><p>一个可保存、可切换的工作单元。工程名显示在标题栏，工程本体是一个 .yxpn 包，包里放工程定义与前端；磁盘上同时生成可读的工作缓存目录。</p></div>
         <div class="hb-card"><b>接口 Interface</b><p>一组业务能力的集合，比如“订单”。一个接口可以有多张表和多条路由；表键 main 是主表。</p></div>
         <div class="hb-card"><b>表 Table</b><p>真正建到 MariaDB 的表。表名全局唯一；表键 main、item 用于脚本占位符，不参与 SQL 表名。</p></div>
         <div class="hb-card"><b>路由 Route</b><p>一条真实的 HTTP 入口：方法 + 路径 + 一段脚本。列表、详情、新建都是路由，不是表。</p></div>
@@ -3426,6 +3426,7 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
         <div class="hb-card"><b>新建任务</b><p>生成空白工程并进入工作台。三种任务类型：只前端、只后端、混合。</p></div>
         <div class="hb-card"><b>从模版开始</b><p>下方模版卡片会带完整业务结构；点一张就按模版新建工程，适合先看成品再改。</p></div>
         <div class="hb-card"><b>导入 .yxpn</b><p>“更多…”里的“导入 .yxpn”，会把工程包还原成可编辑工程；导出时连前端和文档一起带走。</p></div>
+        <div class="hb-card"><b>工程文件与缓存</b><p>每个工程保存为同名 .yxpn 包；包旁的 <span class="hb-inline">.cache/工程名/</span> 是自动生成的可读副本，只用于查看，不是工程本体。旧版 .json 工程会在启动时自动迁移，原文件保留为 .json.bak。</p></div>
         <div class="hb-card"><b>多项目标签</b><p>打开另一个工程会开新标签；<span class="hb-kbd">Ctrl+Tab</span> 切换，标签上中键或右键可关闭。</p></div>
       </div>
       <div class="hb-h3">三种任务类型看到什么</div>
@@ -3435,7 +3436,7 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
         <tr><td><b>混合</b></td><td>顶部出现“接口 / 前端”切换，两个工作台都能用，适合从接口到页面一起交付。</td><td>完整业务应用。</td></tr>
       </tbody></table>
       <div class="hb-tip"><b>自动保存</b><div>改工程名、字段、脚本、路由都会自动保存；<span class="hb-kbd">Ctrl+S</span> 只是立即落盘。新建任务或打开另一个工程前，应用会先等当前保存完成，避免丢改动。</div></div>
-      <div class="hb-warn"><b>删除不可撤销</b><div>工程历史里删除会把工程 JSON 从磁盘删掉，不是只从列表移除。重要工程先“导出 .yxpn”留一份。</div></div>
+      <div class="hb-warn"><b>删除不可撤销</b><div>工程历史里删除会把 .yxpn 工程包和它的工作缓存一起从磁盘删掉，不是只从列表移除。重要工程先“导出 .yxpn”留一份。</div></div>
     `,
   },
   {
@@ -7032,7 +7033,7 @@ async function deleteHubProject(name) {
   const item = HUB.list.find((p) => p.name === name) || {};
   const msg = item.missing
     ? `「${name}」的文件已经找不到，仍然移除这条历史记录？`
-    : `确定删除工程「${name}」？工程 JSON 会从磁盘删除，这个操作不能撤销。`;
+    : `确定删除工程「${name}」？.yxpn 工程包和它的工作缓存会从磁盘删除，这个操作不能撤销。`;
   if (!(await confirmBox('删除工程', msg))) return;
   const r = await api.remove(name);
   TABS.items = TABS.items.filter((x) => x.name !== name);

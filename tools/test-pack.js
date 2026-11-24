@@ -22,6 +22,17 @@ t('回读包接口数一致', got.project.interfaces.length === project.interfac
 t('包内文件条目', got.files.length > 10, got.files.length);
 t('CRC 校验通过（无抛错）', true);
 
+// 工程本体包：同一个 .yxpn 格式，但不把生成代码塞进去，供每次保存使用。
+const projectFile = path.join(__dirname, '..', 'generated', 'yxpn', '自测工程-工程.yxpn');
+const mini = pkg.writeProject(project, projectFile, { updatedAt: project.updatedAt });
+const miniGot = pkg.readYxpn(projectFile);
+t('工程本体包写入并回读', !!mini.manifest && miniGot.project.name === project.name, mini);
+t('工程本体包标记 kind=project', miniGot.manifest.kind === 'project' && miniGot.manifest.scope === 'project', miniGot.manifest);
+t('工程本体包不包含生成代码', !miniGot.files.some((f) => /^(src|sql|native)\//.test(f)), miniGot.files);
+const firstCreated = miniGot.manifest.createdAt;
+pkg.writeProject(project, projectFile, { updatedAt: Date.now() });
+t('重复保存保留包创建时间', pkg.readYxpn(projectFile).manifest.createdAt === firstCreated, firstCreated);
+
 const copy = spec.cloneIface(project.interfaces[0], project.interfaces.map((i) => i.name));
 t('复制接口自动编号 2', copy.name === '订单2', copy.name);
 t('复制后表名同步', copy.tables[0].name === 'biz_order_2', copy.tables[0].name);

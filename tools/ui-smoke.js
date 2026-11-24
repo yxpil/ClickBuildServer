@@ -98,6 +98,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const smoke = await val(`(async()=>{const p=await api.seed();p.name=${JSON.stringify(smokeName)};p.description='UI 冒烟专用工程，结束自动删除';const r=await api.save(p);await enterWorkspace(p);return JSON.stringify({name:p.name,file:r.file,n:p.interfaces.length,frontend:!!p.frontend})})()`);
   const sm = JSON.parse(smoke);
   t('创建隔离 UI 测试工程', !!(sm.file && sm.name === smokeName && sm.n >= 1), smoke);
+  t('工程本体是 .yxpn 包', /\.yxpn$/i.test(sm.file), sm.file);
 
   await val(`(()=>{S.mode='grid';S.cat=(S.project.categories[0]||{}).id;render();})()`);
   await wait(300);

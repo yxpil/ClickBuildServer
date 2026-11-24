@@ -156,7 +156,7 @@
 ## 工程历史预览（1.1.14）
 
 - 打开应用先进入工程历史预览页，不再直接把最近工程铺进工作台；选中历史工程后才进入接口工作表。带 `?project=名称` 或 `?openYxpn=路径` 启动时仍直接打开对应工程。
-- 预览页列出全部历史工程，显示接口 / 表 / 路由统计、更新时间与工程 JSON 路径。文件被外部删除后仍保留历史条目，卡片标 `LOST` 并显示“找不到文件”；此时打开会提示“找不到文件”。
+- 预览页列出全部历史工程，显示接口 / 表 / 路由统计、更新时间与 .yxpn 工程包路径。文件被外部删除后仍保留历史条目，卡片标 `LOST` 并显示“找不到文件”；此时打开会提示“找不到文件”。
 - 每张历史卡片右上角有大红色圆形删除叉；右键卡片可直接打开、复制或删除工程。复制会生成“工程名 副本 / 副本 2”，删除缺失文件的历史会二次确认并清理索引。
 - 预览页下方直接列出全部内置与自存模版，点选后新建工程并进入工作台；已有工程时先确认。新增“音乐网站”和“小说网站”模版，内置模版总数 26。
 
@@ -213,6 +213,10 @@ npm run dist:linux:dir
 AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist/linux-unpacked`，因为 electron-builder 的 AppImage / fpm 工具是 Linux 可执行文件。
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
+
+1.1.72 把工程本体从 `<工程名>.json` 改成 `<工程名>.yxpn`：工程、前端和包清单装进一个 zip，保存时不再写 JSON 单文件。包内是 `manifest.json`（`kind: "project"`）、`project.json`、`README.md`，绑定前端时再带 `frontend/index.yxpp` 和 `frontend/project.json`；这是轻量工程包，不跑代码生成，自动保存不会把整个服务产物塞进去。包旁生成 `.cache/<工程名>/` 可读工作副本（同样展开这些文件，附 `README.cache.txt`），只用于查看，改缓存不会回写工程。旧版 `.json` 在第一次扫描或打开时自动迁移成 `.yxpn`，原文件保留为 `.json.bak`；历史索引里的旧路径同步替换，不出现指向已删文件的幽灵记录。用 13 个真实工程副本实测：首次迁移并列出全部工程约 0.84 秒，原有接口数、表数、路由数、前端 HTML 长度逐项一致；最大工程 433 KB JSON 压成 34 KB 包，大工程单次保存约 73 ms，仍走 1.2 秒防抖自动保存。验收：`test:ci` 14/14，`test-history` 18/18，`test-task-types` 14/14，`test-pack` 23/23，源码版与 1.1.72 安装版 UI 冒烟均 156/156（新增“工程本体是 .yxpn 包”）。Windows 安装包 225,045,742 B，构建时间 2026-11-25 00:17:01，SHA256 `E0B94E3E6D93B8E313C98200619D469BC2B1C464B060B2E1FD95AF2962FE2ADD`。
+
+![工程历史里每个工程都是 .yxpn 包](docs/screenshots/project-yxpn-real.png)
 
 1.1.71 把 `.yxpn` 导出从“只能落到默认生成目录”改成可选保存位置：点导出后打开系统保存对话框，默认文件名是 `<工程名>.yxpn`，可换目录、改文件名、覆盖已有包；文件名没有扩展名时自动补 `.yxpn`，取消对话框不会产生文件。IPC 同时保留 `filePath` 参数，自动化或插件可直接指定完整目标路径落盘，不再被迫先弹窗。验收：UI 冒烟新增“导出文件落到指定路径”，源码版 155/155，`test:ci` 14/14。Windows 安装包 225,043,013 B，构建时间 2026-11-24 23:55:03，SHA256 `9FA7858B76B9D2A2F76551538B2AA08C61336D9E6A3D0151B3D3447AB4EA4873`。
 
@@ -453,7 +457,9 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 
 ## .yxpn 工程包
 
-`导出包` 生成 ZIP（纯 Node 实现，带 CRC32）：`manifest.json` + `project.json` + `interfaces.json` + `sql/*` + `docs/*` + 导出代码；如果工程绑定了前端，还会带 `frontend/index.yxpp`、`frontend/project.json` 和 `public/index.html`，manifest 里有 `frontend` 元信息。`导入包` / 双击 `.yxpn` 直接打开（`关联` 按钮写入 HKCU 文件关联）。
+从 1.1.72 起，工程本身也存成 `.yxpn` 包，磁盘上不再有 `<工程名>.json`。包内是 `manifest.json`（`kind: "project"`）+ `project.json` + `README.md`，绑定前端时再带 `frontend/index.yxpp` 和 `frontend/project.json`；不跑代码生成，所以每次自动保存只写工程定义，包体很小。包旁会生成 `.cache/<工程名>/` 可读工作副本（同样展开这几个文件，另有 `README.cache.txt`），只用于查看，改它不会回写工程。旧版 `<工程名>.json` 在启动扫描或打开时自动迁移成 `.yxpn`，原文件重命名为 `.json.bak` 保留；历史索引里的旧 `.json` 路径也会自动换成 `.yxpn`，不会出现指向旧文件的幽灵记录。
+
+`导出包` 仍是另一件事：生成完整分享 ZIP（纯 Node 实现，带 CRC32），包含 `manifest.json` + `project.json` + `interfaces.json` + `sql/*` + `docs/*` + 导出代码；如果工程绑定了前端，还会带 `frontend/index.yxpp`、`frontend/project.json` 和 `public/index.html`，manifest 里有 `frontend` 元信息。`导入包` / 双击 `.yxpn` 直接打开（`关联` 按钮写入 HKCU 文件关联）。
 
 1.1.71 起，导出 `.yxpn` 会先打开系统保存对话框，可以自行选择目录、文件名和覆盖目标；默认位置仍是生成目录下的 `yxpn/<工程名>.yxpn`。文件名没写 `.yxpn` 会自动补上，取消对话框不会写出半成品。自动化或插件也可以给 `exportYxpn(project, { filePath })` 传完整目标路径直接落盘。
 
@@ -584,10 +590,10 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 
 | 套件 | 结果 |
 | --- | --- |
-| `npm run test:ci`（CI 顺序执行 13 套核心回归，含停止按钮 / 多语言 / 表格导入 / 引导模板） | **13/13** |
+| `npm run test:ci`（CI 顺序执行 14 套核心回归，含停止按钮 / 多语言 / 表格导入 / 引导模板） | **14/14** |
 | `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **194/194** |
 | `tools/test-plugins-v2.js`（命令 / 权限 / 钩子取消与改写 / 模版 / 脚手架 / 安装卸载 / 旧插件兼容） | **26/26** |
-| `tools/test-task-types.js`（三类任务常量 / 默认混合 / 落盘重读 / 非法回退 / 历史索引 / 复制保留） | **13/13** |
+| `tools/test-task-types.js`（三类任务常量 / 默认混合 / 落盘重读 / 非法回退 / 历史索引 / 复制保留） | **14/14** |
 | `tools/e2e-cases.js`（21 套行业案例真实 HTTP） | **106/106** |
 | `tools/test-help.js`（生成服务 `/help`、404/405/413、OpenAPI 默认响应） | **28/28** |
 | `tools/test-resources.js`（Electron 真实采样：CPU / 内存 / 磁盘 / 网络、tasklist 进程内存、分析结论、二次采样） | **1/1** |
@@ -602,15 +608,15 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/smoke-signup.js`（活动报名真实 HTTP：名额事务/重复手机号/满员/名单/删除保护） | **23/23** |
 | `tools/test-case-frontends.js`（26 套案例完整 .yxpp / 生成产物 / 真实 `/` / 全部接口健康检查 / 过滤正则） | **60/60** |
 | `tools/test-filters.js`（过滤器运算符 / 参数化 / 通配符转义） | **15/15** |
-| `tools/test-history.js`（历史索引 / 缺失文件 / 复制 / 删除） | **11/11** |
+| `tools/test-history.js`（历史索引 / .yxpn 工程包 / 可读缓存 / 缺失文件 / 复制 / 删除 / 旧 JSON 迁移） | **18/18** |
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 20 个常见模板、未登录设首页） | **149/149**（源码版 1.1.69） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 20 个常见模板、未登录设首页、.yxpn 工程本体） | **156/156**（源码版 1.1.72） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
-| `tools/test-pack.js`（.yxpn 打包回读 / 复制编号 / AI / OpenAPI） | **19/19** |
+| `tools/test-pack.js`（.yxpn 打包回读 / 工程本体包 / 复制编号 / AI / OpenAPI） | **23/23** |
 | `tools/test-export-runtimes.js --go`（Node/Bun/Java/Go 四套运行时，Java/Go 骨架编译） | **23/23** |
 | `tools/test-integration.js`（生成服务集成与导出配置） | **6/6** |
 | `tools/test-rowstore.js`（纯表存储四种模式） | **通过** |

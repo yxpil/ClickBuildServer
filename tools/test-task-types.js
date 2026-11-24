@@ -35,6 +35,7 @@ const front = spec.normalizeProject({ ...spec.seedProject(), name: '只前端任
 front.description = '只写页面';
 const file = projects.save(front);
 t('只前端任务落盘', fs.existsSync(file), file);
+t('工程本体是 .yxpn 包', file.toLowerCase().endsWith('.yxpn'), file);
 t('重新读取仍是只前端', projects.load('只前端任务').taskType === 'frontend', projects.load('只前端任务').taskType);
 const list = projects.list();
 const entry = list.find((x) => x.name === '只前端任务');
