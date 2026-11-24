@@ -12,6 +12,7 @@ const tests = [
   ['tools/test-script-dsl.js'],
   ['tools/test-table-import.js'],
   ['tools/test-table-data.js'],
+  ['tools/test-shell-new.js'],
   ['tools/test-formtable.js'],
   ['tools/test-templates.js', '--gen'],
   ['tools/test-pack.js'],

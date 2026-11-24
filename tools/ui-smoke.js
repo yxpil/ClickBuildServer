@@ -264,6 +264,13 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   // 恢复默认浅色主题
   await val(`api.theme(themeDefaults()).then(t=>{S.settings.theme=t;applyTheme(t)})`, true);
 
+  await val(`showSettings()`);
+  await wait(350);
+  const shellNew = await val(`(()=>{const m=document.querySelector('#modal');return JSON.stringify({text:m?m.innerText:'',btn:!!document.querySelector('#setShellNew'),pill:document.querySelector('#setShellNewPill')?document.querySelector('#setShellNewPill').innerText:'',hint:document.querySelector('#setShellNewHint')?document.querySelector('#setShellNewHint').innerText:''})})()`);
+  const sn = JSON.parse(shellNew);
+  t('设置含注册到右键新建并说明是服务器创建配置文件', /资源管理器右键新建/.test(sn.text) && /服务器创建配置文件/.test(sn.text) && sn.btn, shellNew);
+  await val(`closeModal()`);
+
   // 文档预览
   await val(`act('docs')`);
   await wait(500);

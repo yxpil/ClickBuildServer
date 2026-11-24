@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('icb', {
   importYxpnPath: (file) => invoke('iface:importYxpnPath', file),
   importYxppPath: (file) => invoke('iface:importYxppPath', file),
   assocYxpn: () => invoke('app:assocYxpn'),
+  shellNewStatus: () => invoke('app:shellNewStatus'),
+  shellNewRegister: () => invoke('app:shellNewRegister'),
   docs: (project) => invoke('iface:docs', project),
   monitor: (tail) => invoke('iface:monitor', tail),
   ai: (payload) => invoke('iface:ai', payload),

@@ -26,6 +26,7 @@ const projectExport = require('./project-export');
 const deployer = require('./deploy');
 const tableImport = require('./table-import');
 const tableData = require('./table-data');
+const shellNew = require('./shell-new');
 const store = require('../store');
 const i18n = require('../i18n');
 
@@ -408,7 +409,7 @@ function registerIpc() {
     const icon = path.join(appDir, 'logo.png');
     const openCmd = store.isPackaged() ? `"${exe}" "%1"` : `"${exe}" "${appDir}" "%1"`;
     const types = [
-      { ext: 'yxpn', id: 'ClickBuild.Yxpn', label: 'ClickBuild 接口工程包' },
+      { ext: 'yxpn', id: 'ClickBuild.Yxpn', label: shellNew.LABEL },
       { ext: 'yxpp', id: 'ClickBuild.Yxpp', label: 'ClickBuild 前端工程' },
     ];
     let last = { ok: true };
@@ -420,6 +421,26 @@ function registerIpc() {
       if (!last.ok) return last;
     }
     return { ok: true, exe, appDir, types: types.map((t) => t.ext) };
+  });
+
+  ipcMain.handle('app:shellNewStatus', async () => {
+    try {
+      return await shellNew.status({ template: shellNew.templatePath(store.root()) });
+    } catch (err) { return { ok: false, supported: process.platform === 'win32', registered: false, error: err.message }; }
+  });
+
+  ipcMain.handle('app:shellNewRegister', async () => {
+    try {
+      if (process.platform !== 'win32') return { ok: false, supported: false, error: '右键新建目前只支持 Windows' };
+      const template = shellNew.ensureTemplate({ root: store.root(), port: services.settings().ports.http });
+      return await shellNew.register({
+        exe: process.execPath,
+        appDir: store.resourceRoot(),
+        packaged: store.isPackaged(),
+        icon: process.execPath,
+        template,
+      });
+    } catch (err) { return { ok: false, supported: process.platform === 'win32', registered: false, error: err.message }; }
   });
 
   ipcMain.handle('iface:docs', (e, project) => {

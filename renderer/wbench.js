@@ -6426,6 +6426,12 @@ function showSettings() {
           <div class="text-[10px] text-neutral-500 mt-2">改端口后，先停止再启动对应服务；正在运行的服务不会自动迁移。</div>
         </section>
         <section class="border border-neutral-300 p-3 mt-3">
+          <div class="flex items-center gap-2"><b class="text-[12px]">资源管理器右键新建</b><span class="pill" id="setShellNewPill">检测中</span></div>
+          <div class="text-[11px] text-neutral-700 mt-2">在桌面或文件夹空白处右键 → 新建 →「ClickBuildServer 服务器创建配置文件」，会得到一个 <span class="mono">.yxpn</span> 文件。它只是服务器创建配置文件：双击后由本软件打开编辑，不是 exe，也不会立即启动服务。</div>
+          <button class="btn thin w-full mt-2" id="setShellNew">注册到右键新建</button>
+          <div class="text-[10px] text-neutral-500 mt-2" id="setShellNewHint">Windows 专属，写入当前用户注册表，不需要管理员权限；注册后会自动通知资源管理器刷新。</div>
+        </section>
+        <section class="border border-neutral-300 p-3 mt-3">
           <b class="text-[12px]">语言运行时</b>
           <div class="mt-2 text-[11px] space-y-1">
             ${(S.runtimes || []).map((r) => `<div class="flex items-center gap-2"><span class="pill ${r.available ? 'solid' : ''}">${r.available ? '可用' : '不可用'}</span><span class="mono">${esc(r.name)}</span><span class="text-neutral-500 truncate" title="${esc(r.path || '')}">${esc(r.version || '')}</span></div>`).join('') || '<div class="text-neutral-500">未检测到运行时</div>'}
@@ -6541,6 +6547,54 @@ function showSettings() {
       const names = (st.models || []).map((m) => m.name);
       if (!model.value && names.length) model.value = names.find((n) => /qwen3|qwen2\.5|gpt-4o/i.test(n)) || names[0];
       statusEl.textContent = `${st.message || '已连接'}${names.length ? ` · 找到 ${names.length} 个模型` : ''}`;
+    };
+
+    const shellPill = root.querySelector('#setShellNewPill');
+    const shellBtn = root.querySelector('#setShellNew');
+    const shellHint = root.querySelector('#setShellNewHint');
+    const paintShell = (st) => {
+      const r = st || {};
+      if (r.supported === false) {
+        shellPill.textContent = '仅 Windows';
+        shellPill.className = 'pill';
+        shellBtn.disabled = true;
+        shellBtn.textContent = '当前系统不支持';
+        shellHint.textContent = '右键新建使用 Windows 资源管理器 ShellNew，其他系统不修改注册表。';
+        return;
+      }
+      if (r.error) {
+        shellPill.textContent = '检测失败';
+        shellPill.className = 'pill pill-bad';
+        shellBtn.textContent = '注册到右键新建';
+        shellHint.textContent = r.error;
+        return;
+      }
+      shellPill.textContent = r.registered ? '已注册' : '未注册';
+      shellPill.className = `pill ${r.registered ? 'pill-ok' : ''}`;
+      shellBtn.textContent = r.registered ? '重新注册' : '注册到右键新建';
+      shellBtn.disabled = false;
+      if (r.explorerHint) shellHint.textContent = r.explorerHint;
+    };
+    if (api.shellNewStatus) {
+      api.shellNewStatus().then(paintShell).catch((e) => paintShell({ error: e.message || String(e) }));
+    } else {
+      paintShell({ supported: false });
+    }
+    shellBtn.onclick = async () => {
+      shellBtn.disabled = true;
+      shellBtn.textContent = '注册中…';
+      let r;
+      try { r = await api.shellNewRegister(); } catch (e) { r = { ok: false, error: e.message || String(e) }; }
+      if (!r || !r.ok) {
+        shellPill.textContent = '注册失败';
+        shellPill.className = 'pill pill-bad';
+        shellHint.textContent = (r && (r.error || r.out)) || '注册表写入失败';
+        shellBtn.disabled = false;
+        shellBtn.textContent = '重试注册';
+        return;
+      }
+      paintShell({ ...r, registered: true });
+      toast('已注册到右键新建：新建 →「ClickBuildServer 服务器创建配置文件」', 6000);
     };
 
     root.querySelector('#setTheme').onclick = () => { closeModal(); showTheme(); };
@@ -7771,6 +7825,10 @@ window.addEventListener('blur', hideHubMenu);
       const r = await api.importYxpnPath(openFile);
       if (r && r.ok) {
         direct = r.project;
+        // 从资源管理器“新建”复制出来的文件，用文件名做工程名，避免多份模板都叫“新建服务器工程”而互相覆盖。
+        const fileBase = String(openFile).split(/[\\/]/).pop().replace(/\.yxpn$/i, '').replace(/^新建 /, '').trim();
+        if (fileBase) direct.name = fileBase;
+        direct.name = uniqueProjectName(direct.name);
         await api.save(direct);
         toast(`已从工程包打开「${direct.name}」`, 4000);
       } else {
