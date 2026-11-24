@@ -202,53 +202,132 @@ const GUIDE_ROUTE_DEFS = [
   { key: 'health', name: '健康检查', method: 'GET', path: '/:table/health', desc: '探活数据库并返回服务状态' },
   { key: 'redirect', name: '跳转', method: 'GET', path: '/go/:slug', desc: '查表后 302 跳转到目标地址' },
 ];
+const GUIDE_TEMPLATE_GROUPS = [
+  { key: 'base', label: '基础与账号', hint: '空白接口、登录注册、会员资料' },
+  { key: 'content', label: '内容与互动', hint: '搜索、文章、表单、评论、分类' },
+  { key: 'commerce', label: '交易与库存', hint: '商品、订单、库存、优惠券' },
+  { key: 'ops', label: '运营与服务', hint: '预约、工单' },
+  { key: 'system', label: '系统与工具', hint: '短链、探活、文件、通知、配置、日志' },
+];
 const GUIDE_TEMPLATES = [
   {
-    key: 'blank', label: '空白接口', hint: '基础五条路由', name: '', comment: '',
+    key: 'blank', group: 'base', label: '空白接口', hint: '基础五条路由', name: '', comment: '',
     tableName: '', tableComment: '', fields: 'name varchar 名称',
     routes: ['list', 'detail', 'create', 'update', 'delete'], authMode: 'none',
   },
   {
-    key: 'auth', label: '登录注册', hint: '用户名密码 + token', name: '登录注册', comment: '账号密码登录、注册即签发 token',
+    key: 'auth', group: 'base', label: '登录注册', hint: '用户名密码 + token', name: '登录注册', comment: '账号密码登录、注册即签发 token',
     tableName: 'sys_user', tableComment: '用户账号表',
     fields: 'username varchar 登录名\npassword_hash varchar 密码（SM4）\nnickname varchar 昵称\nrole varchar 角色\nstatus tinyint 状态',
     routes: ['login', 'register', 'detail', 'list'], authMode: 'none',
   },
   {
-    key: 'search', label: '信息搜索', hint: '关键词、筛选、分页', name: '信息搜索', comment: '标题、分类、正文的搜索与分页',
+    key: 'member', group: 'base', label: '会员管理', hint: '手机号、等级、积分', name: '会员管理', comment: '会员资料、等级、积分与余额',
+    tableName: 'member_profile', tableComment: '会员资料表',
+    fields: 'phone varchar 手机号\nnickname varchar 昵称\nlevel varchar 等级\npoints int 积分\nbalance decimal 余额\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search'], authMode: 'write',
+  },
+  {
+    key: 'search', group: 'content', label: '信息搜索', hint: '关键词、筛选、分页', name: '信息搜索', comment: '标题、分类、正文的搜索与分页',
     tableName: 'search_record', tableComment: '可搜索信息表',
     fields: 'title varchar 标题\ncategory varchar 分类\ncontent text 正文\nstatus tinyint 状态',
     routes: ['search', 'list', 'detail', 'create', 'delete'], authMode: 'none',
   },
   {
-    key: 'cms', label: '内容管理', hint: '文章增删改查', name: '内容管理', comment: '文章发布、编辑、搜索与封面附件',
+    key: 'cms', group: 'content', label: '内容管理', hint: '文章增删改查', name: '内容管理', comment: '文章发布、编辑、搜索与封面附件',
     tableName: 'cms_article', tableComment: '文章表',
     fields: 'title varchar 标题\nslug varchar URL 别名\nsummary varchar 摘要\ncontent text 正文\nstatus tinyint 状态',
     routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'], authMode: 'write',
   },
   {
-    key: 'shop', label: '商品目录', hint: '库存、价格、图片', name: '商品目录', comment: '商品上架、库存、价格与主图',
-    tableName: 'shop_product', tableComment: '商品表',
-    fields: 'name varchar 商品名\nsku varchar SKU\nprice decimal 售价\nstock int 库存\nstatus tinyint 状态',
-    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'], authMode: 'write',
-  },
-  {
-    key: 'form', label: '表单收集', hint: '报名、问卷、留言', name: '表单收集', comment: '报名、问卷、留言统一收集',
+    key: 'form', group: 'content', label: '表单收集', hint: '报名、问卷、留言', name: '表单收集', comment: '报名、问卷、留言统一收集',
     tableName: 'form_submission', tableComment: '表单提交表',
     fields: 'form_name varchar 表单名\nname varchar 姓名\nphone varchar 电话\nemail varchar 邮箱\ncontent text 留言',
     routes: ['create', 'list', 'detail', 'delete'], authMode: 'none',
   },
   {
-    key: 'shortlink', label: '短链跳转', hint: '302 到目标地址', name: '短链跳转', comment: '按短码查表并 302 跳转',
+    key: 'comment', group: 'content', label: '评论评分', hint: '留言、星级、审核', name: '评论评分', comment: '目标对象的评论、评分与审核',
+    tableName: 'comment_record', tableComment: '评论表',
+    fields: 'target_id bigint 目标ID\nnickname varchar 昵称\ncontent text 评论内容\nrating tinyint 评分\nstatus tinyint 状态',
+    routes: ['create', 'list', 'detail', 'delete'], authMode: 'none',
+  },
+  {
+    key: 'category', group: 'content', label: '分类标签', hint: '树形分类、排序', name: '分类标签', comment: '树形分类、别名与排序',
+    tableName: 'category_node', tableComment: '分类节点表',
+    fields: 'name varchar 名称\nslug varchar 别名\nparent_id bigint 父级ID\nsort int 排序\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete'], authMode: 'write',
+  },
+  {
+    key: 'shop', group: 'commerce', label: '商品目录', hint: '库存、价格、图片', name: '商品目录', comment: '商品上架、库存、价格与主图',
+    tableName: 'shop_product', tableComment: '商品表',
+    fields: 'name varchar 商品名\nsku varchar SKU\nprice decimal 售价\nstock int 库存\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'], authMode: 'write',
+  },
+  {
+    key: 'order', group: 'commerce', label: '订单管理', hint: '单号、客户、金额', name: '订单管理', comment: '订单号、客户、金额、状态与附件',
+    tableName: 'order_record', tableComment: '订单记录表',
+    fields: 'order_no varchar 订单号\ncustomer varchar 客户\nphone varchar 联系电话\namount decimal 金额\nstatus tinyint 状态\npaid_at datetime 支付时间\nremark text 备注',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search', 'upload'], authMode: 'write',
+  },
+  {
+    key: 'inventory', group: 'commerce', label: '库存管理', hint: 'SKU、仓库、安全库存', name: '库存管理', comment: 'SKU、仓库、现存数量与安全库存',
+    tableName: 'inventory_stock', tableComment: '库存表',
+    fields: 'sku varchar SKU\nwarehouse varchar 仓库\nquantity int 库存数量\nsafety_stock int 安全库存\nunit varchar 单位\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search'], authMode: 'write',
+  },
+  {
+    key: 'coupon', group: 'commerce', label: '优惠券', hint: '券码、门槛、有效期', name: '优惠券', comment: '券码、优惠金额、使用门槛与有效期',
+    tableName: 'coupon_record', tableComment: '优惠券表',
+    fields: 'code varchar 券码\ntitle varchar 名称\namount decimal 优惠金额\nthreshold decimal 使用门槛\ntotal int 发放量\nused int 已使用\nexpire_at datetime 过期时间\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search'], authMode: 'write',
+  },
+  {
+    key: 'booking', group: 'ops', label: '预约管理', hint: '客户、时间、人数', name: '预约管理', comment: '预约项目、到店时间、人数与备注',
+    tableName: 'booking_record', tableComment: '预约记录表',
+    fields: 'customer varchar 客户\nphone varchar 手机号\nservice varchar 预约项目\nappointment_at datetime 预约时间\npeople int 人数\nstatus tinyint 状态\nremark text 备注',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search'], authMode: 'write',
+  },
+  {
+    key: 'ticket', group: 'ops', label: '工单处理', hint: '优先级、处理人、状态', name: '工单处理', comment: '工单描述、优先级、处理人与关闭时间',
+    tableName: 'ticket_record', tableComment: '工单表',
+    fields: 'title varchar 标题\npriority tinyint 优先级\nassignee varchar 处理人\nstatus tinyint 状态\ndetail text 描述\nclosed_at datetime 关闭时间',
+    routes: ['list', 'detail', 'create', 'update', 'delete', 'search'], authMode: 'write',
+  },
+  {
+    key: 'shortlink', group: 'system', label: '短链跳转', hint: '302 到目标地址', name: '短链跳转', comment: '按短码查表并 302 跳转',
     tableName: 'short_link', tableComment: '短链表',
     fields: 'slug varchar 短码\ntarget_url varchar 目标地址\nhits int 访问次数\nstatus tinyint 状态',
     routes: ['redirect', 'list', 'create', 'detail', 'update', 'delete'], authMode: 'none',
   },
   {
-    key: 'health', label: '健康检查', hint: '探活 + 服务状态', name: '健康检查', comment: '网关和监控用的探活接口',
+    key: 'health', group: 'system', label: '健康检查', hint: '探活 + 服务状态', name: '健康检查', comment: '网关和监控用的探活接口',
     tableName: 'health_probe', tableComment: '探活记录表',
     fields: 'service varchar 服务名\nversion varchar 版本\nstatus tinyint 状态',
     routes: ['health', 'detail', 'list'], authMode: 'none',
+  },
+  {
+    key: 'file', group: 'system', label: '文件资料', hint: '上传、对象键、大小', name: '文件资料', comment: '文件上传、对象键、类型与大小',
+    tableName: 'file_asset', tableComment: '文件资产表',
+    fields: 'name varchar 文件名\npath varchar 存储路径\nsize bigint 大小\nmime varchar 文件类型\nowner varchar 上传人',
+    routes: ['create', 'list', 'detail', 'upload', 'delete'], authMode: 'write',
+  },
+  {
+    key: 'notice', group: 'system', label: '消息通知', hint: '站内信、渠道、已读', name: '消息通知', comment: '站内信、渠道、阅读时间与状态',
+    tableName: 'notice_message', tableComment: '通知消息表',
+    fields: 'user_id bigint 用户ID\ntitle varchar 标题\nbody text 正文\nchannel varchar 渠道\nread_at datetime 阅读时间\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete'], authMode: 'write',
+  },
+  {
+    key: 'config', group: 'system', label: '配置中心', hint: '分组、键值、备注', name: '配置中心', comment: '分组键值配置与启停',
+    tableName: 'sys_config_item', tableComment: '配置项表',
+    fields: 'group_name varchar 分组\nconfig_key varchar 配置键\nconfig_value text 配置值\nremark varchar 备注\nstatus tinyint 状态',
+    routes: ['list', 'detail', 'create', 'update', 'delete'], authMode: 'write',
+  },
+  {
+    key: 'audit', group: 'system', label: '操作日志', hint: '操作人、动作、IP', name: '操作日志', comment: '记录操作人、动作、对象与 IP',
+    tableName: 'sys_audit_trail', tableComment: '操作日志表',
+    fields: 'actor varchar 操作人\naction varchar 动作\ntarget varchar 操作对象\nip varchar IP\ndetail text 详情',
+    routes: ['create', 'list', 'detail'], authMode: 'write',
   },
 ];
 const GUIDE_PRESETS = [
@@ -364,12 +443,17 @@ async function newIfaceGuide(initialCat) {
         .guide-quick-row .btn{height:32px;white-space:nowrap}
         .guide-quick-or{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#9aa3b2;font-size:10px}
         .guide-quick-or:before,.guide-quick-or:after{content:"";height:1px;background:#e6eaf0;flex:1}
-        .guide-tpl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 14px}
+        .guide-tpl-groups{display:flex;flex-direction:column;gap:12px;margin:0 0 16px}
+        .guide-tpl-group-head{display:flex;align-items:baseline;gap:8px;margin:0 0 7px;color:var(--cb-text)}
+        .guide-tpl-group-head b{font-size:11.5px;font-weight:600}
+        .guide-tpl-group-head span{font-size:9.5px;color:var(--cb-muted)}
+        .guide-tpl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
         .guide-tpl{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 10px;border:1px solid #dfe4ec;border-radius:8px;background:#fff;cursor:pointer;transition:border-color .12s,background .12s}
         .guide-tpl:hover{border-color:#c9daf7;background:#f8fafc}
         .guide-tpl.on{border-color:var(--cb-accent);background:var(--cb-accent-soft);box-shadow:0 0 0 2px var(--cb-accent-ring)}
         .guide-tpl b{font-size:11.5px;font-weight:600;line-height:1.35}
         .guide-tpl span{font-size:9.5px;color:var(--cb-muted);line-height:1.4}
+        .guide-tpl em{font:9px/1.3 Consolas,monospace;color:#9aa3b2;font-style:normal;margin-top:1px}
         .guide-route-list{border:1px solid var(--cb-line);border-radius:9px;overflow:hidden;background:#fff}
         .guide-route-item{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--cb-line-soft);transition:background .12s}
         .guide-route-item:last-child{border-bottom:0}
@@ -547,11 +631,23 @@ async function newIfaceGuide(initialCat) {
           body.innerHTML = `
             ${quick}
             <div class="guide-h" style="margin-top:2px">从业务模板开始</div>
-            <div class="guide-p">登录、搜索、内容、商品、表单、短链、探活这些常用场景已经预填表字段和路由；点一下再按需改。</div>
-            <div class="guide-tpl-grid">
-              ${GUIDE_TEMPLATES.map((t) => `<button type="button" class="guide-tpl ${state.scenario === t.key ? 'on' : ''}" data-guide-template="${esc(t.key)}">
-                <b>${esc(t.label)}</b><span>${esc(t.hint)}</span>
-              </button>`).join('')}
+            <div class="guide-p">登录、搜索、内容、商品、订单、库存、会员、预约、工单、文件、配置、日志等 20 个常用场景已经预填表字段和路由；点一下再按需改。</div>
+            <div class="guide-tpl-groups">
+              ${GUIDE_TEMPLATE_GROUPS.map((g) => {
+                const list = GUIDE_TEMPLATES.filter((t) => t.group === g.key);
+                if (!list.length) return '';
+                return `<section class="guide-tpl-group">
+                  <div class="guide-tpl-group-head"><b>${esc(g.label)}</b><span>${esc(g.hint)}</span></div>
+                  <div class="guide-tpl-grid">
+                    ${list.map((t) => {
+                      const nFields = String(t.fields || '').split(/\r?\n/).filter((x) => x.trim()).length;
+                      return `<button type="button" class="guide-tpl ${state.scenario === t.key ? 'on' : ''}" data-guide-template="${esc(t.key)}">
+                        <b>${esc(t.label)}</b><span>${esc(t.hint)}</span><em>${nFields} 字段 · ${t.routes.length} 路由</em>
+                      </button>`;
+                    }).join('')}
+                  </div>
+                </section>`;
+              }).join('')}
             </div>
             <div class="guide-quick-or">或手动填写基础信息</div>
             <div class="guide-h">第一步 · 基础信息</div>
@@ -3279,7 +3375,7 @@ const HELP_SECTIONS = [
         <div class="hb-card"><b>开始前</b><p>不需要先装 MariaDB、Redis、S3。点“启动”时应用会拉起内置三台服务，实际端口以工作台右侧的“运行环境”为准。</p></div>
       </div>
       <div class="hb-step"><span class="hb-step-n">1</span><div class="hb-step-body"><b>新建一个任务</b><p>在工程历史页点右上角“新建任务”，任务类型选“只后端”（只做 API）或“混合任务”（API + 前端）。新建出来的是空白工程，没有接口是正常的。</p></div></div>
-      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>新建接口</b><p>进入工作台后点 Ribbon 的“新建接口”，或按 <span class="hb-kbd">Ctrl+N</span>。创建引导一共四步：基础信息 → 主表 → 路由 → 确认。</p></div></div>
+      <div class="hb-step"><span class="hb-step-n">2</span><div class="hb-step-body"><b>新建接口</b><p>进入工作台后点 Ribbon 的“新建接口”，或按 <span class="hb-kbd">Ctrl+N</span>。创建引导一共四步：基础信息 → 主表 → 路由 → 确认；第一步提供 20 个常见业务模板，点一下就会填好表字段、路由和鉴权，再按需修改。</p></div></div>
       <div class="hb-step"><span class="hb-step-n">3</span><div class="hb-step-body"><b>填主表字段</b><p>第二步每行一个字段，格式是“字段名 类型 注释”。可以直接粘贴：</p>
         <div class="hb-code"><div class="hb-code-head">初始业务字段</div><pre>name varchar 名称
 price decimal 价格

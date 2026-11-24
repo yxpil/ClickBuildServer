@@ -202,6 +202,10 @@ AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
 
+1.1.69 把新建接口的第一步扩成 20 个常见业务模板，按「基础与账号 / 内容与互动 / 交易与库存 / 运营与服务 / 系统与工具」5 组展示。除原有空白、登录注册、搜索、内容、商品、表单、短链、探活外，新增会员管理、订单管理、库存管理、优惠券、预约管理、工单处理、评论评分、分类标签、文件资料、消息通知、配置中心、操作日志；每张卡片显示字段数与路由数。点模板会一次填好接口名、说明、主表、业务字段、路由和鉴权，再按四步继续改；表名使用 `member_profile / order_record / inventory_stock / coupon_record` 等独立键，避开默认工程已有的 `biz_order`。验收：新增 `test:guide-templates` 126/126 检查 20 个模板的字段类型、路由白名单、表名唯一与系统字段冲突，`test:ci` 13/13，源码版 UI 冒烟 149/149（含模板数量、分组、卡片计数与订单模板实际预填）。
+
+![创建引导的常见业务模板](docs/screenshots/guide-templates.png)
+
 1.1.68 把 Excel / CSV 变成建表入口：文件直接拖进工作台任意位置，松手后弹预览，按第一行表头生成字段并自动推断 int / bigint / decimal / bool / date / datetime / json / text 类型；`.xlsx` / `.xlsm` 多工作表会分别建表，单表也可选择覆盖当前表字段。解析器不依赖第三方包，自己读 ZIP + SpreadsheetML，支持共享字符串、内联字符串、日期序列号与样式、隐藏工作表跳过、64MB / 20 万行 / 256 列上限；CSV / TSV 支持 BOM、GBK / GB18030、逗号 / 分号 / 制表符 / 竖线自动识别、引号内逗号与换行，以及重复表头、空表头、`id / created_at / updated_at` 重名避让。中文表头会映射成安全字段名，手机号、编号、身份证等保留为文本，密码类字段默认隐藏；导入只建表结构，不把行数据写进 MySQL。Ribbon 新增“导入”，表结构页按钮与右键菜单共用同一条链路，旧版 `.xls` 明确提示另存为 xlsx。验收：`test:table-import` 10/10，`test:ci` 12/12，真实 Electron 拖放与 IPC 解析通过，源码版 UI 冒烟 144/144（含 Ribbon 导入入口、全窗口拖拽遮罩、预览弹窗的表数 / 字段 / 样例 / 覆盖当前表），预览确认后生成 DDL 包含 `ti_fixture_1 / ti_fixture_2`，日期列落为 `DATE`、金额列落为 `DECIMAL(18,2)`。
 
 ![Excel / CSV 拖入后的建表预览](docs/screenshots/import-preview.png)
@@ -562,7 +566,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 
 | 套件 | 结果 |
 | --- | --- |
-| `npm run test:ci`（CI 顺序执行 12 套核心回归，含停止按钮 / 多语言 / 表格导入） | **12/12** |
+| `npm run test:ci`（CI 顺序执行 13 套核心回归，含停止按钮 / 多语言 / 表格导入 / 引导模板） | **13/13** |
 | `tools/test-templates.js --gen`（26 套模版 + 插件 + 文档 + 每条详情 404） | **194/194** |
 | `tools/test-plugins-v2.js`（命令 / 权限 / 钩子取消与改写 / 模版 / 脚手架 / 安装卸载 / 旧插件兼容） | **26/26** |
 | `tools/test-task-types.js`（三类任务常量 / 默认混合 / 落盘重读 / 非法回退 / 历史索引 / 复制保留） | **13/13** |
@@ -573,6 +577,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-new-iface.js`（新建接口默认路由、404 与创建引导参数） | **16/16** |
 | `tools/test-script-dsl.js`（三元 / 空值合并 / 逻辑优先级 / IN / LIKE / BETWEEN / IS NULL / TRY / REPEAT / ASSERT / 嵌套赋值 / lint / 导出 JS 编译） | **20/20** |
 | `tools/test-table-import.js`（CSV 表头 / 引号换行 / 分号 / GBK / 重名避让 / xlsx 多工作表 / 共享与内联字符串 / 日期样式 / 损坏文件拒绝） | **10/10** |
+| `tools/test-guide-templates.js`（20 个创建引导模板 / 5 组场景 / 字段类型与路由白名单 / 表名唯一 / 系统字段冲突） | **126/126** |
 | `tools/test-social.js`（社交接口库 86 条路由真实 HTTP） | **117/117** |
 | `tools/test-iface-library.js`（单接口库 75 内置 / 收藏 / 分类 / 改名 / 二次插入路由避重 / 删除） | **33/33** |
 | `tools/smoke-survey.js`（问卷系统真实 HTTP：登录/建卷/发布/答卷/统计/删除保护/关闭） | **22/22** |
@@ -583,7 +588,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **144/144**（源码版 1.1.68） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、Excel 导入入口与预览、自动保存/启动主页、AI 配置与失败保护、新建引导 20 个常见模板、未登录设首页） | **149/149**（源码版 1.1.69） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |
