@@ -59,12 +59,21 @@ function fieldTone(type) {
   return 'text';
 }
 
+const TASK_ICONS = {
+  backend: '<rect x="2.2" y="2.2" width="11.6" height="4.4" rx=".9"/><rect x="2.2" y="8.2" width="11.6" height="4.4" rx=".9"/><circle cx="4.7" cy="4.4" r=".65" fill="currentColor" stroke="none"/><circle cx="4.7" cy="10.4" r=".65" fill="currentColor" stroke="none"/><path d="M7.2 4.4h4.2M7.2 10.4h4.2"/>',
+  frontend: '<rect x="1.8" y="2.6" width="12.4" height="8.6" rx="1"/><path d="M8 11.2v2.1M5.4 13.6h5.2"/>',
+  mixed: '<rect x="1.6" y="3" width="9" height="6.5" rx="1"/><path d="M6.1 9.5v2M4.2 11.5h3.8"/><rect x="11.1" y="5.4" width="3.4" height="8" rx=".9"/><circle cx="12.8" cy="7.2" r=".55" fill="currentColor" stroke="none"/><path d="M12.1 9.4h1.3M12.1 10.8h1.3"/>',
+};
 const TASK_KINDS = {
   mixed: { label: '混合任务', short: '混', hint: '前后端一起写，默认自带账号登录接口' },
   backend: { label: '只后端任务', short: '后', hint: '只写接口、表结构和脚本，默认自带账号登录接口' },
   frontend: { label: '只前端任务', short: '前', hint: '只写页面，接口编辑收起，保持空白画布' },
 };
 const TASK_ORDER = ['mixed', 'backend', 'frontend'];
+function taskIcon(kind) {
+  const key = TASK_ICONS[kind] ? kind : 'mixed';
+  return `<svg class="task-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TASK_ICONS[key]}</svg>`;
+}
 function taskKindOf(p) {
   const t = p && p.taskType;
   return TASK_KINDS[t] ? t : 'mixed';
@@ -1127,9 +1136,10 @@ function renderTabs() {
   if (!items.length || !S.project) { list.innerHTML = ''; return; }
   list.innerHTML = items.map((x) => {
     const active = x.name === TABS.active;
-    const kind = TASK_KINDS[x.taskType] || TASK_KINDS.mixed;
+    const kindKey = TASK_KINDS[x.taskType] ? x.taskType : 'mixed';
+    const kind = TASK_KINDS[kindKey];
     return `<div class="task-tab ${active ? 'active' : ''}" data-tab-name="${esc(x.name)}" title="${esc(x.name)} · ${esc(kind.label)}">
-      <span class="task-kind">${esc(kind.short)}</span>
+      <span class="task-kind tk-${kindKey}" title="${esc(kind.label)}">${taskIcon(kindKey)}<span>${esc(kind.short)}</span></span>
       <span class="task-name">${esc(x.name)}</span>
       <span class="task-dirty" style="visibility:${active && S.saveState !== 'saved' ? 'visible' : 'hidden'}"></span>
       <button class="task-x" data-tab-close="${esc(x.name)}" title="关闭「${esc(x.name)}」" aria-label="关闭">×</button>
@@ -1210,8 +1220,8 @@ function chooseTaskKind(title) {
   return new Promise((resolve) => {
     const cards = TASK_ORDER.map((k) => {
       const m = TASK_KINDS[k];
-      return `<button class="task-kind-card ${k === 'mixed' ? 'on' : ''}" data-task-kind="${k}">
-        <span class="k">${esc(m.short)}</span>
+      return `<button class="task-kind-card tk-${k} ${k === 'mixed' ? 'on' : ''}" data-task-kind="${k}">
+        <span class="k" aria-hidden="true">${taskIcon(k)}</span>
         <b>${esc(m.label)}${k === 'mixed' ? '（默认）' : ''}</b>
         <span>${esc(m.hint)}</span>
       </button>`;
@@ -1293,6 +1303,14 @@ function render() {
 // 任务类型决定这个工程露出多少东西：只前端不显示接口工作台，只后端不显示前端工坊。
 function applyTaskMode() {
   const kind = taskKindOf(S.project);
+  const meta = TASK_KINDS[kind] || TASK_KINDS.mixed;
+  document.documentElement.dataset.taskKind = kind;
+  const wrap = $('#taskKindWrap');
+  if (wrap) wrap.className = `task-kind-pick tk-${kind}`;
+  const icon = $('#taskKindIcon');
+  if (icon) { icon.innerHTML = taskIcon(kind); icon.title = meta.label; }
+  const select = $('#taskKind');
+  if (select) select.title = `${meta.label}：只前端 / 只后端 / 混合`;
   const sub = $('#appSubtitle');
   if (sub) sub.textContent = '接口工作台';
   const vs = $('#viewSwitch');
@@ -3792,6 +3810,7 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
         <tr><td><b>只前端</b></td><td>直接进入前端工坊；隐藏接口搜索和“生成服务”，不显示接口工作台。</td><td>只做页面，不碰接口。</td></tr>
         <tr><td><b>混合</b></td><td>顶部出现“接口 / 前端”切换，两个工作台都能用，适合从接口到页面一起交付。</td><td>完整业务应用。</td></tr>
       </tbody></table>
+      <div class="hb-tip"><b>类型标记</b><div>只后端用服务器图标，只前端用显示器图标，混合任务用台式机图标；标签、工程标签页和工程历史卡片会同步显示。三类颜色可以打开 Ribbon 右侧“更多”里的“主题”，在“任务类型标签颜色”里分别自定义，深浅色会自动适配。</div></div>
       <div class="hb-tip"><b>自动保存</b><div>改工程名、字段、脚本、路由都会自动保存；<span class="hb-kbd">Ctrl+S</span> 只是立即落盘。新建任务或打开另一个工程前，应用会先等当前保存完成，避免丢改动。</div></div>
       <div class="hb-warn"><b>删除不可撤销</b><div>工程历史里删除会把 .yxpn 工程包和它的工作缓存一起从磁盘删掉，不是只从列表移除。重要工程先“导出 .yxpn”留一份。</div></div>
     `,
@@ -6105,8 +6124,14 @@ const THEME_PALETTES = [
   { id: 'graphite', name: '深海黑', head: '#0f172a', headText: '#f8fafc', accent: '#38bdf8', footer: '#0f172a' },
 ];
 
+function taskColorDefaults() {
+  return { backend: '#2563eb', frontend: '#0f8a5f', mixed: '#b45309' };
+}
+function taskColorValue(v, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : fallback;
+}
 function themeDefaults() {
-  return { v: 2, mode: 'light', head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff', font: '' };
+  return { v: 2, mode: 'light', head: '#ffffff', headText: '#20242b', accent: '#2f6bdc', footer: '#ffffff', font: '', taskColors: taskColorDefaults() };
 }
 function themePalette(id) {
   return THEME_PALETTES.find((p) => p.id === id) || THEME_PALETTES[0];
@@ -6176,6 +6201,15 @@ function applyTheme(t) {
   root.setProperty('--cb-accent-ring', dark ? hexToRgba(accent, 0.28) : hexToRgba(th.accent || '#2f6bdc', 0.18));
   root.setProperty('--cb-footer', dark ? '#12171e' : (th.footer || '#ffffff'));
   root.setProperty('--cb-font', th.font || '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif');
+  const defaults = taskColorDefaults();
+  const colors = th.taskColors || {};
+  TASK_ORDER.forEach((k) => {
+    const base = taskColorValue(colors[k], defaults[k]);
+    const ink = dark ? lightenHex(base, 0.46) : base;
+    root.setProperty(`--cb-task-${k}`, ink);
+    root.setProperty(`--cb-task-${k}-soft`, dark ? hexToRgba(ink, 0.16) : hexToRgba(base, 0.09));
+    root.setProperty(`--cb-task-${k}-line`, dark ? hexToRgba(ink, 0.46) : hexToRgba(base, 0.26));
+  });
   syncThemeToggle(dark);
   syncStudioDark();
   if (th.titleSuffix) document.title = `ClickBuildServer · ${th.titleSuffix}`;
@@ -6784,6 +6818,18 @@ function showTheme() {
       <label>页脚底色 <input type="color" id="thFooter" value="${esc(t.footer)}" class="ml-2 align-middle"></label>
     </div>
     <div class="mt-3 text-[12px]">字体 <input id="thFont" class="w-full border border-neutral-300 px-2 py-1 mt-1 mono" value="${esc(t.font || '')}" placeholder="留空用系统默认，例如 Georgia, serif"></div>
+    <div class="mt-4 pt-3 border-t border-neutral-200">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-[12px] font-semibold">任务类型标签颜色</span>
+        <button type="button" class="btn thin ml-auto" id="thTaskReset">恢复默认色</button>
+      </div>
+      <div class="text-[11px] text-neutral-500 mb-2">只后端用服务器图标，只前端用显示器图标，混合任务用台式机图标。颜色会同时用在标签、图标底色和工程卡片。</div>
+      <div class="task-color-grid">
+        <label class="task-color-cell tk-backend"><span class="task-color-preview">${taskIcon('backend')}<b>只后端</b></span><input type="color" id="thTaskBackend" value="${esc(taskColorValue((t.taskColors || {}).backend, taskColorDefaults().backend))}"></label>
+        <label class="task-color-cell tk-frontend"><span class="task-color-preview">${taskIcon('frontend')}<b>只前端</b></span><input type="color" id="thTaskFrontend" value="${esc(taskColorValue((t.taskColors || {}).frontend, taskColorDefaults().frontend))}"></label>
+        <label class="task-color-cell tk-mixed"><span class="task-color-preview">${taskIcon('mixed')}<b>混合任务</b></span><input type="color" id="thTaskMixed" value="${esc(taskColorValue((t.taskColors || {}).mixed, taskColorDefaults().mixed))}"></label>
+      </div>
+    </div>
     <div class="mt-3 text-[11px] text-neutral-500">深色模式会保留你选的强调色，页眉和页脚自动换成深色面板；生成的服务和前端页面不受影响。</div>
     <div class="mt-2 text-[11px] text-neutral-500">主题存在本机设置里，只影响界面。</div>
     <div class="flex gap-2 mt-4 justify-end">
@@ -6801,6 +6847,11 @@ function showTheme() {
       accent: root.querySelector('#thAccent').value,
       footer: root.querySelector('#thFooter').value,
       font: root.querySelector('#thFont').value,
+      taskColors: {
+        backend: root.querySelector('#thTaskBackend').value,
+        frontend: root.querySelector('#thTaskFrontend').value,
+        mixed: root.querySelector('#thTaskMixed').value,
+      },
     });
     root.querySelectorAll('#thMode button').forEach((b) => {
       b.onclick = () => {
@@ -6819,6 +6870,20 @@ function showTheme() {
         toast(`已预览「${p.name}」`);
       };
     });
+    const taskColorInputs = [
+      root.querySelector('#thTaskBackend'),
+      root.querySelector('#thTaskFrontend'),
+      root.querySelector('#thTaskMixed'),
+    ];
+    taskColorInputs.forEach((input) => { input.oninput = () => applyTheme(read()); });
+    root.querySelector('#thTaskReset').onclick = () => {
+      const d = taskColorDefaults();
+      root.querySelector('#thTaskBackend').value = d.backend;
+      root.querySelector('#thTaskFrontend').value = d.frontend;
+      root.querySelector('#thTaskMixed').value = d.mixed;
+      applyTheme(read());
+      toast('任务类型标签颜色已恢复默认');
+    };
     root.querySelector('#thClose').onclick = closeModal;
     root.querySelector('#thReset').onclick = async () => {
       const next = await api.theme(themeDefaults());
@@ -7641,12 +7706,13 @@ function renderHubSections() {
   const projectHtml = projects.length ? projects.map((p) => {
     const tables = new Set(p.tables || []).size;
     const current = S.project && S.project.name === p.name;
-    const kind = TASK_KINDS[p.taskType] || TASK_KINDS.mixed;
+    const kindKey = TASK_KINDS[p.taskType] ? p.taskType : 'mixed';
+    const kind = TASK_KINDS[kindKey];
     return `<article class="hub-project ${p.missing ? 'missing' : ''}" data-hub-open="${esc(p.name)}">
       <button class="hub-x" data-hub-del="${esc(p.name)}" title="删除工程「${esc(p.name)}」" aria-label="删除工程">×</button>
       <div class="hub-project-top">
         <span class="hub-badge">${p.missing ? '丢失' : current ? '当前' : '工程'}</span>
-        <span class="hub-kind">${esc(kind.label)}</span>
+        <span class="hub-kind tk-${kindKey}" title="${esc(kind.hint)}">${taskIcon(kindKey)}<span>${esc(kind.label)}</span></span>
         <span class="hub-time">${hubTime(p.updatedAt)}</span>
       </div>
       <h3>${esc(p.name)}</h3>

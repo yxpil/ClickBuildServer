@@ -1,0 +1,176 @@
+/* 任务类型图标与自定义颜色：服务器 / 显示器 / 台式机 */
+.task-svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.tk-backend {
+  --tk-color: var(--cb-task-backend, #2563eb);
+  --tk-soft: var(--cb-task-backend-soft, rgba(37, 99, 235, .09));
+  --tk-line: var(--cb-task-backend-line, rgba(37, 99, 235, .26));
+}
+.tk-frontend {
+  --tk-color: var(--cb-task-frontend, #0f8a5f);
+  --tk-soft: var(--cb-task-frontend-soft, rgba(15, 138, 95, .09));
+  --tk-line: var(--cb-task-frontend-line, rgba(15, 138, 95, .26));
+}
+.tk-mixed {
+  --tk-color: var(--cb-task-mixed, #b45309);
+  --tk-soft: var(--cb-task-mixed-soft, rgba(180, 83, 9, .09));
+  --tk-line: var(--cb-task-mixed-line, rgba(180, 83, 9, .26));
+}
+
+/* 顶栏当前任务类型：图标 + 原生下拉 */
+.task-kind-pick {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid var(--tk-line);
+  border-radius: 7px;
+  background: var(--tk-soft);
+  overflow: hidden;
+}
+.task-kind-pick #taskKindIcon {
+  width: 27px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--tk-color);
+  border-right: 1px solid var(--tk-line);
+}
+.task-kind-pick #taskKindIcon .task-svg { width: 15px; height: 15px; }
+.task-kind-pick #taskKind {
+  height: 28px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  /* 颜色使用类型色，避免和页面强调色混淆 */
+  color: var(--tk-color) !important;
+  font-weight: 600;
+  padding: 0 7px 0 5px;
+}
+.task-kind-pick #taskKind:focus { box-shadow: none !important; outline: 0; }
+
+/* WPS 式工程标签上的类型徽标 */
+.task-tab .task-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--tk-line);
+  border-radius: 5px;
+  background: var(--tk-soft);
+  color: var(--tk-color);
+  padding: 1px 5px 1px 4px;
+  font: 600 9px/13px var(--cb-font);
+  letter-spacing: 0;
+}
+.task-tab .task-kind .task-svg { width: 10px; height: 10px; }
+.task-tab.active .task-kind {
+  background: var(--tk-color);
+  border-color: var(--tk-color);
+  color: #fff;
+}
+
+/* 新建任务的三张卡片 */
+.task-kind-card:hover { border-color: var(--tk-line); }
+.task-kind-card.on {
+  border-color: var(--tk-color);
+  box-shadow: 0 0 0 3px var(--tk-line), inset 0 -3px 0 var(--tk-color);
+}
+.task-kind-card .k {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--tk-line);
+  border-radius: 9px;
+  background: var(--tk-soft);
+  color: var(--tk-color);
+}
+.task-kind-card .k .task-svg { width: 17px; height: 17px; }
+
+/* 工程历史里的任务类型 */
+.hub-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-left: 2px solid var(--tk-color);
+  border-radius: 0 5px 5px 0;
+  background: var(--tk-soft);
+  color: var(--tk-color);
+  padding: 2px 6px;
+  font: 600 9.5px/1.4 var(--cb-font);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.hub-kind .task-svg { width: 11px; height: 11px; }
+
+/* 主题弹窗里的三类颜色 */
+.task-color-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.task-color-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid var(--cb-line);
+  border-radius: 9px;
+  background: #fff;
+  padding: 8px;
+  cursor: pointer;
+}
+.task-color-cell:hover { border-color: var(--tk-line); }
+.task-color-preview {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tk-color);
+  font-size: 11px;
+  font-weight: 600;
+}
+.task-color-preview .task-svg { width: 14px; height: 14px; }
+.task-color-cell input[type="color"] {
+  width: 100%;
+  height: 24px;
+  border: 1px solid var(--tk-line);
+  border-radius: 6px;
+  background: var(--tk-soft);
+  padding: 2px;
+  cursor: pointer;
+}
+html.cb-dark .task-color-cell { background: #151c25; border-color: #2a3542; }
+html.cb-dark .task-color-preview b { color: var(--cb-text); }
+
+/* 深色模式下压过 wbench-dark.css 里更具体的选择器 */
+html.cb-dark .task-kind-pick #taskKind {
+  background: transparent !important;
+  color: var(--tk-color) !important;
+}
+html.cb-dark .task-kind-pick #taskKind:hover { background: transparent !important; border-color: transparent !important; }
+html.cb-dark .task-tab .task-kind {
+  background: var(--tk-soft);
+  color: var(--tk-color);
+  border-color: var(--tk-line);
+}
+html.cb-dark .task-tab.active .task-kind {
+  background: var(--tk-color);
+  border-color: var(--tk-color);
+  color: #fff;
+}
+html.cb-dark .task-kind-card:hover { border-color: var(--tk-color); }
+html.cb-dark .task-kind-card.on {
+  border-color: var(--tk-color);
+  box-shadow: 0 0 0 3px var(--tk-line), inset 0 -3px 0 var(--tk-color);
+}
+html.cb-dark .task-kind-card .k {
+  background: var(--tk-soft);
+  border-color: var(--tk-line);
+  color: var(--tk-color);
+}

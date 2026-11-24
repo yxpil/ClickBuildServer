@@ -1081,6 +1081,7 @@
   @media (max-width: 1200px) { .editor-tabbar .count-chip { display: none; } }
 </style>
 <link rel="stylesheet" href="wbench-dark.css">
+<link rel="stylesheet" href="wbench-task-kind.css">
 </head>
 <body class="bg-white text-neutral-900 h-full overflow-hidden">
 
@@ -1090,11 +1091,14 @@
     <span class="brand-word text-[15px] font-semibold tracking-wide">ClickBuild</span>
     <span id="appSubtitle" class="app-subtitle text-[11px] text-neutral-500 border-l border-neutral-300 pl-3">接口工作台</span>
     <input id="projectName" class="ml-3 w-44 border border-neutral-300 px-2 py-1 text-[12px]" title="工程名">
-    <select id="taskKind" title="任务类型：只前端 / 只后端 / 混合" aria-label="任务类型">
-      <option value="mixed">混合任务</option>
-      <option value="backend">只后端</option>
-      <option value="frontend">只前端</option>
-    </select>
+    <div id="taskKindWrap" class="task-kind-pick tk-mixed" title="任务类型：只前端 / 只后端 / 混合">
+      <span id="taskKindIcon" class="task-kind-icon" aria-hidden="true"><svg class="task-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><rect x="1.6" y="3" width="9" height="6.5" rx="1"/><path d="M6.1 9.5v2M4.2 11.5h3.8"/><rect x="11.1" y="5.4" width="3.4" height="8" rx=".9"/><circle cx="12.8" cy="7.2" r=".55" fill="currentColor" stroke="none"/><path d="M12.1 9.4h1.3M12.1 10.8h1.3"/></svg></span>
+      <select id="taskKind" title="任务类型：只前端 / 只后端 / 混合" aria-label="任务类型">
+        <option value="mixed">混合任务</option>
+        <option value="backend">只后端</option>
+        <option value="frontend">只前端</option>
+      </select>
+    </div>
     <span id="savePill" class="save-pill" data-state="saved" title="当前工程的保存状态"><i></i><span id="savePillText">已保存</span></span>
     <div id="viewSwitch" class="no-drag flex border border-neutral-300 h-7" role="tablist" aria-label="工作模式">
       <button data-view="api" class="viewtab px-3 text-[11px] font-semibold bg-neutral-900 text-white">接口</button>
