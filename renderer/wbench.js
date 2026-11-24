@@ -4480,6 +4480,7 @@ async function act(name, el) {
   }
   if (name === 'exportYxpn') {
     const r = await api.exportYxpn(S.project);
+    if (!r) return;
     if (!r.ok) return toast('导出失败：' + r.error, 5000);
     toast(`已导出工程包（${Math.round(r.size / 1024)} KB）：${r.file}`, 5000);
     return;

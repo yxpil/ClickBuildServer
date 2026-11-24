@@ -60,7 +60,7 @@ contextBridge.exposeInMainWorld('icb', {
   exists: (p) => invoke('iface:exists', p),
   openUrl: (url) => invoke('iface:openUrl', url),
   clone: (iface, names) => invoke('iface:clone', iface, names || []),
-  exportYxpn: (project) => invoke('iface:exportYxpn', project),
+  exportYxpn: (project, opts) => invoke('iface:exportYxpn', project, opts || {}),
   exportProject: (project, opts) => invoke('iface:exportProject', project, opts || {}),
   openInIdea: (dir) => invoke('iface:openInIdea', dir),
   importYxpn: () => invoke('iface:importYxpn'),

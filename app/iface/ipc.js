@@ -349,11 +349,23 @@ function registerIpc() {
 
   ipcMain.handle('iface:openInIdea', (e, dir) => projectExport.openInIdea(dir));
 
-  ipcMain.handle('iface:exportYxpn', (e, project) => {
+  ipcMain.handle('iface:exportYxpn', async (e, project, opts) => {
     try {
       const p = spec.normalizeProject(project);
-      const outDir = path.join(store.defaultGeneratedRoot(), 'yxpn');
-      const file = path.join(outDir, `${String(p.name || '接口工程').replace(/[\\/:*?"<>|]/g, '_')}.yxpn`);
+      const safeName = String(p.name || '接口工程').replace(/[\\/:*?"<>|]/g, '_');
+      const o = opts || {};
+      let file = String(o.filePath || '').trim();
+      if (!file) {
+        const r = await dialog.showSaveDialog({
+          title: '导出 .yxpn 工程包',
+          defaultPath: path.join(store.defaultGeneratedRoot(), 'yxpn', `${safeName}.yxpn`),
+          buttonLabel: '导出',
+          filters: [{ name: 'ClickBuild 工程包', extensions: ['yxpn'] }],
+        });
+        if (r.canceled || !r.filePath) return null;
+        file = r.filePath;
+      }
+      if (!/\.yxpn$/i.test(file)) file += '.yxpn';
       const r = pkg.writeYxpn(p, file, { port: services.settings().ports.http });
       return { ok: true, file: r.file, size: r.size, manifest: r.manifest };
     } catch (err) { return { ok: false, error: err.message }; }

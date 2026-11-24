@@ -214,6 +214,8 @@ AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
 
+1.1.71 把 `.yxpn` 导出从“只能落到默认生成目录”改成可选保存位置：点导出后打开系统保存对话框，默认文件名是 `<工程名>.yxpn`，可换目录、改文件名、覆盖已有包；文件名没有扩展名时自动补 `.yxpn`，取消对话框不会产生文件。IPC 同时保留 `filePath` 参数，自动化或插件可直接指定完整目标路径落盘，不再被迫先弹窗。验收：UI 冒烟新增“导出文件落到指定路径”，源码版 155/155，`test:ci` 14/14。Windows 安装包 225,043,013 B，构建时间 2026-11-24 23:55:03，SHA256 `9FA7858B76B9D2A2F76551538B2AA08C61336D9E6A3D0151B3D3447AB4EA4873`。
+
 1.1.70 把 `.yxpp` 前端表单补成一套能直接接后端的完整链路。普通表单、鉴权表单和新增的“表格表单”共用静默提交：勾选后不再整页跳转，原生模式改 fetch，静默只隐藏“提交中 / 成功提示”，失败仍报错，成功后跳转照常；原生静默 POST 用 `application/x-www-form-urlencoded`，GET 拼 query，AJAX 模式按 `data-ps-method` 真发 PUT / PATCH，不再一律写成 POST。表格表单 `formtable` 每行一条记录，同名字段重复提交；字段用 `标签|类型|占位|字段名|required` 自定义，行数 1–20，提交按钮名字、表头、斑马纹、按钮和边框颜色都可改，HTML / React / Vue 导出都带完整表格。前端工具栏新增“接口表单”：选择已有接口的 POST / PUT / PATCH 路由，按 `route.body` 或主表可写字段自动生成字段，跳过系统字段与隐藏字段，按类型映射输入控件，`nullable === false && default == null` 自动必填，提交地址自动拼 `/api + basePath + route.path`，可一键生成普通表单或表格录入。路径含 `:id` 时弹窗会标明真实地址并提示插入后替换，没有可写字段的路由直接禁用插入。验收：`test:formtable` 24/24，`test:ci` 14/14，源码版和 1.1.70 安装版 UI 冒烟均 154/154（含静默导出标记与原生拦截、表格字段 / 行数 / 按钮名、按接口生成并写入 action、检查器改写）。Windows 安装包 225,042,134 B（约 214.6 MB），构建时间 2026-11-24 23:41:10，SHA256 `0EEA9EACAD61012FD6044D6308F038DD66C2C588831A4F80A3CDA86E6BD3B49A`。
 
 1.1.69 把新建接口的第一步扩成 20 个常见业务模板，按「基础与账号 / 内容与互动 / 交易与库存 / 运营与服务 / 系统与工具」5 组展示。除原有空白、登录注册、搜索、内容、商品、表单、短链、探活外，新增会员管理、订单管理、库存管理、优惠券、预约管理、工单处理、评论评分、分类标签、文件资料、消息通知、配置中心、操作日志；每张卡片显示字段数与路由数。点模板会一次填好接口名、说明、主表、业务字段、路由和鉴权，再按四步继续改；表名使用 `member_profile / order_record / inventory_stock / coupon_record` 等独立键，避开默认工程已有的 `biz_order`。验收：新增 `test:guide-templates` 126/126 检查 20 个模板的字段类型、路由白名单、表名唯一与系统字段冲突，`test:ci` 13/13，源码版 UI 冒烟 149/149（含模板数量、分组、卡片计数与订单模板实际预填）。
@@ -452,6 +454,8 @@ SQL 里还能引用脚本变量：`$i.product_id` 会自动换成参数，`$oid.
 ## .yxpn 工程包
 
 `导出包` 生成 ZIP（纯 Node 实现，带 CRC32）：`manifest.json` + `project.json` + `interfaces.json` + `sql/*` + `docs/*` + 导出代码；如果工程绑定了前端，还会带 `frontend/index.yxpp`、`frontend/project.json` 和 `public/index.html`，manifest 里有 `frontend` 元信息。`导入包` / 双击 `.yxpn` 直接打开（`关联` 按钮写入 HKCU 文件关联）。
+
+1.1.71 起，导出 `.yxpn` 会先打开系统保存对话框，可以自行选择目录、文件名和覆盖目标；默认位置仍是生成目录下的 `yxpn/<工程名>.yxpn`。文件名没写 `.yxpn` 会自动补上，取消对话框不会写出半成品。自动化或插件也可以给 `exportYxpn(project, { filePath })` 传完整目标路径直接落盘。
 
 ## AI 生成（1.1.15）
 

@@ -7,6 +7,7 @@
 const PORT = Number(process.argv[2] || 9222);
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 
 async function targets() {
   const res = await fetch(`http://127.0.0.1:${PORT}/json`);
@@ -157,12 +158,13 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('复制接口生成副本', await val(`S.project.interfaces.some(i=>i.name===${JSON.stringify(firstName + '2')})`), await val(`S.project.interfaces.map(i=>i.name)`));
   t('复制后表名带 _2', await val(`!!S.project.interfaces.find(i=>i.name===${JSON.stringify(firstName + '2')}).tables.find(t=>t.name===${JSON.stringify(firstTable + '_2')})`));
 
-  // 导出 .yxpn（接口 + 文件落盘）
-  const exp = await val(`api.exportYxpn(S.project)`);
+  // 导出 .yxpn（接口 + 文件落盘到指定位置）
+  const yxpnTarget = path.join(os.tmpdir(), 'UI 冒烟-' + Date.now() + '.yxpn');
+  const exp = await val(`api.exportYxpn(S.project, { filePath: ${JSON.stringify(yxpnTarget)} })`);
   t('导出接口返回成功', exp && exp.ok, exp);
   t('导出文件存在且够大', exp && exp.size > 10000, exp && exp.size);
-  await val(`act('exportYxpn')`);
-  await wait(400);
+  t('导出文件落到指定路径', !!(exp && exp.ok && path.resolve(exp.file) === path.resolve(yxpnTarget) && fs.existsSync(exp.file)), exp && exp.file);
+  if (fs.existsSync(yxpnTarget)) fs.unlinkSync(yxpnTarget);
 
   // 导出独立工程（IDEA）
   t('Ribbon 有导出工程按钮', await val(`!!document.querySelector('[data-action="exportProject"]')`));
@@ -278,8 +280,13 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('前端工坊只保留一条原生顶栏', await val(`(()=>{const h=document.querySelector('#studioPaneHeader');const d=document.querySelector('#studioFrame').contentDocument;return !!(h&&getComputedStyle(h).display==='none'&&d.querySelector('#cbsDeploy')&&d.querySelector('.cbs-ops'));})()`));
   // 编辑画布后自动回写当前工程
   const autoSavedBg = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;const p=w.S.proj;const a=(p.pages||[])[p.active||0];p.page.bg='#FBFBFA';if(a)a.bg='#FBFBFA';w.renderCanvas();w.scheduleSave();return JSON.stringify({page:p.page.bg,active:a?a.bg:''});})()`);
-  await wait(3600);
-  const savedBg = await val(`(()=>{const f=S.project.frontend&&S.project.frontend.project;if(!f)return '-';const a=(f.pages||[])[f.active||0];return JSON.stringify({page:f.page&&f.page.bg,active:a&&a.bg})})()`);
+  let savedBg = '';
+  for (let i = 0; i < 16; i++) {
+    await wait(500);
+    savedBg = await val(`(()=>{const f=S.project.frontend&&S.project.frontend.project;if(!f)return '-';const a=(f.pages||[])[f.active||0];return JSON.stringify({page:f.page&&f.page.bg,active:a&&a.bg})})()`);
+    const bg = JSON.parse(savedBg || '{}');
+    if (bg.page === '#FBFBFA' || bg.active === '#FBFBFA') break;
+  }
   const bgObj = JSON.parse(savedBg || '{}');
   t('前端编辑自动回写当前工程', bgObj.page === '#FBFBFA' || bgObj.active === '#FBFBFA', savedBg);
   t('前端状态栏显示已同步到工程', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent.includes('已同步到当前工程');})()`), await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent;})()`));
