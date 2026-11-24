@@ -1022,6 +1022,14 @@ function setSaveState(state, text) {
   };
   const [label, color] = map[state] || map.saved;
   S.saveText = label;
+  const pill = $('#savePill');
+  if (pill) {
+    pill.dataset.state = state;
+    pill.classList.toggle('on', state !== 'saved');
+    const pillText = $('#savePillText');
+    if (pillText) pillText.textContent = state === 'dirty' ? '未保存' : state === 'saving' ? '保存中' : state === 'error' ? '保存失败' : '已保存';
+    pill.title = state === 'error' ? '保存失败，点击右上角保存重试' : state === 'dirty' ? '有改动尚未保存，点击保存或按 Ctrl+S' : '当前工程已保存';
+  }
   const el = $('#saveState');
   if (!el) return;
   el.textContent = label;
@@ -1667,7 +1675,7 @@ function renderGrid() {
   <div class="h-9 shrink-0 flex items-center gap-3 px-3 border-b border-neutral-300 text-[12px]">
     <b>${esc(cat.name)}</b>
     <input id="gridFilter" class="border border-neutral-300 px-2 py-0.5 w-56" placeholder="筛选当前分类：接口 / 表 / 备注…" value="${esc(gridQuery)}">
-    <span class="text-neutral-500" id="gridCount">${rows.length} 个接口 · 双击行进入编辑</span>
+    <span class="text-neutral-500" id="gridCount">${rows.length} 个接口 · ${rows.length ? '双击行进入编辑' : '从下面开始'}</span>
     <span class="ml-auto flex gap-1">
       <button class="btn thin" data-action="newIface">＋ 新建接口</button>
       <button class="btn thin" data-action="addCat">＋ 新建分类</button>
@@ -1685,7 +1693,16 @@ function renderGrid() {
             <td class="mono text-[12px]">${i.tables.reduce((s, t) => s + t.fields.length, 0)}</td>
             <td class="mono text-[12px]">${i.routes.length}</td>
             <td class="text-[12px] text-neutral-600 truncate" title="${esc(i.comment)}">${esc(i.comment)}</td>
-          </tr>`).join('') || `<tr><td class="rownum">1</td><td colspan="5" class="text-neutral-500">这个分类还没有接口，点右上角新建。</td></tr>`}
+          </tr>`).join('') || `<tr class="grid-empty-row"><td class="rownum"></td><td colspan="5">
+            <div class="grid-empty">
+              <div class="grid-empty-copy"><b>「${esc(cat.name)}」还没有接口</b><span>别对着空表格发呆：新建一个，或从现成套件、已有工程开始。</span></div>
+              <div class="empty-cards">
+                <button class="empty-card" data-action="newIface"><span class="ec-k">＋</span><b>新建接口</b><span>从字段、路由和脚本开始，先做出最小闭环。</span></button>
+                <button class="empty-card" data-action="ifaceKits"><span class="ec-k">套</span><b>套用接口套件</b><span>账号、商城、博客等整套接入，表与路由一起带进来。</span></button>
+                <button class="empty-card" data-action="importYxpn"><span class="ec-k">入</span><b>导入工程</b><span>打开 .yxpn，接着改已经存在的工程。</span></button>
+              </div>
+            </div>
+          </td></tr>`}
         ${rows.length ? `<tr id="gridNoHit" class="hidden"><td class="rownum"></td><td colspan="5" class="text-neutral-500">没有匹配的接口，换个关键词试试。</td></tr>` : ''}
       </tbody>
     </table>
@@ -1705,7 +1722,7 @@ function renderGrid() {
       const noHit = $('#gridNoHit');
       if (noHit) noHit.classList.toggle('hidden', !q || shown > 0);
       const count = $('#gridCount');
-      if (count) count.textContent = q ? `${shown} / ${rows.length} 个接口` : `${rows.length} 个接口 · 双击行进入编辑`;
+      if (count) count.textContent = q ? `${shown} / ${rows.length} 个接口` : `${rows.length} 个接口 · ${rows.length ? '双击行进入编辑' : '从下面开始'}`;
     };
   }
   $$('#workspace tr[data-iface]').forEach((tr) => {

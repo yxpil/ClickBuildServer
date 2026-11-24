@@ -169,6 +169,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   await val(`closeModal()`);
   t('表格有接口行', await val(`document.querySelectorAll('#workspace tr[data-iface]').length >= 1`), await val(`document.querySelectorAll('#workspace tr[data-iface]').length`));
   t('分类 sheet 存在', await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length >= 2`), await val(`document.querySelectorAll('#sheetbar .sheet[data-sheet]').length`));
+  const emptyUI = await val(`(()=>{const backCat=S.cat;const backMode=S.mode;const id='__empty_ui__';S.project.categories.push({id,name:'空分类测试'});S.cat=id;S.mode='grid';render();const out={cards:document.querySelectorAll('#workspace .empty-card').length,copy:(document.querySelector('#workspace .grid-empty-copy')||{}).textContent||'',acts:[...document.querySelectorAll('#workspace .empty-card')].map(x=>x.dataset.action).join(',')};S.project.categories=S.project.categories.filter(c=>c.id!==id);S.cat=backCat;S.mode=backMode;render();return JSON.stringify(out)})()`);
+  const eu = JSON.parse(emptyUI);
+  t('空分类显示三步起步区', eu.cards === 3 && /还没有接口/.test(eu.copy) && eu.acts === 'newIface,ifaceKits,importYxpn', emptyUI);
   const sideLayout = await val(`JSON.stringify({
     stats: document.querySelectorAll('#sideTop .side-stats > div').length,
     details: document.querySelectorAll('#sideTop details.side-details').length,
@@ -491,11 +494,14 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const editorCtx = await val(`(()=>{S.mode='editor';S.tab='tables';render();document.querySelector('#tabBody').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));const t=document.querySelector('#ctxmenu').innerText;closeCtx();return t;})()`);
   t('编辑器空白右键有字段/生成入口', /添加字段/.test(editorCtx) && /生成服务/.test(editorCtx), editorCtx);
 
-  // 自动保存静默，且状态栏可见
-  const dirty = await val(`(()=>{S.project.description=(S.project.description||'')+'x';scheduleSave();render();return document.querySelector('#saveState').textContent;})()`);
+  // 自动保存静默，且状态栏与顶部状态都可见
+  const dirty = await val(`(()=>{S.project.description=(S.project.description||'')+'x';scheduleSave();render();const pill=document.querySelector('#savePill');return JSON.stringify({bottom:document.querySelector('#saveState').textContent,pillText:(document.querySelector('#savePillText')||{}).textContent||'',pillState:pill?pill.dataset.state:'',pillVisible:!!pill&&getComputedStyle(pill).display!=='none'})})()`);
   await wait(1100);
-  const saved = await val(`document.querySelector('#saveState').textContent`);
-  t('自动保存静默且状态可见', /未保存|保存中/.test(dirty) && saved.includes('已保存'), `${dirty} → ${saved}`);
+  const saved = await val(`(()=>{const pill=document.querySelector('#savePill');return JSON.stringify({bottom:document.querySelector('#saveState').textContent,pillState:pill?pill.dataset.state:'',pillVisible:!!pill&&getComputedStyle(pill).display!=='none'})})()`);
+  const dp = JSON.parse(dirty);
+  const sp = JSON.parse(saved);
+  t('自动保存静默且状态可见', /未保存|保存中/.test(dp.bottom) && sp.bottom.includes('已保存'), `${dp.bottom} → ${sp.bottom}`);
+  t('顶部保存状态未保存时出现、已保存后收起', dp.pillVisible && dp.pillState === 'dirty' && /未保存/.test(dp.pillText) && !sp.pillVisible && sp.pillState === 'saved', `${dirty} → ${saved}`);
 
   // 启动按钮要跟网页服务状态一起变，并且默认入口是主页
   const ribbonStart = await val(`(()=>{const keep=S.services;const items=(keep.items||[]).map(x=>({...x,running:false}));S.services={...keep,items};renderRibbon();const el=document.querySelector('#ribbon [data-action="launchWeb"]');const home=document.querySelector('#ribbon [data-action="home"]');const out={start:el?el.innerText:'无',home:home?home.innerText:'无'};S.services=keep;renderRibbon();return JSON.stringify(out);})()`);

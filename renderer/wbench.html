@@ -494,6 +494,34 @@
   .ribbon-status { color: #8b93a1; font-size: 10px; }
   .dot.on { background: #22a06b; }
   .dot.off { background: #fff; border: 1px solid #cbd2dc; }
+  /* 顶部保存状态：只在未保存/保存中/失败时出现，已保存时不占位 */
+  .save-pill {
+    display: none; align-items: center; gap: 5px; flex: 0 0 auto;
+    height: 23px; padding: 0 8px; border: 1px solid transparent;
+    border-radius: 999px; font-size: 10px; line-height: 1; white-space: nowrap;
+  }
+  .save-pill.on { display: inline-flex; }
+  .save-pill i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+  .save-pill[data-state="dirty"] { color: #8a5a00; background: #fff8e8; border-color: #efd59b; }
+  .save-pill[data-state="saving"] { color: #5f6878; background: #f4f6fa; border-color: #dbe1eb; }
+  .save-pill[data-state="error"] { color: #a61b1b; background: #fff1f1; border-color: #eeb7b7; }
+  @media (max-width: 1200px) { .save-pill { display: none !important; } }
+  /* 空分类起步区：给“没有接口”一个可操作的下一步，而不是一行灰字 */
+  .grid-empty { padding: 34px 20px 38px; display: flex; flex-direction: column; align-items: center; gap: 17px; }
+  .grid-empty-copy { text-align: center; color: #6e7787; }
+  .grid-empty-copy b { display: block; color: #20242b; font-size: 14px; margin-bottom: 4px; font-weight: 600; }
+  .grid-empty-copy span { font-size: 11px; }
+  .empty-cards { width: min(720px, 100%); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+  .empty-card {
+    border: 1px solid #dfe4ec; border-radius: 10px; background: #fff;
+    padding: 13px 12px 12px; text-align: left; display: flex; flex-direction: column; gap: 5px;
+    font-family: inherit; box-shadow: 0 2px 7px rgba(31,45,61,.035); cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s;
+  }
+  .empty-card:hover { border-color: #c8d6ea; box-shadow: 0 7px 16px rgba(31,45,61,.08); transform: translateY(-1px); }
+  .empty-card .ec-k { width: 27px; height: 27px; border-radius: 7px; background: #eef4ff; color: #2f6fe4; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .empty-card b { font-size: 12px; color: #252a32; font-weight: 600; }
+  .empty-card span { font-size: 10px; line-height: 1.55; color: #7a8392; }
+  @media (max-width: 1080px) { .empty-cards { grid-template-columns: 1fr; } }
   @media (max-width: 1560px) {
     .ribbon-group { padding: 4px 7px 3px; min-width: 70px; }
     .rb { min-width: 44px; padding: 7px 4px 5px; }
@@ -1011,6 +1039,7 @@
       <option value="backend">只后端</option>
       <option value="frontend">只前端</option>
     </select>
+    <span id="savePill" class="save-pill" data-state="saved" title="当前工程的保存状态"><i></i><span id="savePillText">已保存</span></span>
     <div id="viewSwitch" class="no-drag flex border border-neutral-300 h-7" role="tablist" aria-label="工作模式">
       <button data-view="api" class="viewtab px-3 text-[11px] font-semibold bg-neutral-900 text-white">接口</button>
       <button data-view="studio" class="viewtab px-3 text-[11px] border-l border-neutral-300">前端</button>
