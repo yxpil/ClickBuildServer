@@ -24,14 +24,16 @@ t('CRC 校验通过（无抛错）', true);
 
 // 工程本体包：同一个 .yxpn 格式，但不把生成代码塞进去，供每次保存使用。
 const projectFile = path.join(__dirname, '..', 'generated', 'yxpn', '自测工程-工程.yxpn');
-const mini = pkg.writeProject(project, projectFile, { updatedAt: project.updatedAt });
+const created = '2026-01-01T00:00:00.000Z';
+const projectWithCreated = { ...project, createdAt: created };
+const mini = pkg.writeProject(projectWithCreated, projectFile, { updatedAt: project.updatedAt });
 const miniGot = pkg.readYxpn(projectFile);
 t('工程本体包写入并回读', !!mini.manifest && miniGot.project.name === project.name, mini);
 t('工程本体包标记 kind=project', miniGot.manifest.kind === 'project' && miniGot.manifest.scope === 'project', miniGot.manifest);
 t('工程本体包不包含生成代码', !miniGot.files.some((f) => /^(src|sql|native)\//.test(f)), miniGot.files);
 const firstCreated = miniGot.manifest.createdAt;
-pkg.writeProject(project, projectFile, { updatedAt: Date.now() });
-t('重复保存保留包创建时间', pkg.readYxpn(projectFile).manifest.createdAt === firstCreated, firstCreated);
+pkg.writeProject(projectWithCreated, projectFile, { updatedAt: Date.now() });
+t('重复保存保留包创建时间', pkg.readYxpn(projectFile).manifest.createdAt === firstCreated && firstCreated === created, firstCreated);
 
 const copy = spec.cloneIface(project.interfaces[0], project.interfaces.map((i) => i.name));
 t('复制接口自动编号 2', copy.name === '订单2', copy.name);

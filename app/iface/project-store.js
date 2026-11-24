@@ -100,7 +100,12 @@ function writeCache(file, name) {
 }
 
 function readProject(file) {
-  if (file.toLowerCase().endsWith(EXT)) return pkg.readYxpn(file).project;
+  if (file.toLowerCase().endsWith(EXT)) {
+    const got = pkg.readYxpn(file);
+    const project = got.project || {};
+    if (!project.createdAt && got.manifest && got.manifest.createdAt) project.createdAt = got.manifest.createdAt;
+    return project;
+  }
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
@@ -121,7 +126,7 @@ function migrateLegacy(file) {
     const target = fileOf(name);
     if (!fs.existsSync(target)) {
       const stat = fs.statSync(file);
-      const saved = spec.normalizeProject({ ...data, name, updatedAt: data.updatedAt || stat.mtimeMs });
+      const saved = spec.normalizeProject({ ...data, name, createdAt: data.createdAt || stat.birthtime.toISOString(), updatedAt: data.updatedAt || stat.mtimeMs });
       pkg.writeProject(saved, target, { updatedAt: saved.updatedAt, createdAt: stat.birthtime.toISOString() });
       writeCache(target, name);
       const index = readIndex().filter((e) => e.name !== name && path.resolve(e.file) !== path.resolve(target));
@@ -171,7 +176,7 @@ function list() {
 
 function save(project) {
   const name = String(project.name || '接口工作台').trim() || '接口工作台';
-  const saved = spec.normalizeProject({ ...project, name, updatedAt: Date.now() });
+  const saved = spec.normalizeProject({ ...project, name, createdAt: project.createdAt || Date.now(), updatedAt: Date.now() });
   const file = fileOf(name);
   pkg.writeProject(saved, file, { updatedAt: saved.updatedAt });
   writeCache(file, name);

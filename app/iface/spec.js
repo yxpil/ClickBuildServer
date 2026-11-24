@@ -946,6 +946,7 @@ function normalizeProject(project) {
       project: p.frontend.project,
       html: String(p.frontend.html || ''),
     } : null,
+    createdAt: p.createdAt || new Date().toISOString(),
     updatedAt: p.updatedAt || new Date().toISOString(),
   };
 }

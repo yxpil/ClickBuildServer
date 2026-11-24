@@ -206,7 +206,7 @@ function buildProject(project, opts) {
 
 function writeProject(project, outFile, opts) {
   const o = { ...(opts || {}) };
-  if (!o.createdAt) {
+  if (!o.createdAt && !(project && project.createdAt)) {
     try { o.createdAt = fs.statSync(outFile).birthtime.toISOString(); } catch (e) { /* 新文件，manifest 自己取当前时间 */ }
   }
   const built = buildProject(project, o);
