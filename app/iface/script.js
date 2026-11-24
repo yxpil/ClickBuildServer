@@ -78,8 +78,8 @@ function lex(src) {
       continue;
     }
     const two = s.slice(i, i + 2);
-    if (['==', '!=', '>=', '<=', '&&', '||'].includes(two)) { out.push({ k: 'op', v: two }); i += 2; continue; }
-    if ('+-*/%<>!()[]{}.,:'.includes(c)) { out.push({ k: 'op', v: c }); i++; continue; }
+    if (['==', '!=', '>=', '<=', '&&', '||', '??'].includes(two)) { out.push({ k: 'op', v: two }); i += 2; continue; }
+    if ('+-*/%<>!()[]{}.,:?'.includes(c)) { out.push({ k: 'op', v: c }); i++; continue; }
     throw new Error(`表达式里有无法识别的字符：${c}`);
   }
   return out;
@@ -100,28 +100,100 @@ class Expr {
     if (tok && tok.k === 'op' && tok.v === v) { this.p++; return true; }
     return false;
   }
+  word(w) {
+    const tok = this.t[this.p];
+    return !!(tok && tok.k === 'id' && tok.v.toUpperCase() === w);
+  }
+  acceptWord(w) {
+    if (!this.word(w)) return false;
+    this.p++;
+    return true;
+  }
+  eatWord(w) {
+    if (!this.word(w)) throw new Error(`表达式语法错误：期望 ${w}`);
+    this.p++;
+  }
 
   parse() {
-    const node = this.or();
+    const node = this.ternary();
     if (this.p < this.t.length) throw new Error(`表达式多出了内容：${this.t.slice(this.p).map((x) => x.v).join(' ')}`);
     return node;
   }
 
+  ternary() {
+    let cond = this.coalesce();
+    if (this.accept('?')) {
+      const a = this.ternary();
+      this.eat(':');
+      const b = this.ternary();
+      cond = { k: 'cond', cond, a, b };
+    }
+    return cond;
+  }
+  coalesce() {
+    let left = this.or();
+    while (this.accept('??')) left = { k: 'coalesce', a: left, b: this.or() };
+    return left;
+  }
+
   or() {
     let left = this.and();
-    while (this.peek() && this.peek().v === '||') { this.p++; left = { k: 'or', a: left, b: this.and() }; }
+    while ((this.peek() && this.peek().v === '||') || this.word('OR')) {
+      if (this.peek().v === '||') this.p++; else this.p++;
+      left = { k: 'or', a: left, b: this.and() };
+    }
     return left;
   }
   and() {
     let left = this.eq();
-    while (this.peek() && this.peek().v === '&&') { this.p++; left = { k: 'and', a: left, b: this.eq() }; }
+    while ((this.peek() && this.peek().v === '&&') || this.word('AND')) {
+      this.p++;
+      left = { k: 'and', a: left, b: this.eq() };
+    }
     return left;
   }
   eq() {
     let left = this.rel();
-    while (this.peek() && (this.peek().v === '==' || this.peek().v === '!=')) {
-      const op = this.t[this.p++].v;
-      left = { k: 'cmp', op, a: left, b: this.rel() };
+    while (this.peek()) {
+      if (this.peek().v === '==' || this.peek().v === '!=') {
+        const op = this.t[this.p++].v;
+        left = { k: 'cmp', op, a: left, b: this.rel() };
+        continue;
+      }
+      if (this.word('IS')) {
+        this.p++;
+        const not = this.acceptWord('NOT');
+        this.eatWord('NULL');
+        left = { k: 'isnull', not, a: left };
+        continue;
+      }
+      let not = false;
+      if (this.word('NOT') && this.p + 1 < this.t.length
+        && ['IN', 'LIKE', 'BETWEEN'].includes((this.t[this.p + 1].v || '').toUpperCase())) {
+        this.p++;
+        not = true;
+      }
+      if (this.word('IN')) {
+        this.p++;
+        const list = this.primary();
+        left = { k: 'in', not, a: left, list };
+        continue;
+      }
+      if (this.word('LIKE')) {
+        this.p++;
+        left = { k: 'like', not, a: left, b: this.add() };
+        continue;
+      }
+      if (this.word('BETWEEN')) {
+        this.p++;
+        const low = this.add();
+        this.eatWord('AND');
+        const high = this.add();
+        left = { k: 'between', not, a: left, low, high };
+        continue;
+      }
+      if (not) throw new Error('表达式语法错误：NOT 后面只能跟 IN / LIKE / BETWEEN');
+      break;
     }
     return left;
   }
@@ -152,6 +224,7 @@ class Expr {
   unary() {
     const tok = this.peek();
     if (tok && tok.k === 'op' && (tok.v === '!' || tok.v === '-')) { this.p++; return { k: 'un', op: tok.v, a: this.unary() }; }
+    if (this.word('NOT')) { this.p++; return { k: 'un', op: '!', a: this.eq() }; }
     return this.primary();
   }
   primary() {
@@ -168,21 +241,21 @@ class Expr {
         this.p++;
         const args = [];
         if (!(this.peek() && this.peek().v === ')')) {
-          args.push(this.or());
-          while (this.accept(',')) args.push(this.or());
+          args.push(this.ternary());
+          while (this.accept(',')) args.push(this.ternary());
         }
         this.eat(')');
         return { k: 'call', name: name.toUpperCase(), args };
       }
       return { k: 'ident', name };
     }
-    if (tok.k === 'op' && tok.v === '(') { this.p++; const e = this.or(); this.eat(')'); return e; }
+    if (tok.k === 'op' && tok.v === '(') { this.p++; const e = this.ternary(); this.eat(')'); return e; }
     if (tok.k === 'op' && tok.v === '[') {
       this.p++;
       const items = [];
       if (!(this.peek() && this.peek().v === ']')) {
-        items.push(this.or());
-        while (this.accept(',')) items.push(this.or());
+        items.push(this.ternary());
+        while (this.accept(',')) items.push(this.ternary());
       }
       this.eat(']');
       return { k: 'array', items };
@@ -207,7 +280,7 @@ class Expr {
     else if (keyTok.k === 'ph') { key = `__ph__${keyTok.v}`; this.p++; }
     else throw new Error('对象的键必须是字符串或标识符');
     this.eat(':');
-    return { key, value: this.or() };
+    return { key, value: this.ternary() };
   }
 }
 
@@ -282,9 +355,9 @@ function responseMeta(status, body) {
 
 function diagHint(message) {
   const m = String(message || '');
-  if (/缺少 END/.test(m)) return '在这个 IF / FOREACH / FOR / WHILE / SWITCH 结束的位置补一行 END';
+  if (/缺少 END/.test(m)) return '在这个 IF / TRY / FOREACH / FOR / REPEAT / WHILE / SWITCH 结束的位置补一行 END';
   if (/占位符没有闭合/.test(m)) return '写成 {{body.name}} 或 {{query.id}}，补全后面的 }}';
-  if (/不认识的语句/.test(m)) return '语句必须以 LET / SET / ASSIGN / INC / APPEND / QUERY / EXEC / IF / FOREACH / FOR / WHILE / SWITCH / FUNC / RUN / RETURN / LOG / WAIT / TX / TOKEN / PUBLISH 开头';
+  if (/不认识的语句/.test(m)) return '语句必须以 LET / SET / ASSIGN / INC / APPEND / PREPEND / QUERY / EXEC / IF / TRY / FOREACH / FOR / REPEAT / WHILE / SWITCH / FUNC / RUN / ASSERT / RETURN / LOG / WAIT / TX / TOKEN / PUBLISH 开头';
   if (/表达式语法错误|表达式多出了内容|表达式在这里断了/.test(m)) return '检查括号、逗号、运算符和字符串引号是否成对';
   if (/变量未赋值/.test(m)) return '先在这一行之前用 LET $name = ... 赋值';
   if (/已赋值但未使用/.test(m)) return '不需要这个变量就删掉；需要排查就加 LOG DEBUG $name;';
@@ -346,14 +419,14 @@ function parseScript(text) {
   const errors = [];
   const diagnostics = [];
   let i = 0;
-  const statementStart = /^(LET|SET|ASSIGN|INC|DEC|APPEND|PUSH|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|FOR|WHILE|BREAK|CONTINUE|SWITCH|CASE|DEFAULT|FUNC|FUNCTION|RUN|INVOKE|RETURN|LOG|WAIT|THROW|TX|PUBLISH|TOKEN)\b/i;
+  const statementStart = /^(LET|SET|ASSIGN|INC|DEC|APPEND|PREPEND|PUSH|TRY|CATCH|FINALLY|ASSERT|REPEAT|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|FOR|WHILE|BREAK|CONTINUE|SWITCH|CASE|DEFAULT|FUNC|FUNCTION|RUN|INVOKE|RETURN|LOG|WAIT|THROW|TX|PUBLISH|TOKEN)\b/i;
 
   // 允许把一条 SQL / JSON 排成多行：只有下一行不是新语句时才续行，行号仍从语句首行算。
   function joinContinuation(line) {
     let out = line;
     while (!/;\s*$/.test(out) && i + 1 < lines.length) {
       const next = lines[i + 1].trim();
-      if (!next || statementStart.test(next)) break;
+      if (!next || statementStart.test(next) || /^\$[A-Za-z_]/.test(next.trim())) break;
       i++;
       out += ' ' + next;
     }
@@ -401,7 +474,7 @@ function parseScript(text) {
     const raw = lines[i];
     let line = raw.trim();
     const upper = ((line.match(/^([A-Za-z]+)/) || [])[1] || '').toUpperCase();
-    if (/^(LET|SET|ASSIGN|INC|DEC|APPEND|PUSH|QUERY|EXEC|RETURN|LOG|WAIT|PUBLISH|TOKEN|THROW|RUN|INVOKE)\b/i.test(upper)) line = joinContinuation(line);
+    if (/^(LET|SET|ASSIGN|INC|DEC|APPEND|PREPEND|PUSH|ASSERT|QUERY|EXEC|RETURN|LOG|WAIT|PUBLISH|TOKEN|THROW|RUN|INVOKE)\b/i.test(upper)) line = joinContinuation(line);
 
     // SQL 只能出现在 QUERY / EXEC 后面。把裸 SQL 开头的行直接指出来，
     // 避免 SELECT / UPDATE 被当成“自定义语句”吞掉，或者反过来把自定义关键字当 SQL。
@@ -433,6 +506,32 @@ function parseScript(text) {
       if (blk.stop !== 'END') throw throwAt('IF 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
       i++;
       return { k: 'if', branches, elseBody };
+    }
+
+    if (upper === 'TRY') {
+      const startLine = i + 1;
+      i++;
+      let blk = parseBlock(['CATCH', 'FINALLY', 'END']);
+      const tryBody = blk.body;
+      let catchName = 'err';
+      let catchBody = null;
+      let finallyBody = null;
+      if (blk.stop === 'CATCH') {
+        const cm = /^CATCH(?:\s+AS)?\s+\$?([A-Za-z_][A-Za-z0-9_]*)?/i.exec(blk.line);
+        if (cm && cm[1]) catchName = cm[1];
+        i++;
+        blk = parseBlock(['FINALLY', 'END']);
+        catchBody = blk.body;
+      }
+      if (blk.stop === 'FINALLY') {
+        i++;
+        blk = parseBlock(['END']);
+        finallyBody = blk.body;
+      }
+      if (blk.stop !== 'END') throw throwAt('TRY 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
+      if (!catchBody && !finallyBody) throw throwAt('TRY 至少要有 CATCH 或 FINALLY', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
+      i++;
+      return { k: 'try', tryBody, catchName, catchBody, finallyBody };
     }
 
     if (upper === 'FOREACH') {
@@ -474,6 +573,18 @@ function parseScript(text) {
       return { k: 'while', cond: parseExpr(cond), body: blk.body };
     }
 
+    // 固定次数循环：REPEAT 5 TIMES ... END / REPEAT 3 TIMES AS $i ... END
+    if (upper === 'REPEAT') {
+      const startLine = i + 1;
+      const m = /^REPEAT\s+([\s\S]+?)\s+TIMES(?:\s+(?:AS\s+)?\$([A-Za-z_][A-Za-z0-9_]*))?\s*;?\s*$/i.exec(line);
+      if (!m) throw new Error('REPEAT 写法：REPEAT 5 TIMES ... END');
+      i++;
+      const blk = parseBlock(['END']);
+      if (blk.stop !== 'END') throw throwAt('REPEAT 缺少 END', startLine, 1, String(lines[startLine - 1] || '').trimEnd().length + 1);
+      i++;
+      return { k: 'repeat', count: parseExpr(m[1]), name: m[2] || null, body: blk.body };
+    }
+
     // 多分支选择：SWITCH 表达式 / CASE 1,2 / DEFAULT / END
     if (upper === 'SWITCH') {
       const startLine = i + 1;
@@ -513,29 +624,29 @@ function parseScript(text) {
       return { k: 'func', name: m[2].toUpperCase(), params, expr: parseExpr(m[4].replace(/;\s*$/, '')) };
     }
 
-    // 赋值：ASSIGN $x = 1; / $x = 1; / $x += 1; / SET $x -= 1;
+    // 赋值：ASSIGN $x = 1; / $x = 1; / $x += 1; / SET $x -= 1; / $user.name = 'A';
     {
-      const am = /^(ASSIGN\s+)?\$([A-Za-z0-9_]+)\s*(=|\+=|-=|\*=|\/=)\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+      const am = /^(ASSIGN)?\s*\$([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*)\s*(=|\+=|-=|\*=|\/=)\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
       if (am && (upper === 'ASSIGN' || !upper)) {
         i++;
-        return { k: 'assign', name: am[2], op: am[3], expr: parseExpr(am[4]) };
+        return { k: 'assign', name: am[2], path: parseTargetPath(am[3]), op: am[4], expr: parseExpr(am[5]) };
       }
     }
 
-    // 自增/自减：INC $n; / INC $n BY 2; / DEC $n;
+    // 自增/自减：INC $n; / INC $n BY 2; / DEC $n; / INC $user.score BY 1;
     if (upper === 'INC' || upper === 'DEC') {
-      const m = /^(INC|DEC)\s+\$([A-Za-z0-9_]+)(?:\s+BY\s+([\s\S]+?))?\s*;?\s*$/i.exec(line);
+      const m = /^(INC|DEC)\s+\$([A-Za-z0-9_]+)((?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*)(?:\s+BY\s+([\s\S]+?))?\s*;?\s*$/i.exec(line);
       if (!m) throw new Error(`${upper} 写法：INC $n; / INC $n BY 2; / DEC $n;`);
       i++;
-      return { k: 'assign', name: m[2], op: upper === 'INC' ? '+=' : '-=', expr: m[3] ? parseExpr(m[3]) : { k: 'lit', v: 1 } };
+      return { k: 'assign', name: m[2], path: parseTargetPath(m[3]), op: upper === 'INC' ? '+=' : '-=', expr: m[4] ? parseExpr(m[4]) : { k: 'lit', v: 1 } };
     }
 
-    // 追加数组元素：APPEND $list, 值; / PUSH $list, 值;
-    if (upper === 'APPEND' || upper === 'PUSH') {
-      const m = /^(APPEND|PUSH)\s+\$([A-Za-z0-9_]+)\s*,\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+    // 追加数组元素：APPEND $list, 值; / PREPEND $list, 值; / PUSH $list, 值;
+    if (upper === 'APPEND' || upper === 'PREPEND' || upper === 'PUSH') {
+      const m = /^(APPEND|PREPEND|PUSH)\s+\$([A-Za-z0-9_]+)((?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*)\s*,\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
       if (!m) throw new Error(`${upper} 写法：APPEND $list, 值;`);
       i++;
-      return { k: 'append', name: m[2], expr: parseExpr(m[3]) };
+      return { k: upper === 'PREPEND' ? 'prepend' : 'append', name: m[2], path: parseTargetPath(m[3]), expr: parseExpr(m[4]) };
     }
 
     if (upper === 'BREAK' || upper === 'CONTINUE') {
@@ -552,6 +663,14 @@ function parseScript(text) {
       return { k: 'run', name: m[2].toUpperCase(), args };
     }
 
+    if (upper === 'ASSERT') {
+      const rest = line.replace(/^ASSERT\s*/i, '').replace(/;\s*$/, '').trim();
+      if (!rest) throw new Error("ASSERT 写法：ASSERT 条件, '失败信息';");
+      const args = splitArgs(rest);
+      i++;
+      return { k: 'assert', cond: parseExpr(args[0]), message: args[1] ? parseExpr(args[1]) : null };
+    }
+
     if (upper === 'THROW') {
       const rest = line.replace(/^THROW\s*/i, '').replace(/;\s*$/, '').trim();
       if (!rest) throw new Error('THROW 写法：THROW \'错误信息\';');
@@ -560,13 +679,14 @@ function parseScript(text) {
     }
 
     if (/^(LET|SET)\s+\$/i.test(line)) {
-      const m = /^(LET|SET)\s+(\$[A-Za-z0-9_]+)\s*(=|\+=|-=|\*=|\/=)\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
+      const m = /^(LET|SET)\s+\$([A-Za-z0-9_]+)((?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*)\s*(=|\+=|-=|\*=|\/=)\s*([\s\S]+?)\s*;?\s*$/i.exec(line);
       if (!m) throw new Error('LET 写法：LET $x = QUERY ... ;');
-      if (m[3] !== '=') {
+      const path = parseTargetPath(m[3]);
+      if (path.length || m[4] !== '=') {
         i++;
-        return { k: 'assign', name: m[2].replace(/^\$/, ''), op: m[3], expr: parseExpr(m[4]) };
+        return { k: 'assign', name: m[2], path, op: m[4], expr: parseExpr(m[5]) };
       }
-      const rhs = m[4];
+      const rhs = m[5];
       const qm = /^(QUERY|EXEC)\s+([\s\S]+?)\s*;?\s*$/i.exec(rhs);
       if (qm) {
         i++;
@@ -681,6 +801,14 @@ function truthy(v) {
   return !!v && v !== 0 && v !== '';
 }
 
+function likeValue(text, pattern) {
+  const source = String(pattern == null ? '' : pattern)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/%/g, '.*')
+    .replace(/_/g, '.');
+  return new RegExp(`^${source}$`, 'i').test(String(text == null ? '' : text));
+}
+
 function walkVar(env, name, path) {
   let cur = env.vars[name];
   for (const p of path || []) {
@@ -688,6 +816,31 @@ function walkVar(env, name, path) {
     cur = cur[p];
   }
   return cur == null ? null : cur;
+}
+
+function applyAssign(vars, name, path, op, value) {
+  if (!path || !path.length) {
+    if (op === '=') { vars[name] = value; return; }
+    const old = vars[name];
+    if (op === '+=') vars[name] = (typeof old === 'string' || typeof value === 'string') ? String(old == null ? '' : old) + String(value == null ? '' : value) : Number(old || 0) + Number(value);
+    else if (op === '-=') vars[name] = Number(old || 0) - Number(value);
+    else if (op === '*=') vars[name] = Number(old || 0) * Number(value);
+    else if (op === '/=') vars[name] = Number(value) === 0 ? null : Number(old || 0) / Number(value);
+    return;
+  }
+  let cur = vars[name];
+  for (let i = 0; i < path.length - 1; i++) {
+    if (cur == null) throw new Error(`变量 $${name} 的路径 ${path.join('.')} 不存在，先 LET $${name} = { ... };`);
+    cur = cur[path[i]];
+    if (cur == null) throw new Error(`变量 $${name} 的路径 ${path.join('.')} 不存在，先初始化对象或数组`);
+  }
+  const key = path[path.length - 1];
+  const old = cur[key];
+  if (op === '=') cur[key] = value;
+  else if (op === '+=') cur[key] = (typeof old === 'string' || typeof value === 'string') ? String(old == null ? '' : old) + String(value == null ? '' : value) : Number(old || 0) + Number(value);
+  else if (op === '-=') cur[key] = Number(old || 0) - Number(value);
+  else if (op === '*=') cur[key] = Number(old || 0) * Number(value);
+  else if (op === '/=') cur[key] = Number(value) === 0 ? null : Number(old || 0) / Number(value);
 }
 
 function evalExpr(node, env) {
@@ -739,6 +892,33 @@ function evalExpr(node, env) {
       if (node.op === '/') return Number(b) === 0 ? null : Number(a) / Number(b);
       if (node.op === '%') return Number(b) === 0 ? null : Number(a) % Number(b);
       return null;
+    }
+    case 'cond': return truthy(evalExpr(node.cond, env)) ? evalExpr(node.a, env) : evalExpr(node.b, env);
+    case 'coalesce': {
+      const a = evalExpr(node.a, env);
+      return a == null ? evalExpr(node.b, env) : a;
+    }
+    case 'isnull': {
+      const a = evalExpr(node.a, env);
+      return node.not ? a != null : a == null; // eslint-disable-line eqeqeq
+    }
+    case 'in': {
+      const a = evalExpr(node.a, env);
+      const list = evalExpr(node.list, env);
+      const arr = Array.isArray(list) ? list : (list && Array.isArray(list.rows) ? list.rows : []);
+      const hit = arr.some((x) => x == a); // eslint-disable-line eqeqeq
+      return node.not ? !hit : hit;
+    }
+    case 'like': {
+      const hit = likeValue(evalExpr(node.a, env), evalExpr(node.b, env));
+      return node.not ? !hit : hit;
+    }
+    case 'between': {
+      const v = Number(evalExpr(node.a, env));
+      const low = Number(evalExpr(node.low, env));
+      const high = Number(evalExpr(node.high, env));
+      const hit = v >= low && v <= high;
+      return node.not ? !hit : hit;
     }
     case 'call': return callFn(node.name, node.args, env);
     default: throw new Error('未知表达式节点：' + node.k);
@@ -797,6 +977,32 @@ function splitArgs(text) {
   }
   if (cur.trim()) out.push(cur.trim());
   return out;
+}
+
+function parseTargetPath(text) {
+  const path = [];
+  const src = String(text || '');
+  let i = 0;
+  while (i < src.length) {
+    if (src[i] === '.') {
+      const m = /^\.([A-Za-z_][A-Za-z0-9_]*)/.exec(src.slice(i));
+      if (!m) throw new Error(`变量路径写法错误：${src.slice(i)}`);
+      path.push(m[1]);
+      i += m[0].length;
+      continue;
+    }
+    if (src[i] === '[') {
+      const end = src.indexOf(']', i);
+      if (end < 0) throw new Error('变量路径的 [] 没有闭合');
+      const inner = src.slice(i + 1, end).trim();
+      if (!inner) throw new Error('变量路径的 [] 不能为空');
+      path.push(/^\d+$/.test(inner) ? Number(inner) : inner.replace(/^['"]|['"]$/g, ''));
+      i = end + 1;
+      continue;
+    }
+    throw new Error(`变量路径写法错误：${src.slice(i)}`);
+  }
+  return path;
 }
 
 function literalValue(arg) {
@@ -921,21 +1127,23 @@ async function runScript(ast, env) {
       return null;
     }
     if (st.k === 'assign') {
-      const value = evalExpr(st.expr, scope);
-      if (st.op === '=') scope.vars[st.name] = value;
-      else {
-        const old = scope.vars[st.name];
-        if (st.op === '+=') scope.vars[st.name] = (typeof old === 'string' || typeof value === 'string') ? String(old == null ? '' : old) + String(value == null ? '' : value) : Number(old || 0) + Number(value);
-        else if (st.op === '-=') scope.vars[st.name] = Number(old || 0) - Number(value);
-        else if (st.op === '*=') scope.vars[st.name] = Number(old || 0) * Number(value);
-        else if (st.op === '/=') scope.vars[st.name] = Number(value) === 0 ? null : Number(old || 0) / Number(value);
-      }
+      applyAssign(scope.vars, st.name, st.path || [], st.op, evalExpr(st.expr, scope));
       return null;
     }
-    if (st.k === 'append') {
-      const cur = scope.vars[st.name];
-      if (cur != null && !Array.isArray(cur)) throw new Error(`APPEND 只能追加到数组，$${st.name} 现在不是数组`);
-      scope.vars[st.name] = (cur || []).concat([evalExpr(st.expr, scope)]);
+    if (st.k === 'append' || st.k === 'prepend') {
+      const list = st.path && st.path.length ? walkVar(scope, st.name, st.path) : scope.vars[st.name];
+      if (list != null && !Array.isArray(list)) throw new Error(`${st.k === 'prepend' ? 'PREPEND' : 'APPEND'} 只能操作数组，$${st.name} 现在不是数组`);
+      const next = (list || []).slice();
+      const value = evalExpr(st.expr, scope);
+      if (st.k === 'prepend') next.unshift(value); else next.push(value);
+      applyAssign(scope.vars, st.name, st.path || [], '=', next);
+      return null;
+    }
+    if (st.k === 'assert') {
+      if (!truthy(evalExpr(st.cond, scope))) {
+        const message = st.message ? evalExpr(st.message, scope) : `断言失败：${JSON.stringify(st.cond)}`;
+        throw new Error(String(message || '断言失败'));
+      }
       return null;
     }
     if (st.k === 'run') {
@@ -1025,6 +1233,31 @@ async function runScript(ast, env) {
       }
       return null;
     }
+    if (st.k === 'try') {
+      let outcome = null;
+      let thrown = null;
+      try {
+        outcome = await execBlock(st.tryBody, scope);
+      } catch (e) {
+        thrown = e;
+      }
+      if (thrown && st.catchBody) {
+        scope.vars[st.catchName] = {
+          name: thrown.name || 'Error',
+          message: String(thrown.message || thrown),
+          stack: String(thrown.stack || ''),
+        };
+        outcome = await execBlock(st.catchBody, scope);
+        thrown = null;
+      }
+      if (st.finallyBody) {
+        const fin = await execBlock(st.finallyBody, scope);
+        if (fin) outcome = fin;
+      }
+      if (thrown) throw thrown;
+      if (outcome) return outcome;
+      return null;
+    }
     if (st.k === 'foreach') {
       const list = evalExpr(st.expr, scope);
       const arr = Array.isArray(list) ? list : (list && Array.isArray(list.rows) ? list.rows : []);
@@ -1058,6 +1291,17 @@ async function runScript(ast, env) {
     if (st.k === 'while') {
       let loops = 0;
       while (truthy(evalExpr(st.cond, scope)) && loops++ < 1000) {
+        const r = await execBlock(st.body, scope);
+        if (r && r.k === 'return') return r;
+        if (r && r.k === 'break') break;
+        if (r && r.k === 'continue') continue;
+      }
+      return null;
+    }
+    if (st.k === 'repeat') {
+      const count = Math.max(0, Math.min(1000, Math.floor(Number(evalExpr(st.count, scope)) || 0)));
+      for (let n = 0; n < count; n++) {
+        if (st.name) scope.vars[st.name] = n + 1;
         const r = await execBlock(st.body, scope);
         if (r && r.k === 'return') return r;
         if (r && r.k === 'break') break;
@@ -1182,7 +1426,7 @@ function lintRawSyntax(rawLines, add) {
 }
 
 function lintSqlStatements(codeLines, add) {
-  const start = /^(LET|SET|ASSIGN|INC|DEC|APPEND|PUSH|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|FOR|WHILE|BREAK|CONTINUE|SWITCH|CASE|DEFAULT|FUNC|FUNCTION|RUN|INVOKE|RETURN|LOG|WAIT|THROW|TX|PUBLISH|TOKEN)\b/i;
+  const start = /^(LET|SET|ASSIGN|INC|DEC|APPEND|PREPEND|PUSH|TRY|CATCH|FINALLY|ASSERT|REPEAT|QUERY|EXEC|IF|ELSEIF|ELSE|END|FOREACH|FOR|WHILE|BREAK|CONTINUE|SWITCH|CASE|DEFAULT|FUNC|FUNCTION|RUN|INVOKE|RETURN|LOG|WAIT|THROW|TX|PUBLISH|TOKEN)\b/i;
   codeLines.forEach((line, idx) => {
     const lineNo = idx + 1;
     const m = /^\s*(?:(?:LET|SET)\s+\$[A-Za-z0-9_]+\s*=\s*)?(QUERY|EXEC)\b(.*)$/i.exec(line);
@@ -1281,12 +1525,26 @@ function checkScript(text) {
   lines.forEach((line, idx) => {
     const lineNo = idx + 1;
     let work = line;
-    const lm = /^(\s*)(LET|SET|ASSIGN|FOR|FOREACH)\s+\$([A-Za-z0-9_]+)/i.exec(line);
+    const lm = /^(\s*)(LET|SET|ASSIGN|FOR|FOREACH)\s+\$([A-Za-z_][A-Za-z0-9_]*)/i.exec(line);
     if (lm) {
       const name = lm[3];
       const column = lm[0].indexOf('$') + 1;
       if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
       work = work.replace(`$${name}`, ' '.repeat(name.length + 1));
+    }
+    const rm = /^(\s*)REPEAT\s+[\s\S]+?\s+TIMES(?:\s+(?:AS\s+)?\$([A-Za-z_][A-Za-z0-9_]*))?/i.exec(line);
+    if (rm && rm[2]) {
+      const name = rm[2];
+      const column = rm[0].lastIndexOf('$') + 1;
+      if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
+      work = work.replace(new RegExp(`\\$${name}\\b`), ' '.repeat(name.length + 1));
+    }
+    const cm = /^(\s*)CATCH(?:\s+AS)?\s+\$?([A-Za-z_][A-Za-z0-9_]*)?/i.exec(line);
+    if (cm && cm[2]) {
+      const name = cm[2];
+      const column = cm[0].lastIndexOf(name) + 1;
+      if (!declared.has(name)) declared.set(name, { line: lineNo, column, used: false });
+      work = work.replace(new RegExp(`\\$${name}\\b`), ' '.repeat(name.length + 1));
     }
     const pm = /^(\s*)(FUNC|FUNCTION)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)/i.exec(line);
     if (pm) {
@@ -1297,8 +1555,8 @@ function checkScript(text) {
         work = work.replace(new RegExp(`\\$${name}\\b`), ' '.repeat(name.length + 1));
       });
     }
-    // 裸赋值 $x = ... 也视为声明；+= / -= 等要求变量已经存在。
-    const am = /^(\s*)\$([A-Za-z0-9_]+)\s*=(?!=)/.exec(line);
+    // 裸赋值 $x = ... 也视为声明；带路径的 $user.name = ... 声明的是 $user；+= / -= 等要求变量已经存在。
+    const am = /^(\s*)\$([A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*\s*=(?!=)/.exec(line);
     if (am) {
       const name = am[2];
       const column = am[0].indexOf('$') + 1;
@@ -1345,19 +1603,28 @@ function checkScript(text) {
 
 /* ---------------- 转 JS（导出用） ---------------- */
 
-function exprToJs(node) {
-  switch (node.k) {
+function targetJs(name, path) {
+  return `$${name}${(path || []).map((p) => (typeof p === 'number' ? `[${p}]` : `.${p}`)).join('')}`;
+}
+
+function exprToJs(node) {  switch (node.k) {
     case 'lit': return JSON.stringify(node.v);
     case 'ph': return `V('${node.v}', ctx)`;
     case 'var': return `$${node.name}${(node.path || []).map((p) => (typeof p === 'number' ? `[${p}]` : `.${p}`)).join('')}`;
     case 'ident': return node.name;
     case 'array': return `[${node.items.map(exprToJs).join(', ')}]`;
     case 'object': return `{ ${node.entries.map((e) => `${JSON.stringify(e.key)}: ${exprToJs(e.value)}`).join(', ')} }`;
-    case 'un': return `(${node.op}${exprToJs(node.a)})`;
-    case 'and': return `(${exprToJs(node.a)} && ${exprToJs(node.b)})`;
-    case 'or': return `(${exprToJs(node.a)} || ${exprToJs(node.b)})`;
+    case 'un': return node.op === '!' ? `(!truthy(${exprToJs(node.a)}))` : `(-${exprToJs(node.a)})`;
+    case 'and': return `(truthy(${exprToJs(node.a)}) && truthy(${exprToJs(node.b)}))`;
+    case 'or': return `(truthy(${exprToJs(node.a)}) || truthy(${exprToJs(node.b)}))`;
     case 'cmp': return `(${exprToJs(node.a)} ${node.op} ${exprToJs(node.b)})`;
     case 'bin': return `(${exprToJs(node.a)} ${node.op} ${exprToJs(node.b)})`;
+    case 'cond': return `(truthy(${exprToJs(node.cond)}) ? ${exprToJs(node.a)} : ${exprToJs(node.b)})`;
+    case 'coalesce': return `(${exprToJs(node.a)} ?? ${exprToJs(node.b)})`;
+    case 'isnull': return `(${exprToJs(node.a)} ${node.not ? '!=' : '=='} null)`;
+    case 'in': return `${node.not ? '!' : ''}toList(${exprToJs(node.list)}).some((x) => x == ${exprToJs(node.a)})`;
+    case 'like': return `${node.not ? '!' : ''}LK(${exprToJs(node.a)}, ${exprToJs(node.b)})`;
+    case 'between': return `${node.not ? '!' : ''}BTW(${exprToJs(node.a)}, ${exprToJs(node.low)}, ${exprToJs(node.high)})`;
     case 'call': return `F('${String(node.name).toUpperCase()}', [${node.args.map(exprToJs).join(', ')}])`;
     default: return 'null';
   }
@@ -1382,8 +1649,22 @@ function scriptToJs(ast, indent) {
     if (st.k === 'let' && st.from === 'crawl') return `${pad}let $${st.name.replace('$', '')} = await CR('${st.url}', ${st.optionsText ? exprToJs(parseExpr(st.optionsText)) : '{}'});`;
     if (st.k === 'let' && st.from === 'token') return `${pad}let $${st.name.replace('$', '')} = await T('${st.action}', ${exprToJs(st.expr)}, ctx);`;
     if (st.k === 'let') return `${pad}let $${st.name.replace('$', '')} = ${exprToJs(st.expr)};`;
-    if (st.k === 'assign') return `${pad}$${st.name} ${st.op} ${exprToJs(st.expr)};`;
-    if (st.k === 'append') return `${pad}$${st.name} = toList($${st.name}).concat([${exprToJs(st.expr)}]);`;
+    if (st.k === 'assign') {
+      const target = targetJs(st.name, st.path);
+      return `${pad}${target} ${st.op} ${exprToJs(st.expr)};`;
+    }
+    if (st.k === 'append') {
+      const target = targetJs(st.name, st.path);
+      return `${pad}${target} = toList(${target}).concat([${exprToJs(st.expr)}]);`;
+    }
+    if (st.k === 'prepend') {
+      const target = targetJs(st.name, st.path);
+      return `${pad}${target} = [${exprToJs(st.expr)}].concat(toList(${target}));`;
+    }
+    if (st.k === 'assert') {
+      const msg = st.message ? `String(${exprToJs(st.message)})` : `'断言失败'`;
+      return `${pad}if (!truthy(${exprToJs(st.cond)})) throw new Error(${msg});`;
+    }
     if (st.k === 'run') return `${pad}F('${st.name}', [${st.args.map(exprToJs).join(', ')}]);`;
     if (st.k === 'throw') return `${pad}throw new Error(String(${exprToJs(st.expr)}));`;
     if (st.k === 'break') return `${pad}break;`;
@@ -1398,7 +1679,22 @@ function scriptToJs(ast, indent) {
       if (st.elseBody) parts.push(`else {\n${scriptToJs(st.elseBody, (indent || 0) + 1)}\n${pad}}`);
       return pad + parts.join(' ');
     }
+    if (st.k === 'try') {
+      const catchPart = st.catchBody
+        ? ` catch ($${st.catchName}) {\n${scriptToJs(st.catchBody, (indent || 0) + 1)}\n${pad}}`
+        : '';
+      const finallyPart = st.finallyBody
+        ? ` finally {\n${scriptToJs(st.finallyBody, (indent || 0) + 1)}\n${pad}}`
+        : '';
+      return `${pad}try {\n${scriptToJs(st.tryBody, (indent || 0) + 1)}\n${pad}}${catchPart}${finallyPart}`;
+    }
     if (st.k === 'foreach') return `${pad}for (const $${st.name} of toList(${exprToJs(st.expr)})) {\n${scriptToJs(st.body, (indent || 0) + 1)}\n${pad}}`;
+    if (st.k === 'repeat') {
+      const head = st.name
+        ? `for (let $${st.name} = 1; $${st.name} <= Math.min(1000, ${exprToJs(st.count)}); $${st.name}++)`
+        : `for (let __guard = 1; __guard <= Math.min(1000, ${exprToJs(st.count)}); __guard++)`;
+      return `${pad}${head} {\n${scriptToJs(st.body, (indent || 0) + 1)}\n${pad}}`;
+    }
     if (st.k === 'for') {
       const step = st.step ? exprToJs(st.step) : '1';
       const cmp = st.direction > 0 ? '<=' : '>=';

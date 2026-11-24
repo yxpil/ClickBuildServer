@@ -1893,6 +1893,12 @@ function scriptTemplates(it) {
     ['FOR 循环', '按次数/区间循环，支持 BREAK', `LET $sum = 0;\nFOR $i = 1 TO 5 STEP 1\n  INC $sum BY $i;\nEND\nRETURN 200 { "sum": $sum };`],
     ['WHILE 循环', '条件循环，必须能退出', `LET $n = 0;\nWHILE $n < 5\n  INC $n;\n  IF $n == 3\n    BREAK;\n  END\nEND\nRETURN 200 { "n": $n };`],
     ['SWITCH 分支', '多值匹配，CASE 可写多个值', `LET $status = {{body.status}};\nSWITCH $status\nCASE 'paid', 'shipped'\n  RETURN 200 { "ok": true, "status": $status };\nDEFAULT\n  RETURN 400 { "ok": false, "error": "BAD_STATUS" };\nEND`],
+    ['表达式判断', '三元、空值合并、IN / LIKE / BETWEEN', `LET $n = {{body.count}} ?? 0;\nLET $label = $n BETWEEN 1 AND 10 ? 'small' : 'large';\nLET $hit = $n IN [1, 2, 3];\nLET $name = {{body.name}} LIKE '张%';\nRETURN 200 { "ok": true, "label": $label, "hit": $hit, "name": $name };`],
+    ['错误捕获', 'TRY / CATCH / FINALLY，捕获后继续', `TRY\n  ASSERT {{body.amount}} > 0, '金额必须大于 0';\nCATCH $err\n  LOG ERROR $err.message;\n  RETURN 400 { "ok": false, "message": $err.message };\nFINALLY\n  LOG DEBUG '校验结束';\nEND`],
+    ['REPEAT 固定次数', '按次数执行，可带索引', `LET $sum = 0;\nREPEAT 5 TIMES AS $i\n  INC $sum BY $i;\nEND\nRETURN 200 { "sum": $sum };`],
+    ['嵌套对象与数组', '对象字段赋值、数组前插/追加', `LET $user = { "name": {{body.name}}, "score": 0, "tags": [] };\n$user.score += 1;\nINC $user.score BY 2;\nPREPEND $user.tags, 'vip';\nAPPEND $user.tags, 'new';\nRETURN 200 { "ok": true, "user": $user };`],
+    ['ASSERT 断言', '条件不成立直接抛错', `ASSERT {{body.id}} IS NOT NULL, '缺少 id';\nRETURN 200 { "ok": true, "id": {{body.id}} };`],
+    ['空值与否定判断', 'IS NULL / NOT IN / NOT LIKE / NOT BETWEEN', `LET $v = {{body.value}} ?? 0;\nLET $extra = {{body.extra}};\nLET $missing = $extra IS NULL;\nLET $notHit = $v NOT IN [1, 2, 3];\nLET $notLike = {{body.name}} NOT LIKE '测试%';\nLET $outside = $v NOT BETWEEN 10 AND 20;\nRETURN 200 { "ok": true, "missing": $missing, "notHit": $notHit, "notLike": $notLike, "outside": $outside };`],
   ];
 }
 
@@ -1943,7 +1949,7 @@ function insertScriptText(text) {
   ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-const CB_KEYWORDS = new Set(['LET', 'SET', 'ASSIGN', 'INC', 'DEC', 'APPEND', 'PUSH', 'QUERY', 'EXEC', 'IF', 'ELSEIF', 'ELSE', 'END', 'FOREACH', 'FOR', 'TO', 'DOWNTO', 'STEP', 'WHILE', 'BREAK', 'CONTINUE', 'SWITCH', 'CASE', 'DEFAULT', 'FUNC', 'FUNCTION', 'RUN', 'INVOKE', 'THROW', 'IN', 'RETURN', 'LOG', 'WAIT', 'TX', 'BEGIN', 'COMMIT', 'ROLLBACK', 'TOKEN', 'NEW', 'PUBLISH', 'CRAWL', 'REDIS', 'GET', 'PUT', 'DEL', 'INCR', 'EXPIRE']);
+const CB_KEYWORDS = new Set(['LET', 'SET', 'ASSIGN', 'INC', 'DEC', 'APPEND', 'PREPEND', 'PUSH', 'QUERY', 'EXEC', 'IF', 'ELSEIF', 'ELSE', 'END', 'FOREACH', 'FOR', 'TO', 'DOWNTO', 'STEP', 'WHILE', 'REPEAT', 'TIMES', 'BREAK', 'CONTINUE', 'SWITCH', 'CASE', 'DEFAULT', 'FUNC', 'FUNCTION', 'RUN', 'INVOKE', 'THROW', 'TRY', 'CATCH', 'FINALLY', 'ASSERT', 'IN', 'LIKE', 'BETWEEN', 'IS', 'NULL', 'AND', 'OR', 'NOT', 'RETURN', 'LOG', 'WAIT', 'TX', 'BEGIN', 'COMMIT', 'ROLLBACK', 'TOKEN', 'NEW', 'PUBLISH', 'CRAWL', 'REDIS', 'GET', 'PUT', 'DEL', 'INCR', 'EXPIRE']);
 const CB_SQL = new Set(['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AS', 'NULL', 'IS', 'LIKE', 'IN', 'EXISTS', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'UNION', 'ALL']);
 
 function scriptTok(cls, text) {
@@ -2256,7 +2262,7 @@ function setupScriptEditor(onChange) {
       const ls = ta.value.lastIndexOf('\n', s - 1) + 1;
       const line = ta.value.slice(ls, s);
       const indent = (line.match(/^\s*/) || [''])[0];
-      const deeper = /^\s*(IF|ELSEIF|ELSE|FOREACH|FOR|WHILE|SWITCH|CASE|DEFAULT|TX\s+BEGIN|BEGIN)\b/i.test(line);
+      const deeper = /^\s*(IF|ELSEIF|ELSE|FOREACH|FOR|WHILE|REPEAT|TRY|CATCH|FINALLY|SWITCH|CASE|DEFAULT|TX\s+BEGIN|BEGIN)\b/i.test(line);
       const dedent = /^\s*(END|CASE|DEFAULT|ELSE|ELSEIF)\b/i.test(line) ? 2 : 0;
       const base = indent.length >= dedent ? indent.slice(0, indent.length - dedent) : '';
       ta.setRangeText('\n' + base + (deeper ? '  ' : ''), s, ta.selectionEnd, 'end');
@@ -2315,18 +2321,24 @@ function showScriptGuide() {
     <div class="font-semibold text-[13px] mb-1">脚本怎么写</div>
     <div class="text-neutral-500 mb-3">一条路由一段脚本，按顺序执行；不需要写分号之外的 JS 语法。</div>
     <table class="help-grid">
-      <thead><tr><th style="width:220px">写法</th><th>作用</th></tr></thead>
+      <thead><tr><th style="width:300px">写法</th><th>作用</th></tr></thead>
       <tbody>
         <tr><td class="mono"># 注释 / // 注释 / /* 多行 */</td><td>三种注释；字符串里的 # 和 // 不会被当成注释</td></tr>
         <tr><td class="mono">LET $x = QUERY SELECT …;</td><td>查询，结果在 $x.rows</td></tr>
         <tr><td class="mono">LET $x = EXEC INSERT/UPDATE/DELETE …;</td><td>增删改，结果在 $x.affectedRows / $x.insertId</td></tr>
-        <tr><td class="mono">IF 条件 … ELSE … END</td><td>分支；条件可用 LEN、IN、CONTAINS</td></tr>
+        <tr><td class="mono">IF 条件 … ELSE … END</td><td>分支；条件可用 LEN、IN、LIKE、BETWEEN、IS NULL、?:、??</td></tr>
         <tr><td class="mono">FOREACH $row IN $x.rows … END</td><td>循环，最多 500 条</td></tr>
         <tr><td class="mono">FOR $i = 1 TO 5 / DOWNTO / END</td><td>按区间循环，可写 STEP；支持 BREAK / CONTINUE</td></tr>
         <tr><td class="mono">WHILE 条件 … END</td><td>条件循环；每次执行都会重新判断，最多 1000 轮</td></tr>
+        <tr><td class="mono">REPEAT 5 TIMES / AS $i … END</td><td>固定次数循环，最多 1000 轮，索引从 1 开始</td></tr>
         <tr><td class="mono">SWITCH $x / CASE 1, 2 / DEFAULT / END</td><td>多分支；CASE 可写多个逗号分隔的值</td></tr>
+        <tr><td class="mono">TRY … CATCH $err … FINALLY … END</td><td>捕获运行错误，catch 对象有 name / message / stack</td></tr>
+        <tr><td class="mono">ASSERT 条件, '失败信息';</td><td>条件不成立就抛错，返回 500 或交给 TRY 捕获</td></tr>
         <tr><td class="mono">ASSIGN $x = …; / $x += 1; / INC $x; / DEC $x;</td><td>重新赋值、自增自减；变量要先用 LET 声明</td></tr>
-        <tr><td class="mono">APPEND $list, 值; / PUSH $list, 值;</td><td>向数组追加元素，循环拼结果常用</td></tr>
+        <tr><td class="mono">$user.name = …; / $list[0] = …; / INC $user.score;</td><td>对象字段与数组下标赋值，父级必须已存在</td></tr>
+        <tr><td class="mono">APPEND / PREPEND / PUSH $list, 值;</td><td>向数组尾部追加或头部前插，支持嵌套路径</td></tr>
+        <tr><td class="mono">$x IN [...] / $x LIKE '张%' / $x BETWEEN 1 AND 9 / $x IS NULL</td><td>集合、模糊、区间、空值判断；都支持 NOT</td></tr>
+        <tr><td class="mono">条件 ? 值1 : 值2 / $a ?? $b</td><td>三元与空值合并；AND / OR / NOT 也可写成关键字</td></tr>
         <tr><td class="mono">FUNC 名称($a) = 表达式; / RUN 名称(1);</td><td>纯表达式函数与调用；不用 SQL 的 CALL</td></tr>
         <tr><td class="mono">THROW '错误';</td><td>主动抛错，返回 500 与结构化错误报告</td></tr>
         <tr><td class="mono">RETURN 200 { "ok": true };</td><td>直接返回 JSON</td></tr>
@@ -3429,15 +3441,16 @@ RETURN 201 { "ok": true, "token": $t.token };</pre></div>
         <tr><td class="mono">LET $x = EXEC SQL;</td><td>执行增删改，结果含 <span class="hb-inline">affectedRows</span>、<span class="hb-inline">insertId</span>。</td></tr>
         <tr><td class="mono">LET $x = 表达式;</td><td>算值，比如 <span class="hb-inline">HASH('sha256', {{body.password}})</span>。</td></tr>
         <tr><td class="mono">ASSIGN $x = 值; / $x += 1;</td><td>重新赋值；<span class="hb-inline">+= -= *= /=</span> 都支持。变量必须先用 LET 声明，裸 <span class="hb-inline">$x = ...</span> 也等价于赋值。</td></tr>
-        <tr><td class="mono">INC $n; / INC $n BY 2; / DEC $n;</td><td>自增、自减；不写 BY 时步长为 1。</td></tr>
-        <tr><td class="mono">APPEND $list, 值; / PUSH $list, 值;</td><td>把值追加到数组；循环里经常用来拼返回列表。</td></tr>
+        <tr><td class="mono">$user.name = ...; / $list[0] = ...;</td><td>对象字段和数组下标赋值；父级对象或数组必须已经存在。复合赋值、INC / DEC 同样支持路径。</td></tr>
+        <tr><td class="mono">INC $n; / INC $n BY 2; / DEC $n;</td><td>自增、自减；不写 BY 时步长为 1，也支持 <span class="hb-inline">$user.score</span> 这种嵌套字段。</td></tr>
+        <tr><td class="mono">APPEND $list, 值; / PREPEND $list, 值; / PUSH $list, 值;</td><td>向数组尾部追加或头部前插；支持 <span class="hb-inline">$user.tags</span> 这种嵌套数组。</td></tr>
         <tr><td class="mono">QUERY SQL;</td><td>不取名也能执行；结果留在 <span class="hb-inline">{{last.x}}</span>，下一条 SQL 里可引用，但不会自动变成 <span class="hb-inline">$变量</span>。</td></tr>
         <tr><td class="mono">RETURN 200 { ... };</td><td>立即结束并返回；不写状态码时默认 200。</td></tr>
         <tr><td class="mono">RETURN 301 "/login";</td><td>3xx 重定向；字符串或对象里的 <span class="hb-inline">location / url</span> 会写进 <span class="hb-inline">Location</span> 响应头。301/302/303/307/308 都支持。</td></tr>
         <tr><td class="mono">LOG INFO '文本';</td><td>写服务日志；级别可写 TRACE / DEBUG / INFO / WARN / ERROR。</td></tr>
       </tbody></table>
       <div class="hb-h3">分支与循环</div>
-      <div class="hb-p">IF / FOREACH / FOR / WHILE / SWITCH 都以 <span class="hb-inline">END</span> 结束。FOR 用 <span class="hb-inline">FOR $i = 1 TO 5 STEP 1</span> 或 <span class="hb-inline">DOWNTO</span>；WHILE 条件为真时一直执行；SWITCH 的 <span class="hb-inline">CASE</span> 可以写多个逗号分隔的值，<span class="hb-inline">DEFAULT</span> 兜底。循环和 SWITCH 里可以用 <span class="hb-inline">BREAK</span> / <span class="hb-inline">CONTINUE</span>。</div>
+      <div class="hb-p">IF / FOREACH / FOR / WHILE / REPEAT / TRY / SWITCH 都以 <span class="hb-inline">END</span> 结束。FOR 用 <span class="hb-inline">FOR $i = 1 TO 5 STEP 1</span> 或 <span class="hb-inline">DOWNTO</span>；WHILE 条件为真时一直执行；REPEAT 按固定次数执行，<span class="hb-inline">AS $i</span> 会给出从 1 开始的索引；SWITCH 的 <span class="hb-inline">CASE</span> 可以写多个逗号分隔的值，<span class="hb-inline">DEFAULT</span> 兜底。TRY / CATCH / FINALLY 捕获运行错误，CATCH 变量默认叫 <span class="hb-inline">$err</span>，带 name / message / stack。循环和 SWITCH 里可以用 <span class="hb-inline">BREAK</span> / <span class="hb-inline">CONTINUE</span>。</div>
       <div class="hb-code"><div class="hb-code-head">条件、区间循环与多分支</div><pre>IF {{body.status}} == 1 &amp;&amp; {{body.amount}} &gt; 0
   RETURN 200 { "ok": true };
 ELSEIF {{body.status}} == 2
@@ -3458,9 +3471,25 @@ CASE 'paid', 'shipped'
 DEFAULT
   RETURN 400 { "ok": false };
 END</pre></div>
+      <div class="hb-code"><div class="hb-code-head">错误捕获、固定次数循环与嵌套字段</div><pre>LET $user = { "name": {{body.name}}, "score": 0, "tags": [] };
+$user.score += 1;
+PREPEND $user.tags, 'vip';
+REPEAT 3 TIMES AS $i
+  INC $user.score BY $i;
+  APPEND $user.tags, $i;
+END
+TRY
+  ASSERT $user.score &gt; 0, '分数必须大于 0';
+  RETURN 200 { "ok": true, "user": $user };
+CATCH $err
+  LOG ERROR $err.message;
+  RETURN 400 { "ok": false, "message": $err.message };
+FINALLY
+  LOG DEBUG '校验结束';
+END</pre></div>
       <div class="hb-warn"><b>和 SQL 严格分开</b><div>裸写 <span class="hb-inline">SELECT / INSERT / UPDATE / DELETE / CALL / SET …</span> 会直接报错；要执行 SQL 必须写成 <span class="hb-inline">QUERY SQL;</span> 或 <span class="hb-inline">EXEC SQL;</span>。自定义函数调用用 <span class="hb-inline">RUN 名称(...)</span>，不要用 SQL 的 <span class="hb-inline">CALL</span>，避免被当成存储过程。</div></div>
       <div class="hb-h3">表达式</div>
-      <div class="hb-p">支持 <span class="hb-inline">== != &gt; &lt; &gt;= &lt;=</span>、<span class="hb-inline">&amp;&amp; || !</span>、<span class="hb-inline">+ - * / %</span>；支持数组 <span class="hb-inline">['a','b']</span> 和对象 <span class="hb-inline">{ "k": 1 }</span>。字符串用单引号或双引号。变量用 <span class="hb-inline">$name</span>，取值用 <span class="hb-inline">$x.rows[0].id</span> 或 <span class="hb-inline">$x.rows.0.id</span>。</div>
+      <div class="hb-p">支持 <span class="hb-inline">== != &gt; &lt; &gt;= &lt;=</span>、<span class="hb-inline">&amp;&amp; || !</span> 或关键字 <span class="hb-inline">AND OR NOT</span>、<span class="hb-inline">+ - * / %</span>；支持三元 <span class="hb-inline">条件 ? 值1 : 值2</span> 和空值合并 <span class="hb-inline">$a ?? $b</span>。集合判断 <span class="hb-inline">$x IN [1,2]</span> / <span class="hb-inline">NOT IN</span>，模糊匹配 <span class="hb-inline">$x LIKE '张%'</span>（<span class="hb-inline">%</span> 任意串、<span class="hb-inline">_</span> 单字符），区间 <span class="hb-inline">$x BETWEEN 1 AND 9</span>，空值 <span class="hb-inline">$x IS NULL</span> / <span class="hb-inline">IS NOT NULL</span>。支持数组 <span class="hb-inline">['a','b']</span> 和对象 <span class="hb-inline">{ "k": 1 }</span>。字符串用单引号或双引号。变量用 <span class="hb-inline">$name</span>，取值用 <span class="hb-inline">$x.rows[0].id</span> 或 <span class="hb-inline">$x.rows.0.id</span>。</div>
       <div class="hb-h3">进阶语句</div>
       <table class="hb-table"><thead><tr><th>语句</th><th>说明</th></tr></thead><tbody>
         <tr><td class="mono">WAIT 500;</td><td>等待毫秒，最多 60000。脚本总步数上限 5000。</td></tr>
@@ -3473,7 +3502,9 @@ END</pre></div>
         <tr><td class="mono">FUNC 名称($a, $b) = 表达式;</td><td>纯表达式函数，只能做同步计算，不里面执行 SQL。参数写 <span class="hb-inline">$a</span>，调用写 <span class="hb-inline">名称(1, 2)</span>。</td></tr>
         <tr><td class="mono">RUN 名称(参数); / INVOKE 名称(参数);</td><td>调用 FUNC 定义的函数并丢弃返回值；批量副作用或自检用。</td></tr>
         <tr><td class="mono">THROW '错误信息';</td><td>主动抛出脚本错误，服务会返回 500 并把信息写进结构化错误报告。</td></tr>
-      </tbody></table>
+        <tr><td class="mono">TRY ... CATCH $err ... FINALLY ... END</td><td>捕获脚本运行错误；catch 对象含 <span class="hb-inline">name / message / stack</span>，finally 总会执行。</td></tr>
+        <tr><td class="mono">ASSERT 条件, '失败信息';</td><td>条件不成立就抛错；可以交给 TRY 捕获，也可以直接返回 500。</td></tr>
+        <tr><td class="mono">REPEAT 5 TIMES AS $i ... END</td><td>固定次数循环；索引从 1 开始，次数取整并夹在 0..1000。</td></tr></tbody></table>
       <div class="hb-warn"><b>写好习惯</b><div>每条语句建议以分号结尾；注释用 <span class="hb-inline">#</span> 最稳，也支持 <span class="hb-inline">//</span> 和 <span class="hb-inline">/* ... */</span>。停止输入 0.3 秒后编辑器会自动检查，红色波浪线就是语法或变量问题。</div></div>
     `,
   },

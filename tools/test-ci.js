@@ -6,6 +6,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const tests = [
   ['tools/test-new-iface.js'],
+  ['tools/test-script-dsl.js'],
   ['tools/test-templates.js', '--gen'],
   ['tools/test-pack.js'],
   ['tools/test-deploy.js'],

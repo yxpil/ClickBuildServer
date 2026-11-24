@@ -202,6 +202,8 @@ AppImage / deb 必须在 Linux 或 WSL 内打包；Windows 上只能构建 `dist
 
 Linux 运行要求：x86_64、glibc 2.28+、`libcrypt.so.1`、`libsystemd.so.0`，以及 `libgtk-3-0` / `libgtk-3-0t64` 等 Electron 图形库（deb 已声明依赖，AppImage 需系统自备）。不需要系统预装 Node、MariaDB、Redis 或 RustFS。Electron 用户数据在 `~/.config/click-build-server`，源码脚本生成时回退到 `~/.local/share/click-build-server`，与 Windows 的 `%APPDATA%\click-build-server` 隔离。Linux 进程识别走 `/proc` 与 `ss`，停止服务用进程组 + POSIX 信号递归结束子进程；磁盘、网络、服务内存采样也改为读取 `/proc` 和 `statfs`。
 
+1.1.67 把接口脚本 DSL 从“能用”补到“业务上够用”，并且每条能力都同时落到解析器、执行器、导出 JS、lint、脚本助手、帮助中心和永久回归里。表达式新增三元 `条件 ? 值1 : 值2`、空值合并 `??`、关键字 `AND / OR / NOT`、`IN / NOT IN`、`LIKE / NOT LIKE`、`BETWEEN / NOT BETWEEN`、`IS NULL / IS NOT NULL`；语句新增 `TRY / CATCH / FINALLY / END`、`ASSERT 条件, '失败信息';`、`REPEAT n TIMES [AS $i]`、`PREPEND`，以及 `$user.name = ...`、`$list[0] = ...`、`$user.score += ...` 这类嵌套赋值和嵌套 `INC / DEC / APPEND / PREPEND`。`NOT` 现在按整段比较取反，`REPEAT` 次数取整并夹在 0..1000，`CATCH` 变量可省略默认 `err`，`FINALLY` 在 return / break / continue / 继续抛错前都会执行。导出 JS 同步输出 `try / catch / finally`、`assert`、`repeat`、`prepend` 与嵌套赋值，并用 `truthy / BTW / LIKE` 兼容空数组、结果集对象和通配符，不再出现只有运行时认识、导出代码不认识的分支。脚本助手扩到 24 条模板，新增表达式判断、错误捕获、固定次数循环、嵌套对象数组、ASSERT 与空值/否定判断；关键字高亮、回车缩进、速查表和帮助中心同步更新，裸写 SQL 仍被明确拒绝。验收：`test:script-dsl` 20/20，`test:ci` 11/11，导出运行时 19/19，源码版、解包版与安装版 UI 冒烟均 141/141；真实生成服务 `GET /api/syntax/advanced` 返回 `sum=15`、`tags=[first, zero, last]`、`vip=true`、`like=true`，`ASSERT` 被 `CATCH` 后返回业务 400，未捕获断言返回 500 并带 `route / method / path / hint / traceId`，导出的高级语法路由也已在真实 `src` 环境执行通过。
+
 1.1.66 补上真正的 HTTP 重定向：脚本 `RETURN 301 "/login";`、`RETURN 302 { "location": "https://example.com" };` 以及 303/307/308 都会自动写 `Location` 响应头并返回空响应体，浏览器和 `curl -L` 能直接跟随；对象里的 `location / Location / redirect / url` 都可识别，`__headers` 可附带额外响应头。自定义 `handler` 也能返回 `{ status, headers, body }`，3xx 带 `Location` 时同样不写响应体。3xx 路由不再读写 Redis 缓存，缓存 key 加入 method + path，避免多个路由共用同一张表模板时串读；导出的 JS 路由同步生成 `responseMeta`，301 不再丢 `Location`。同时修复 Windows 全新数据目录下 `mariadb-install-db` 不认识 `--no-defaults/--basedir` 导致 MariaDB 初始化失败的问题。验收：`test:ci` 10/10，源码版 UI 冒烟 141/141，真实生成服务 301/302/303/307/308 与自定义 handler 全部带 Location 并跟随到 200，普通列表缓存仍正常命中。1.1.66 同时把脚本解释器扩成更完整的业务语法：`ASSIGN / INC / DEC / APPEND / PUSH` 负责赋值和数组累积，`FOR / WHILE / SWITCH / CASE / DEFAULT / BREAK / CONTINUE` 负责区间循环、条件循环和多分支，`FUNC / RUN / INVOKE / THROW` 负责纯表达式函数、调用和主动报错；裸写 SQL 会被明确拒绝，必须走 `QUERY` / `EXEC`，函数调用用 `RUN` 避开 SQL 的 `CALL`。实测生成服务 `GET /api/syntax/demo` 返回 `{"sum":13,"list":[12],"db":0}`，`THROW` 路由返回 500 并带 `route / method / path / hint / traceId`；脚本助手新增「变量与函数 / FOR 循环 / WHILE 循环 / SWITCH 分支」四条模版。
 
 1.1.65 是双平台发布版：Windows 产品行为与 1.1.64 一致，同时新增 Linux x86_64 的 AppImage / deb，内置 MariaDB 13.0.2、Redis 8.10.3、RustFS 1.0.6 与 Node 25.2.1，并在 Linux 上真实跑通三台服务起停、生成服务 CRUD 与资源采样。CI 与 Release 统一走 `npm run test:ci` 的 10 套回归，补入停止按钮 6/6 与 21 语言包 158/158；发布构建固定 `--publish never`，不再让 electron-builder 在没有 `GH_TOKEN` 时自动上传；标签必须与 `package.json` 版本一致，安装包按精确文件名校验并同时上传 `.blockmap` 与 `.sha256`；上传 action 升级到 Node 24 的 `softprops/action-gh-release@v3.0.4`。本地 `test:ci` 10/10、1.1.65 安装版 UI 冒烟 141/141。
@@ -334,10 +336,14 @@ RETURN 200 { "ok": true, "token": $t.token };
 
 - `LET $x = QUERY|EXEC SQL;`、`LET $x = 表达式;`
 - `ASSIGN $x = 值;`、`$x = 值;`、`$x += 1;`（`+= -= *= /=`）、`INC $n;` / `INC $n BY 2;` / `DEC $n;`
-- `APPEND $list, 值;` / `PUSH $list, 值;`（循环里拼数组）
+- 嵌套赋值：`$user.name = 'A';`、`$list[0] = 9;`、`$user.score += 1;`；`INC / DEC / APPEND / PREPEND` 都支持 `$user.score`、`$user.tags` 路径
+- `APPEND $list, 值;` / `PREPEND $list, 值;` / `PUSH $list, 值;`（尾部追加或头部前插，循环里拼数组）
 - `IF / ELSEIF / ELSE / END`、`FOREACH $row IN $list / END`
-- `FOR $i = 1 TO 5 STEP 1 / DOWNTO / END`、`WHILE 条件 / END`、`SWITCH 表达式 / CASE 1, 2 / DEFAULT / END`
+- `FOR $i = 1 TO 5 STEP 1 / DOWNTO / END`、`WHILE 条件 / END`、`REPEAT 5 TIMES / REPEAT 5 TIMES AS $i / END`、`SWITCH 表达式 / CASE 1, 2 / DEFAULT / END`
 - `BREAK`、`CONTINUE`、`FUNC 名称($a, $b) = 表达式;`、`RUN 名称(参数);` / `INVOKE 名称(参数);`、`THROW '错误信息';`
+- `TRY / CATCH $err / FINALLY / END`：捕获运行错误，catch 对象有 `name / message / stack`；`CATCH` 可省略变量，默认 `$err`
+- `ASSERT 条件, '失败信息';`：条件不成立立即抛错，可交给 `TRY` 捕获
+- 表达式：`条件 ? 值1 : 值2`、`$a ?? $b`、`AND / OR / NOT`（也支持 `&& / || / !`）、`$x IN [1,2]` / `NOT IN`、`$x LIKE '张%'` / `NOT LIKE`（`%` 任意串、`_` 单字符）、`$x BETWEEN 1 AND 9` / `NOT BETWEEN`、`$x IS NULL` / `IS NOT NULL`
 - `TX BEGIN|COMMIT|ROLLBACK`（写路由默认自动事务）
 - `HTTP GET|POST|PUT|DELETE 'url' {json}`（服务间调用）
 - `PUBLISH 'channel' expr`（Redis 消息）
@@ -361,6 +367,27 @@ DEFAULT
   LOG WARN '其他值';
 END
 RETURN 200 { "sum": $sum };
+```
+
+错误捕获、固定次数循环和嵌套字段：
+
+```text
+LET $user = { "name": {{body.name}}, "score": 0, "tags": [] };
+$user.score += 1;
+PREPEND $user.tags, 'vip';
+REPEAT 3 TIMES AS $i
+  INC $user.score BY $i;
+  APPEND $user.tags, $i;
+END
+TRY
+  ASSERT $user.score BETWEEN 1 AND 100, '分数超出范围';
+  RETURN 200 { "ok": true, "user": $user };
+CATCH $err
+  LOG ERROR $err.message;
+  RETURN 400 { "ok": false, "message": $err.message };
+FINALLY
+  LOG DEBUG '校验结束';
+END
 ```
 
 函数：`HASH / MD5 / SHA1 / SHA256 / SM3 / SM4_ENC / SM4_DEC / SUBSTR / LEFT / RIGHT / LEN / UPPER / LOWER / TRIM / CONCAT / REPLACE / SPLIT / JOIN / NOW / TODAY / UUID / BASE64 / URL_ENC / RAND_INT / MASK / JSON_GET / IF / IN / COALESCE …`，另可在“导出处”写自定义函数。
@@ -540,6 +567,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-resources.js`（Electron 真实采样：CPU / 内存 / 磁盘 / 网络、tasklist 进程内存、分析结论、二次采样） | **1/1** |
 | `tools/test-testgen.js`（自动测试计划 / 只读写入计数 / 404 与 401 / 跳过原因 / 生成文件语法） | **19/19** |
 | `tools/test-new-iface.js`（新建接口默认路由、404 与创建引导参数） | **16/16** |
+| `tools/test-script-dsl.js`（三元 / 空值合并 / 逻辑优先级 / IN / LIKE / BETWEEN / IS NULL / TRY / REPEAT / ASSERT / 嵌套赋值 / lint / 导出 JS 编译） | **20/20** |
 | `tools/test-social.js`（社交接口库 86 条路由真实 HTTP） | **117/117** |
 | `tools/test-iface-library.js`（单接口库 75 内置 / 收藏 / 分类 / 改名 / 二次插入路由避重 / 删除） | **33/33** |
 | `tools/smoke-survey.js`（问卷系统真实 HTTP：登录/建卷/发布/答卷/统计/删除保护/关闭） | **22/22** |
@@ -550,7 +578,7 @@ npm run dist -- --publish never     # 发布安装包，禁止 electron-builder 
 | `tools/test-deploy.js`（更新部署旧产物清理 / 自定义模块与 SQL 保留） | **11/11** |
 | `tools/test-i18n.js`（21 语言包 / 动态模式 / 安装器 19 种语言 / 19 份许可证 / 安装期语言） | **158/158** |
 | `tools/test-stop-server.js`（停止按钮：本进程停止 / 重启孤儿 / 端口认领 / 无标记 / 热部署父子树 / 拒绝误杀） | **6/6** |
-| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 1.1.66） |
+| `tools/ui-smoke.js`（真实 Electron 渲染进程，含历史预览/工程新建/三类任务标签/标签切换/模版不覆盖/插件 Ribbon、自动保存/启动主页、AI 配置与失败保护、新建引导、未登录设首页） | **141/141**（源码版 1.1.67） |
 | `tools/test-yxpp-preview.js`（24 套 app 案例的 `.yxpp` 画布真实运行时预览：CBS_PREVIEW、mock fetch、正文与失败文案断言） | **24/24** |
 | `tools/test-ai.js`（模拟 Ollama / OpenAI：上下文、追加/替换、坏 JSON、401/404/500、超时、空响应） | **18/18** |
 | `tools/test-ai-ollama.js` + `tools/test-ai-ui.js`（本机 Ollama `qwen3.8:27b` 真实生成与 UI 追加） | **通过**（48.8s / 46.7s） |

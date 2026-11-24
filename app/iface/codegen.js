@@ -119,6 +119,25 @@ module.exports = {
     const F = (name, args) => (typeof LOCAL_FUNCS === 'object' && LOCAL_FUNCS && LOCAL_FUNCS[name] ? LOCAL_FUNCS[name](...args) : funcs.call(name, args));
     const V = (token) => render.valueOf(token, ctx, IFACE);
     const toList = (v) => (Array.isArray(v) ? v : (v && v.rows) || []);
+    const truthy = (v) => (Array.isArray(v) ? v.length > 0 : !!v && v !== 0 && v !== '');
+    const BTW = (v, lo, hi) => Number(v) >= Number(lo) && Number(v) <= Number(hi);
+    const LK = (text, pattern) => {
+      const t = String(text == null ? '' : text).toLowerCase();
+      const p = String(pattern == null ? '' : pattern).toLowerCase();
+      const memo = new Map();
+      const match = (i, j) => {
+        const key = i + ':' + j;
+        if (memo.has(key)) return memo.get(key);
+        let ok;
+        if (j >= p.length) ok = i >= t.length;
+        else if (p[j] === '%') ok = match(i, j + 1) || (i < t.length && match(i + 1, j));
+        else if (p[j] === '_') ok = i < t.length && match(i + 1, j + 1);
+        else ok = i < t.length && t[i] === p[j] && match(i + 1, j + 1);
+        memo.set(key, ok);
+        return ok;
+      };
+      return match(0, 0);
+    };
     const H = async (method, url, body) => {
       const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: body == null || method === 'GET' ? undefined : JSON.stringify(body) });
       const text = await res.text();
