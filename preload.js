@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('icb', {
   duplicateProject: (name) => invoke('iface:projects:duplicate', name),
   seed: () => invoke('iface:seed'),
   starter: (taskType) => invoke('iface:starter', taskType || 'mixed'),
+  tableData: (payload) => invoke('iface:table-data', payload || {}),
   blank: (opts) => invoke('iface:blank', opts || {}),
   ident: (name, prefix) => invoke('iface:ident', name, prefix || 'tbl'),
   pathForFile: (file) => {

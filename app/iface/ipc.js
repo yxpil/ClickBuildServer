@@ -25,6 +25,7 @@ const frontend = require('./frontend');
 const projectExport = require('./project-export');
 const deployer = require('./deploy');
 const tableImport = require('./table-import');
+const tableData = require('./table-data');
 const store = require('../store');
 const i18n = require('../i18n');
 
@@ -214,6 +215,7 @@ function registerIpc() {
   ipcMain.handle('iface:projects:duplicate', (e, name) => projects.duplicate(name));
   ipcMain.handle('iface:seed', () => spec.seedProject());
   ipcMain.handle('iface:starter', (e, taskType) => spec.starterProject(taskType));
+  ipcMain.handle('iface:table-data', async (e, payload) => tableData.readTable((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz', opts || {}));
   ipcMain.handle('iface:ident', (e, name, prefix) => spec.safeIdent(name, prefix || 'tbl'));
   ipcMain.handle('iface:tableImport', (e, file) => tableImport.parseFile(file));

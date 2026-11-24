@@ -576,7 +576,19 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   })()`);
   const mt = JSON.parse(methodTone);
   t('路由方法按 GET/POST/PUT/DELETE 分色', mt.rows >= 4 && mt.badges === mt.rows && mt.colors >= 4 && mt.active, methodTone);
-  t('编辑器页签带分类色点与统计胶囊', mt.tabs === 10 && mt.dots === 10 && mt.chips === 2, methodTone);
+  t('编辑器页签带分类色点与统计胶囊', mt.tabs === 11 && mt.dots === 11 && mt.chips === 2, methodTone);
+
+  const livePane = await val(`(()=>{
+    const it=S.project.interfaces[0];
+    const h=tabData(it);
+    return JSON.stringify({pane:/live-pane/.test(h),table:/id="liveTable"/.test(h),size:/id="liveSize"/.test(h),auto:/id="liveAuto"/.test(h),refresh:/data-live-refresh/.test(h),foot:/id="liveFoot"/.test(h),tabs:[...document.querySelectorAll('.editor-tabbar .tabbtn')].length});
+  })()`);
+  const lp = JSON.parse(livePane);
+  t('实时数据页签含表切换/行数/自动刷新/刷新', lp.pane && lp.table && lp.size && lp.auto && lp.refresh && lp.foot && lp.tabs === 11, livePane);
+
+  const cellKinds = await val(`(()=>JSON.stringify({n:liveCell(null),e:liveCell(''),b:liveCell('true'),t:liveCell('a<b')}))()`);
+  const ck = JSON.parse(cellKinds);
+  t('实时单元格区分 NULL/空串/布尔并转义', /live-null/.test(ck.n) && /live-empty-cell/.test(ck.e) && /live-bool/.test(ck.b) && !/<b>/.test(ck.t), cellKinds);
 
   const permWrite = await val(`(()=>{S.tab='permissions';render();const box=document.querySelector('[data-role-route]');if(!box)return '无矩阵';const rid=box.dataset.roleRoute;box.checked=true;box.onchange();const r=S.project.interfaces[0].routes.find(x=>x.id===rid);return JSON.stringify({roles:r.roles,auth:r.auth,enforce:!!document.querySelector('#permEnforce')});})()`);
   const pw = JSON.parse(permWrite);

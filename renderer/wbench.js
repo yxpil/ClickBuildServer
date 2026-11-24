@@ -30,6 +30,10 @@ const S = {
   runtimes: [],
   runner: 'node',
   hot: true,
+  data: {
+    key: '', page: 1, size: 20, auto: true, timer: null, seq: 0,
+    loading: false, result: null, error: null,
+  },
 };
 
 const esc = (v) => String(v == null ? '' : v)
@@ -1659,6 +1663,7 @@ function renderSide() {
 
 /* ---------------- 表格视图 ---------------- */
 function renderWorkspace() {
+  if (!(S.mode === 'editor' && S.tab === 'data')) stopLiveTimer();
   const side = document.querySelector('#workbenchMain > aside');
   if (side) side.classList.toggle('hidden', S.mode === 'help');
   if (S.mode === 'editor' && activeIface()) renderEditor();
@@ -1746,6 +1751,7 @@ function renderEditor() {
   if (!it) { S.mode = 'grid'; return renderGrid(); }
   const tabs = [
     ['tables', '表结构', 0, 'data'],
+    ['data', '实时数据', 0, 'live'],
     ['routes', '路由脚本', 0, 'route'],
     ['io', '接口类型', 0, 'io'],
     ['docs', '接口文档', 0, 'doc'],
@@ -1756,6 +1762,7 @@ function renderEditor() {
     ['test', '测试', 1, 'test'],
     ['export', '生成导出', 0, 'export'],
   ];
+  if (S.tab !== 'data') stopLiveTimer();
   $('#workspace').innerHTML = `
   <div class="editor-topbar h-11 shrink-0 flex items-center gap-2 px-3 border-b border-neutral-300">
     <button class="btn thin" data-action="grid">← 表格</button>
@@ -1775,6 +1782,7 @@ function renderEditor() {
 
   const body = $('#tabBody');
   if (S.tab === 'tables') body.innerHTML = tabTables(it);
+  else if (S.tab === 'data') body.innerHTML = tabData(it);
   else if (S.tab === 'routes') body.innerHTML = tabRoutes(it);
   else if (S.tab === 'io') body.innerHTML = tabIo(it);
   else if (S.tab === 'docs') body.innerHTML = tabDocs(it);
@@ -1792,6 +1800,7 @@ function renderEditor() {
   $$('[data-tab]').forEach((t) => { t.onclick = () => { S.tab = t.dataset.tab; renderWorkspace(); }; });
 
   if (S.tab === 'tables') bindTables(it);
+  if (S.tab === 'data') bindData(it);
   if (S.tab === 'routes') bindRoutes(it);
   if (S.tab === 'io') bindIo(it);
   if (S.tab === 'docs') bindDocs(it);
@@ -1995,6 +2004,242 @@ function bindTables(it) {
       scheduleSave(); renderWorkspace();
     };
   });
+}
+
+/* ----- 表格实时数据 ----- */
+function liveKey(it, t) {
+  return `${(S.project && S.project.name) || ''}:${it.id}:${t.key}`;
+}
+
+function liveConnOf(t) {
+  const list = (S.project && S.project.connections && S.project.connections.mysql) || [];
+  return list.find((c) => c.key === t.conn) || list.find((c) => c.key === 'main') || list[0] || { key: 'main', host: '127.0.0.1', port: 13306, database: 'clickbuild' };
+}
+
+function liveCell(v) {
+  if (v === null || v === undefined) return '<span class="live-null">NULL</span>';
+  if (v === '') return '<span class="live-empty-cell">""</span>';
+  const s = String(v);
+  if (/^(true|false)$/i.test(s)) return `<span class="live-bool">${esc(s)}</span>`;
+  const flat = s.replace(/\s+/g, ' ');
+  const shown = flat.length > 96 ? flat.slice(0, 96) + '…' : flat;
+  const tip = flat.length > 600 ? flat.slice(0, 600) + '…' : flat;
+  return `<span title="${esc(tip)}">${esc(shown)}</span>`;
+}
+
+function liveLoading() {
+  return `<div class="live-empty"><div class="live-empty-box"><b><span class="live-spin"></span>正在读取 MariaDB</b><span>只读查询，不会改动表里的数据。</span></div></div>`;
+}
+
+function liveEmpty(res) {
+  return `<div class="live-empty"><div class="live-empty-box"><b>表里还没有数据</b><span>${esc(res.database)}.${esc(res.tableName)} 目前 0 行；接口写入或导入演示数据后，刷新就能看到。</span></div></div>`;
+}
+
+function liveErrorBox(err) {
+  const acts = [
+    `<button class="btn thin" data-live-retry>重试</button>`,
+    err.action === 'start-mysql' ? `<button class="btn solid" data-live-start-mysql>启动本机 MariaDB</button>` : '',
+    err.action === 'generate' ? `<button class="btn thin" data-action="generate">生成服务</button>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="live-error"><div class="live-error-box">
+    <b>读不到这张表${err.code ? ` · ${esc(err.code)}` : ''}</b>
+    <div class="le-msg">${esc(err.error || '查询失败')}</div>
+    <div class="le-hint">${esc(err.hint || '检查工程连接配置后重试。')}${S.data.auto ? '' : '<br>自动刷新已暂停。'}</div>
+    <div class="le-acts">${acts}</div>
+  </div></div>`;
+}
+
+function liveGrid(res) {
+  const cols = res.columns || [];
+  const numType = (t) => /^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real|year)/.test(String(t || '').toLowerCase());
+  const head = cols.map((c) => `<th class="${numType(c.type) ? 'n' : ''}" title="${esc(c.name)} · ${esc(c.type)}">${esc(c.name)}<span class="lt">${esc(c.type || '')}</span></th>`).join('');
+  const rows = res.rows || [];
+  return `<div class="live-scroll" id="liveBody"><table class="live-grid">
+    <thead><tr><th class="rownum">#</th>${head}</tr></thead>
+    <tbody>${rows.map((r, idx) => `<tr>
+      <td class="rownum">${res.offset + idx + 1}</td>
+      ${cols.map((c) => {
+        const v = r[c.name];
+        return `<td class="${numType(c.type) ? 'n' : ''}" title="${esc(c.name)}">${liveCell(v)}</td>`;
+      }).join('')}
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function liveMetaHtml() {
+  const res = S.data.result;
+  const loading = S.data.loading;
+  if (S.data.error) {
+    return `<span class="live-chip err">连接失败</span><span>${esc((S.data.error.hint || '').slice(0, 120))}</span>`;
+  }
+  if (res && res.ok) {
+    return `<span class="live-chip mono">${esc(res.connection.host)}:${esc(res.connection.port)}/${esc(res.connection.database)}</span>
+      <span class="live-chip">${esc(res.tableName)}</span>
+      <span class="live-chip ${res.storeMode && res.storeMode !== 'mysql' ? 'ro' : ''}">${esc(res.storeMode === 'mysql' ? '直连 MySQL' : storeLabel(res.storeMode))}</span>
+      <span>共 <b>${res.total}</b> 行</span>
+      <span class="live-chip ro">只读</span>
+      <span>查询 ${res.elapsed} ms</span>
+      <span>${esc(String(res.queriedAt || '').slice(11, 19))} 更新</span>
+      ${loading ? '<span class="live-spin"></span><span>刷新中</span>' : ''}`;
+  }
+  return loading ? '<span class="live-spin"></span><span>正在读取…</span>' : '<span>等待读取</span>';
+}
+
+function liveFootHtml() {
+  const res = S.data.result;
+  const ok = res && res.ok && !S.data.error;
+  const total = ok ? res.total : 0;
+  const page = ok ? res.page : S.data.page;
+  const pages = Math.max(1, ok ? res.pages : 1);
+  const from = total ? (page - 1) * (res.size || S.data.size) + 1 : 0;
+  const to = total ? Math.min(total, from + (res.size || S.data.size) - 1) : 0;
+  return `<div>共 ${total} 行 · ${from}-${to}</div>
+    <div class="sp">
+      <button class="live-pager" data-live-first ${page <= 1 ? 'disabled' : ''}>«</button>
+      <button class="live-pager" data-live-prev ${page <= 1 ? 'disabled' : ''}>‹</button>
+      <span>${page} / ${pages}</span>
+      <button class="live-pager" data-live-next ${page >= pages ? 'disabled' : ''}>›</button>
+      <button class="live-pager" data-live-last ${page >= pages ? 'disabled' : ''}>»</button>
+    </div>`;
+}
+
+function renderLiveParts(it, t) {
+  const meta = $('#liveMeta');
+  if (meta) meta.innerHTML = liveMetaHtml();
+  const body = $('#liveBody');
+  if (body) {
+    if (S.data.error) body.outerHTML = liveErrorBox(S.data.error).replace('<div class="live-error">', '<div class="live-error" id="liveBody">');
+    else if (S.data.result && S.data.result.ok) {
+      body.outerHTML = S.data.result.total === 0 ? `<div id="liveBody" class="flex-1 min-h-0">${liveEmpty(S.data.result)}</div>` : liveGrid(S.data.result);
+    } else if (S.data.loading) body.outerHTML = `<div id="liveBody" class="live-scroll">${liveLoading()}</div>`;
+  }
+  const foot = $('#liveFoot');
+  if (foot) foot.innerHTML = liveFootHtml();
+  const auto = $('#liveAuto');
+  if (auto) auto.checked = !!S.data.auto;
+}
+
+function tabData(it) {
+  const t = tableOfIface(it, S.tableKey);
+  if (!t) return '<div class="p-4 text-neutral-500">这个接口还没有表。</div>';
+  const key = liveKey(it, t);
+  const store = storeOf(t);
+  const sub = store.mode === 'mysql'
+    ? '直接读 MariaDB，只读，不走接口鉴权'
+    : `MySQL 权威数据；${storeLabel(store.mode)} 层可能比这里更新`;
+  if (S.data.key !== key) {
+    S.data.key = key;
+    S.data.page = 1;
+    S.data.result = null;
+    S.data.error = null;
+  }
+  return `<div class="live-pane">
+    <div class="live-head">
+      <div class="live-title"><span class="live-dot"></span>实时数据 <span class="live-sub">${esc(sub)}</span></div>
+      <div class="live-tools">
+        <select id="liveTable" title="切换表">${it.tables.map((x) => `<option value="${esc(x.key)}" ${x.key === t.key ? 'selected' : ''}>${esc(x.key)} · ${esc(x.name)}</option>`).join('')}</select>
+        <select id="liveSize" title="每页行数">${[20, 50, 100].map((n) => `<option value="${n}" ${n === S.data.size ? 'selected' : ''}>${n} 行/页</option>`).join('')}</select>
+        <label class="live-auto"><input id="liveAuto" type="checkbox" ${S.data.auto ? 'checked' : ''}>自动刷新 3s</label>
+        <button class="btn thin" data-live-refresh>刷新</button>
+      </div>
+    </div>
+    <div class="live-meta" id="liveMeta">${liveMetaHtml()}</div>
+    ${S.data.error ? `<div class="live-scroll" id="liveBody">${liveErrorBox(S.data.error)}</div>` : S.data.result && S.data.result.ok ? (S.data.result.total === 0 ? `<div id="liveBody" class="flex-1 min-h-0">${liveEmpty(S.data.result)}</div>` : liveGrid(S.data.result)) : `<div class="live-scroll" id="liveBody">${S.data.loading ? liveLoading() : '<div class="live-empty"><div class="live-empty-box"><b>准备读取实时数据</b><span>点刷新，或保持自动刷新开启。</span></div></div>'}</div>`}
+    <div class="live-foot" id="liveFoot">${liveFootHtml()}</div>
+  </div>`;
+}
+
+function stopLiveTimer() {
+  if (S.data.timer) { clearInterval(S.data.timer); S.data.timer = null; }
+}
+
+function startLiveTimer(it, t) {
+  stopLiveTimer();
+  S.data.timer = setInterval(() => {
+    if (!(S.mode === 'editor' && S.tab === 'data' && activeIface() && activeIface().id === it.id)) { stopLiveTimer(); return; }
+    loadLiveData(it, t, { quiet: true });
+  }, 3000);
+}
+
+async function loadLiveData(it, t, opts) {
+  const o = opts || {};
+  const key = liveKey(it, t);
+  if (S.data.key !== key) {
+    S.data.key = key;
+    S.data.page = 1;
+    S.data.result = null;
+    S.data.error = null;
+  }
+  if (S.data.loading) return;
+  S.data.loading = true;
+  const seq = ++S.data.seq;
+  if (!o.quiet && !S.data.result) {
+    const body = $('#liveBody');
+    if (body) body.outerHTML = `<div id="liveBody" class="live-scroll">${liveLoading()}</div>`;
+    const meta = $('#liveMeta');
+    if (meta) meta.innerHTML = '<span class="live-spin"></span><span>正在读取…</span>';
+  }
+  try {
+    const r = await api.tableData({ project: S.project, ifaceId: it.id, tableKey: t.key, page: S.data.page, size: S.data.size });
+    if (seq !== S.data.seq) return;
+    if (r && r.ok) {
+      S.data.result = r;
+      S.data.error = null;
+      S.data.page = r.page;
+    } else {
+      S.data.error = r || { ok: false, error: '查询失败', hint: '检查数据库连接。' };
+      S.data.auto = false;
+      stopLiveTimer();
+    }
+  } catch (e) {
+    S.data.error = { ok: false, code: 'IPC', error: e.message, hint: '读取实时数据失败，重试或重启应用。', action: '' };
+    S.data.auto = false;
+    stopLiveTimer();
+  } finally {
+    S.data.loading = false;
+    if (seq === S.data.seq) renderLiveParts(it, t);
+  }
+}
+
+function bindData(it) {
+  const t = tableOfIface(it, S.tableKey);
+  if (!t) return;
+  const sel = $('#liveTable');
+  if (sel) sel.onchange = () => { S.tableKey = sel.value; S.data.key = ''; S.data.page = 1; S.data.result = null; S.data.error = null; renderWorkspace(); };
+  const size = $('#liveSize');
+  if (size) size.onchange = () => { S.data.size = Number(size.value) || 20; S.data.page = 1; S.data.key = ''; S.data.result = null; S.data.error = null; renderWorkspace(); };
+  const auto = $('#liveAuto');
+  if (auto) auto.onchange = () => {
+    S.data.auto = !!auto.checked;
+    if (S.data.auto) { loadLiveData(it, t); startLiveTimer(it, t); } else stopLiveTimer();
+  };
+  const reload = (page) => {
+    if (page) S.data.page = page;
+    loadLiveData(it, t);
+    if (S.data.auto) startLiveTimer(it, t);
+  };
+  const pane = document.querySelector('.live-pane');
+  if (pane) pane.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b || !pane.contains(b) || b.disabled) return;
+    if (b.hasAttribute('data-live-refresh')) { reload(); return; }
+    if (b.hasAttribute('data-live-retry')) { S.data.auto = true; reload(); return; }
+    if (b.hasAttribute('data-live-start-mysql')) {
+      b.disabled = true; b.textContent = '正在启动…';
+      const r = await api.startService('mysql');
+      if (r && r.ok === false) { toast(r.error || 'MariaDB 启动失败', 6500); b.disabled = false; b.textContent = '启动本机 MariaDB'; return; }
+      try { S.services = await api.services(); renderRibbon(); renderSide(); } catch (_) {}
+      S.data.auto = true;
+      reload();
+      return;
+    }
+    if (b.hasAttribute('data-live-prev')) reload(Math.max(1, S.data.page - 1));
+    else if (b.hasAttribute('data-live-next')) reload(Math.min((S.data.result && S.data.result.pages) || 1, S.data.page + 1));
+    else if (b.hasAttribute('data-live-first')) reload(1);
+    else if (b.hasAttribute('data-live-last')) reload((S.data.result && S.data.result.pages) || 1);
+  };
+  loadLiveData(it, t, { quiet: !!S.data.result });
+  if (S.data.auto) startLiveTimer(it, t);
 }
 
 /* ----- 路由脚本 ----- */
