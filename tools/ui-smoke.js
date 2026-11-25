@@ -70,9 +70,9 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   const hubMenuText = await val(`(()=>{const c=document.querySelector('[data-hub-open]');if(!c)return 'no-card';c.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:120,clientY:160}));return document.querySelector('#hubMenu').innerText;})()`);
   t('右键历史卡片出现打开/复制/删除', /打开工程/.test(hubMenuText) && /复制工程/.test(hubMenuText) && /删除工程/.test(hubMenuText), hubMenuText);
   await val(`hideHubMenu()`);
-  t('预览页直接列出模版', await val(`document.querySelectorAll('[data-hub-tpl]').length >= 24`), await val(`document.querySelectorAll('[data-hub-tpl]').length`));
-  t('音乐网站模版在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:music"]')`));
-  t('小说网站模版在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:novel"]')`));
+  t('预览页直接列出模版', await val(`document.querySelectorAll('[data-hub-tpl]').length >= 4`), await val(`document.querySelectorAll('[data-hub-tpl]').length`));
+  t('商城真实案例在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:mall"]')`));
+  t('博客真实案例在预览页', await val(`!!document.querySelector('[data-hub-tpl="builtin:blog"]')`));
   t('确认框与 toast 层级高于预览页', await val(`Number(getComputedStyle(document.querySelector('#modal')).zIndex) > Number(getComputedStyle(document.querySelector('#projectHub')).zIndex) && Number(getComputedStyle(document.querySelector('#toast')).zIndex) > Number(getComputedStyle(document.querySelector('#projectHub')).zIndex)`));
   const winFit = await val(`(()=>{const b=document.querySelector('#winClose').getBoundingClientRect();return JSON.stringify({right:b.right,w:innerWidth,sw:document.documentElement.scrollWidth})})()`);
   const wf = JSON.parse(winFit);
@@ -90,7 +90,7 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   if (hubCards >= 1) {
     await val(`document.querySelector('[data-hub-open]').click()`);
   } else {
-    await val(`document.querySelector('[data-hub-tpl="builtin:commerce"]').click()`);
+    await val(`document.querySelector('[data-hub-tpl="builtin:mall"]').click()`);
   }
   await wait(900);
   t('选择工程后进入工作台', await val(`!!S.project && document.querySelector('#projectHub').classList.contains('hidden')`), await val(`document.querySelector('#projectHub').classList.contains('hidden')`));
@@ -311,8 +311,8 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('更多菜单有模版与插件入口', await val(`!!document.querySelector('[data-more-action="templates"]') && !!document.querySelector('[data-more-action="plugins"]')`));
   await val(`closeModal(); act('templates')`);
   await wait(500);
-  t('模版库列出 24 个内置模版', await val(`document.querySelectorAll('[data-tpl-apply]').length >= 24`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
-  t('社交接口库卡片统计 9 接口 / 46 表 / 86 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:social"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('9 接口') && card.innerText.includes('46 表') && card.innerText.includes('86 路由');})()`));
+  t('案例库列出 4 套真实案例', await val(`document.querySelectorAll('[data-tpl-apply]').length === 4`), await val(`document.querySelectorAll('[data-tpl-apply]').length`));
+  t('商城案例卡统计 4 接口 / 6 表 / 19 路由', await val(`(()=>{const b=document.querySelector('[data-tpl-apply="builtin:mall"]');const card=b&&b.parentElement&&b.parentElement.parentElement;return !!card && card.innerText.includes('4 接口') && card.innerText.includes('6 表') && card.innerText.includes('19 路由');})()`));
   t('模版卡片有接口/表统计', await val(`document.querySelector('#modal').innerText.includes('接口 ·')`));
 
   // 单接口库 / 常用接口
@@ -340,11 +340,11 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   t('套用博客模版新建工程而不是覆盖', templateName !== smokeName, templateName);
   t('套用后原工程仍在历史里', await val(`api.load(${JSON.stringify(smokeName)}).then(x=>!!x && x.name===${JSON.stringify(smokeName)})`) === true, smokeName);
   t('博客模版带 5 个接口', await val(`S.project.interfaces.length === 5`), await val(`S.project.interfaces.length`));
-  t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && S.project.frontend.project.elements && (S.project.frontend.project.elements.length > 10 || !!S.project.frontend.project.app) && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
+  t('博客模版带完整 .yxpp 前端', await val(`!!(S.project.frontend && S.project.frontend.project && ((S.project.frontend.project.pages && S.project.frontend.project.pages.length >= 3) || S.project.frontend.project.elements) && S.project.frontend.html && S.project.frontend.html.length > 8000)`), await val(`S.project.frontend ? S.project.frontend.name : '-'`));
   await val(`setView('studio')`);
   for (let i = 0; i < 20; i++) { if (await val(`typeof studioReady !== 'undefined' && studioReady`)) break; await wait(250); }
   await wait(900);
-  t('前端模式载入当前工程 .yxpp', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === S.project.frontend.project.elements.length);})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
+  t('前端模式载入当前工程 .yxpp', await val(`(()=>{const f=document.querySelector('#studioFrame');const d=f&&f.contentDocument;return !!(d && d.querySelectorAll('#pageRoot > [data-id]').length === (S.project.frontend.project.pages ? ((S.project.frontend.project.pages[S.project.frontend.project.active || 0] || S.project.frontend.project.pages[0]).elements || []).length : S.project.frontend.project.elements.length));})()`), await val(`(()=>{const f=document.querySelector('#studioFrame');return f&&f.contentDocument ? f.contentDocument.querySelectorAll('#pageRoot > [data-id]').length : -1;})()`));
   t('前端状态栏显示已连接案例工程', await val(`document.querySelector('#studioState').textContent.includes('已连接工程') && /案例前端|业务应用/.test(document.querySelector('#studioState').textContent) && document.querySelector('#studioState').textContent.includes('自动同步')`), await val(`document.querySelector('#studioState').textContent`));
   t('前端工坊内层顶栏去掉官网品牌', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const b=d.querySelector('.brand-name');return !!(b&&d.defaultView.getComputedStyle(b).display==='none');})()`));
   t('前端工坊内层顶栏显示当前工程而非官网入口', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const p=d.querySelector('#cbsProjectLabel');const a=d.querySelector('#btnAccount');return !!(p&&p.textContent.includes('当前工程：')&&a&&d.defaultView.getComputedStyle(a).display==='none');})()`), await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return (d.querySelector('#cbsProjectLabel')||{}).textContent;})()`));
@@ -364,7 +364,13 @@ const t = (name, cond, extra) => { if (cond) { ok++; console.log('  ✓ ' + name
   }
   const bgObj = JSON.parse(savedBg || '{}');
   t('前端编辑自动回写当前工程', bgObj.page === '#FBFBFA' || bgObj.active === '#FBFBFA', savedBg);
-  t('前端状态栏显示已同步到工程', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent.includes('已同步到当前工程');})()`), await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent;})()`));
+  let syncText = '';
+  for (let i = 0; i < 12; i++) {
+    syncText = await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;return d.querySelector('#stSave').textContent;})()`);
+    if (String(syncText || '').includes('已同步到当前工程')) break;
+    await wait(500);
+  }
+  t('前端状态栏显示已同步到工程', String(syncText || '').includes('已同步到当前工程'), syncText);
   t('前端工具栏有接口表单入口', await val(`(()=>{const d=document.querySelector('#studioFrame').contentDocument;const b=d.querySelector('#btnIfaceForm');return !!(b&&/接口表单/.test(b.innerText));})()`));
   const silentForm = await val(`(()=>{const w=document.querySelector('#studioFrame').contentWindow;const f=w.addNode('form',40,360);f.name='静默表单冒烟';f.props.silent=true;f.props.action='/api/silent-smoke';f.props.submitMode='native';w.renderCanvas();return JSON.stringify({id:f.id,type:f.type,silent:f.props.silent,action:f.props.action})})()`);
   const sf = JSON.parse(silentForm || '{}');

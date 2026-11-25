@@ -24,6 +24,14 @@ function esc(v) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+function viewTitle(view, fallback) {
+  const m = UX.viewTitles || {};
+  return Object.prototype.hasOwnProperty.call(m, view) && m[view] ? m[view] : fallback;
+}
+function viewSub(view, fallback) {
+  const m = UX.viewSubs || {};
+  return Object.prototype.hasOwnProperty.call(m, view) && m[view] ? m[view] : fallback;
+}
 
 /* 行内事件里的字符串参数：JSON 转义后还要做 HTML 属性转义，避免 onclick="App.f(\"x\")" 截断属性 */
 function HQ(v) {
@@ -281,8 +289,9 @@ function coverHtml(row, opts) {
   }
   const title = String((row && (row.title || row.name || row.job_name || row.tracking_no)) || '·');
   const glyph = title.slice(0, 2);
+  const label = opts.label === false ? '' : (opts.label || (row && (row.category || row.paper || row.genre)) || '');
   return '<span class="glyph">' + esc(glyph) + '</span>' +
-    '<span class="cover-label">' + esc(opts.label || (row && (row.category || row.paper || row.genre)) || '') + '</span>';
+    (label ? '<span class="cover-label">' + esc(label) + '</span>' : '');
 }
 App.coverHtml = coverHtml;
 
@@ -743,9 +752,11 @@ function pageFoot() {
 }
 
 function pageTitle(title, sub) {
+  const shownTitle = viewTitle(state.view, title);
+  const shownSub = sub ? viewSub(state.view, sub) : sub;
   return '<div class="section-head" style="margin-bottom:24px"><div><div class="eyebrow">' + esc(UX.kicker) + '</div>' +
-    '<h2 style="font-size:30px;margin-top:8px">' + esc(title) + '</h2>' +
-    (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div></div>';
+    '<h2 style="font-size:30px;margin-top:8px">' + esc(shownTitle) + '</h2>' +
+    (shownSub ? '<p>' + esc(shownSub) + '</p>' : '') + '</div></div>';
 }
 
 function toolbar(extra) {
@@ -798,7 +809,7 @@ function contentCard(row, catList) {
   const cat = categoryName(catList, row[UX.fields.category]) || (row.paper || '');
   const unit = UX.media ? ' 次播放' : ' 次阅读';
   return '<article class="card" onclick="App.openContentItem(' + HQ(row.id) + ')">' +
-    '<div class="card-cover">' + coverHtml(row, { label: cat || UX.itemLabel }) + '</div>' +
+    '<div class="card-cover">' + coverHtml(row, { label: false }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(cat || UX.kicker) + '</span><span>' + esc(fmtDate(date)) + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row[UX.fields.body], 120) || '打开查看详情。') + '</p>' +
     '<div class="card-foot"><span>' + esc(views) + unit + '</span><span>' + esc(UX.itemLabel) + ' →</span></div></div></article>';
@@ -1249,7 +1260,7 @@ function commerceCard(row, kind) {
   if (kind === 'mall') foot = '<span class="' + (Number(stock) > 0 ? 'price' : 'pill bad') + '">' + (Number(stock) > 0 ? fmtMoney(price) : '已售罄') + '</span><span>库存 ' + esc(stock == null ? '—' : stock) + '</span>';
   if (kind === 'event') foot = '<span class="price">' + fmtMoney(price) + '</span><span>余票 ' + esc(stock == null ? '—' : stock) + '</span>';
   return '<article class="card" onclick="App.openCommerceItem(' + HQ(row.id) + ')">' +
-    '<div class="card-cover">' + coverHtml(row, { label: cat || UX.itemLabel }) + '</div>' +
+    '<div class="card-cover">' + coverHtml(row, { label: false }) + '</div>' +
     '<div class="card-body"><div class="card-kicker"><span>' + esc(cat || UX.kicker) + '</span><span>' + esc(kind === 'event' ? fmtDate(row.start_at, true) : '现货') + '</span></div>' +
     '<h3>' + esc(title) + '</h3><p>' + esc(plain(row.description || row.venue || '', 100) || '打开查看详情。') + '</p>' +
     '<div class="card-foot">' + foot + '</div></div></article>';
@@ -1271,7 +1282,22 @@ async function mallHome() {
       (list[0] ? '<div class="hero-feature"><span class="big">' + esc(fmtMoney(list[0].price)) + '</span><b>' + esc(list[0].title) + '</b><span>' + esc(list[0].category || '') + ' · 库存 ' + esc(list[0].stock) + '</span></div>' : '') +
       '<div class="hero-list">' + list.slice(0, 4).map((r) => '<div><span>' + esc(short(r.title, 20)) + '</span><em>' + esc(fmtMoney(r.price)) + '</em></div>').join('') + '</div></div></section>';
     setMain('<div class="page">' + hero +
-      '<section class="section"><div class="section-head"><div><h2>全部商品</h2><p>共 ' + onSale.length + ' 件在售</p></div>' +
+      '<section class="section"><div class="section-head"><div><h2>本周推荐</h2><p>先挑几件，剩下的去全部商品里看</p></div>' +
+      '<div class="chips"><button class="chip" onclick="App.go(\'collection\')">全部商品 · ' + onSale.length + ' 件</button></div></div>' +
+      '<div class="grid four">' + list.slice(0, 4).map((r) => commerceCard(r, 'mall')).join('') + '</div></section>' +
+      pageFoot() + '</div>');
+  } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
+}
+
+async function mallCollection() {
+  setMain(loadingHtml());
+  try {
+    const rows = rowsOf(await api(UX.primary.iface, UX.primary.list));
+    state.rows[UX.primary.iface] = rows;
+    const onSale = rows.filter((r) => !UX.fields.status || String(r[UX.fields.status]) === '1');
+    const cats = Array.from(new Set(onSale.map((r) => r.category).filter(Boolean)));
+    const list = filterKeyword(onSale, ['title', 'description', 'category']);
+    setMain('<div class="page"><section class="section"><div class="section-head"><div><h2>' + esc(viewTitle('collection', '全部商品')) + '</h2><p>' + esc(viewSub('collection', '共 ' + list.length + ' 件在售' + (state.params.keyword ? ' · 搜索「' + esc(state.params.keyword) + '」' : ''))) + '</p></div>' +
       '<div class="chips">' + cats.map((c) => '<button class="chip ' + (state.params.category === c ? 'on' : '') + '" onclick="App.filterValue(\'category\',' + HQ(c) + ')">' + esc(c) + '</button>').join('') + '</div></div>' +
       '<div class="grid four">' + list.filter((r) => !state.params.category || r.category === state.params.category).map((r) => commerceCard(r, 'mall')).join('') + '</div></section>' +
       pageFoot() + '</div>');
@@ -1339,7 +1365,7 @@ async function commerceHome() {
 async function commerceCollection() {
   if (UX.kind === 'event') return eventHome();
   if (UX.kind === 'pos') return posHome();
-  return mallHome();
+  return mallCollection();
 }
 
 App.selectTable = async (id) => {
@@ -1662,15 +1688,22 @@ function catalogRows() { return state.rows[UX.primary.iface] || []; }
 
 function catalogCard(row) {
   const title = row.title || row.name || '未命名';
-  const sub = row.teacher || row.floor || row.duration || '';
+  const catText = String(row.category || '');
+  const sub = row.teacher || row.floor || (/^\d+$/.test(catText) ? '' : catText) || UX.itemLabel;
   const price = row.price != null ? fmtMoney(row.price) : (row.fee != null ? '挂号费 ' + fmtMoney(row.fee) : '');
   const meta = UX.flow === 'course' || UX.flow === 'netcourse'
     ? ('名额 ' + esc(row.enrolled || 0) + ' / ' + esc(row.seats || '不限'))
     : (UX.flow === 'hospital' ? ('楼层 ' + esc(row.floor || '—')) : ('时长 ' + esc(row.duration || '—') + ' 分钟'));
+  const desc = plain(row.intro || row.description || row.requirement || '', 100);
+  const fallback = UX.flow === 'booking' ? '选择时段后提交预约，名额实时扣减。'
+    : UX.flow === 'hospital' ? '选择科室后挂号，号源与记录实时更新。'
+    : (UX.flow === 'course' || UX.flow === 'netcourse') ? '报名后进入我的课程，可继续学习。'
+    : '选择后提交，记录写入真实数据表。';
+  const body = desc && desc !== String(title) ? desc : fallback;
   return '<article class="card" onclick="App.openCatalogItem(' + HQ(row.id) + ')">' +
-    '<div class="card-cover">' + coverHtml(row, { label: UX.itemLabel }) + '</div>' +
-    '<div class="card-body"><div class="card-kicker"><span>' + esc(sub || UX.kicker) + '</span><span>' + esc(meta) + '</span></div>' +
-    '<h3>' + esc(title) + '</h3><p>' + esc(plain(row.intro || row.requirement || row.name || '', 100) || '打开查看可约时间与详情。') + '</p>' +
+    '<div class="card-cover">' + coverHtml(row, { label: false }) + '</div>' +
+    '<div class="card-body"><div class="card-kicker"><span>' + esc(sub) + '</span><span>' + esc(meta) + '</span></div>' +
+    '<h3>' + esc(title) + '</h3><p>' + esc(body) + '</p>' +
     '<div class="card-foot"><span class="price">' + esc(price || '免费') + '</span><span>查看 →</span></div></div></article>';
 }
 
@@ -1687,12 +1720,22 @@ async function catalogHome() {
       '<div class="hero-art"><div class="hero-art-head"><span>可约目录</span><span>' + esc(UX.mark) + '</span></div>' +
       (list[0] ? '<div class="hero-feature"><span class="big">' + esc(String(list.length)) + '</span><b>' + esc(list[0].title || list[0].name) + '</b><span>现在可以开始选择</span></div>' : '') +
       '<div class="hero-list">' + list.slice(0, 4).map((r) => '<div><span>' + esc(short(r.title || r.name, 20)) + '</span><em>' + esc(r.price != null ? fmtMoney(r.price) : (r.floor || '—')) + '</em></div>').join('') + '</div></div></section>';
-    setMain('<div class="page">' + hero + '<section class="section"><div class="section-head"><div><h2>全部' + esc(UX.itemLabel) + '</h2><p>共 ' + list.length + ' 个可选项目</p></div></div>' +
-      (list.length ? '<div class="grid">' + list.map(catalogCard).join('') + '</div>' : emptyHtml('还没有可选项', '到管理后台先建一个。')) + '</section>' + pageFoot() + '</div>');
+    setMain('<div class="page">' + hero + '<section class="section"><div class="section-head"><div><h2>推荐' + esc(UX.itemLabel) + '</h2><p>先看 4 个，全部' + esc(UX.itemLabel) + '在目录里</p></div>' +
+      '<div class="chips"><button class="chip" onclick="App.go(\'collection\')">全部' + esc(UX.itemLabel) + ' · ' + list.length + '</button></div></div>' +
+      (list.length ? '<div class="grid">' + list.slice(0, 4).map(catalogCard).join('') + '</div>' : emptyHtml('还没有可选项', '到管理后台先建一个。')) + '</section>' + pageFoot() + '</div>');
   } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
 }
 
-async function catalogCollection() { return catalogHome(); }
+async function catalogCollection() {
+  setMain(loadingHtml());
+  try {
+    const rows = rowsOf(await api(UX.primary.iface, UX.primary.list));
+    state.rows[UX.primary.iface] = rows;
+    const list = filterKeyword(rows, UX.flow === 'hospital' ? ['name', 'floor'] : ['title', 'name', 'teacher']);
+    setMain('<div class="page"><section class="section"><div class="section-head"><div><h2>' + esc(viewTitle('collection', '全部' + UX.itemLabel)) + '</h2><p>' + esc(viewSub('collection', '共 ' + list.length + ' 个可选项目' + (state.params.keyword ? ' · 搜索「' + esc(state.params.keyword) + '」' : ''))) + '</p></div></div>' +
+      (list.length ? '<div class="grid">' + list.map(catalogCard).join('') + '</div>' : emptyHtml('还没有可选项', '到管理后台先建一个。')) + '</section>' + pageFoot() + '</div>');
+  } catch (e) { setMain('<div class="page">' + emptyHtml('读取失败', e.message) + '</div>'); }
+}
 
 App.openCatalogItem = (id) => {
   state.params = { id };

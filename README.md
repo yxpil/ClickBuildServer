@@ -1,6 +1,6 @@
 # ClickBuildServer · 接口工作台
 
-> An interface-first backend service generator for Windows and Linux: multi-DB tables, scripted SQL, transactions, caching, RBAC, and one-click runnable services — an Electron desktop app with a built-in frontend studio and 26 built-in templates.
+> An interface-first backend service generator for Windows and Linux: multi-DB tables, scripted SQL, transactions, caching, RBAC, and one-click runnable services — an Electron desktop app with a built-in frontend studio, 4 native runnable cases and 26 business kits.
 
 [![CI](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/ci.yml)
 [![Release](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml/badge.svg)](https://github.com/yxpil/ClickBuildServer/actions/workflows/release.yml)
@@ -38,6 +38,37 @@
 ```
 
 每个接口、每条路由都可以单独改 SQL、单独开缓存、单独限流/定时窗/熔断；互不牵连。
+
+## 案例库只留 4 套原生组件案例（1.1.88）
+
+这一版把“案例”重新定义成：**PageStudio 原生多页 `.yxpp` + 原生组件拼页面 + 真实业务运行时 + 真接口 + 能点、能提交、能落库、能改**。旧的 26 套里，除了保留的 4 套，其余 22 套只有 1 个 `appview` 加一份约 190 KB 的手写运行时 HTML；问卷和报名甚至是“静态 `elements` 设计稿 + 另一份手写 HTML”。这些全部下架。
+
+- **只保留 4 套，每套 4 页**：商城、博客、工单、预约。每页由 `text / heading / button / box / shape / divider / table / form / js` 真实拼接，单页 28–106 个元素；工程里是 `project.pages`，没有任何整页 `appview`。
+- **画布上每个字都能改**：点标题、按钮、表格或表单，右侧属性面板直接改文字、字号、颜色、位置；画布 DOM 与 `props` 同步，保存后进工程。以前“输入框能打字、画布一直不动”的假编辑没有了。
+- **不是静态截图，也不是一张整块 iframe**：页面导航按钮、服务卡、加购、数量步进、结算、工单详情、评论、回复、标记解决全部是真元素上的点击事件；表格行由隐藏 `js` 元素按真实数据重绘。
+- **预览和部署走同一套页面**：预览用 `buildExport()` 直接渲染原生页；部署时新增 `app/iface/native-html.js`，把同一份 `project.pages` 渲染成可独立运行的 HTML，导航、表单自定义提交、`script[data-ps-js]` 全部保留。以前原生案例 `frontend.html=''`、部署出空页的问题已修。
+- **真实接口与真实表**：预约表单 `POST /api/bookings` 占时段、写预约表；商城结算生成订单；博客评论与草稿、工单回复与状态都走各自接口；预览阶段接口不通时回退到内嵌 seed，保证案例打开即可操作。
+- **视觉重做，不再是一套模板套到底**：商城是米纸底 + 陶土红 + 墨绿，商品卡按四色轮换；博客是宣纸底 + 靛青，文章页有独立导语、作者卡和评论；工单是冷灰绿 + 琥珀，详情页把状态、SLA、处理记录和回复分成三栏；预约是苔绿 + 陶土，首页用大字号宋体标题和抽象构成。四套各有自己的字号、留白和边框语言。
+- **细节收尾**：商城购物车去掉大块空白，补配送/退换/发票信息条；博客正文与导语不再重复首段；工单详情补 SERVICE NOTE，问题描述框不再空一大片；订单 KPI 改为“标签—数字—说明”的稳定三行结构。
+- **深色主题里不再有白底白字**：主题弹窗的颜色选择器统一深底 `#10161d`、深色边框和 `color-scheme: dark`。
+
+![画布上直接选中标题并改字，右侧属性面板同步](docs/screenshots/native-case-editable.png)
+
+![商城首页：原生大标题、抽象静物与商品卡](docs/screenshots/native-case-mall.png)
+
+![商城购物车：原生表格、数量步进、结算面板与配送说明](docs/screenshots/native-case-mall-cart.png)
+
+![博客文章页：导语、正文、作者卡、评论表与评论表单](docs/screenshots/native-case-blog.png)
+
+![工单详情页：问题描述、SLA、处理记录与回复表单](docs/screenshots/native-case-ticket.png)
+
+![预约首页：大字号标题、可约项目与抽象构成](docs/screenshots/native-case-booking.png)
+
+![案例库只保留 4 套原生多页案例](docs/screenshots/native-cases-hub.png)
+
+![深色主题弹窗的颜色选择器](docs/screenshots/native-theme-dark.png)
+
+回归：`test-templates --gen` **195/195**、`test-case-frontends` **19/19**（4 套均为 4 页原生组件、逐套生成 `.yxpp` 产物；商城编辑文字后重新生成部署页，断言新文字进入 `public/index.html`；真实启动商城与预约服务、POST `/api/bookings` 断言时段占位和预约单落表）、`test-yxpp-preview` **4/4**（原生页点第二个页面导航、断言可见页切换，再改第二页文字重新渲染、断言新文字进入 HTML）、`test-dark-grid` **8/8**。另外把生成的商城案例单独起在 `18994`，在真实浏览器里点首页加购、全部商品再加购、购物车结算，订单表从 3 行变 4 行、购物车徽标归 0。
 
 ## 深色模式表格头修复（1.1.85）
 

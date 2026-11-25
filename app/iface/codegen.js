@@ -8,6 +8,7 @@ const script = require('./script');
 const docs = require('./docs');
 const native = require('./native');
 const fe = require('./frontend');
+const nativeHtml = require('./native-html');
 const testgen = require('./testgen');
 const platform = require('../platform');
 
@@ -542,7 +543,11 @@ function generate(project, options) {
       '', '- 生成服务的 `/` 会优先返回该前端页面。', '- 可以在 ClickBuild 的「前端」模式里继续编辑，再导出 .yxpp。',
     ].join('\n'));
     let html = p.frontend.html || '';
-    if (p.frontend.project && p.frontend.project.app && p.frontend.project.app.mode) {
+    if (p.frontend.project && p.frontend.project.nativeCase) {
+      html = nativeHtml.build(p.frontend.project, { name: yxpp.name });
+      yxpp.html = html;
+      add('frontend/index.yxpp', JSON.stringify(yxpp, null, 2));
+    } else if (p.frontend.project && p.frontend.project.app && p.frontend.project.app.mode) {
       html = fe.htmlFromProject(p.frontend.project, { name: yxpp.name });
       yxpp.html = html;
       add('frontend/index.yxpp', JSON.stringify(yxpp, null, 2));

@@ -2328,7 +2328,7 @@ html[data-app-dark="1"] ::selection { background:#275ab9; color:#fff; }
       <button class="btn btn--sq" id="btnClosePreview" data-icon="close" title="关闭"></button>
     </div>
     <div class="preview-stage" id="previewStage">
-      <iframe id="previewFrame" class="preview-frame" title="网页预览" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+      <iframe id="previewFrame" class="preview-frame" title="网页预览" sandbox="allow-scripts allow-forms allow-popups allow-same-origin"></iframe>
     </div>
     <div class="dialog-foot preview-foot">
       <span class="hint" style="margin:0">预览里可以直接点页面导航、轮播按钮和表单；它使用纯 CSS 导出，不依赖外部 CDN。</span>
@@ -6380,6 +6380,20 @@ function syncAppFromAppView() {
     return parts[0] ? { label: parts[0].trim(), view: (parts[1] || '').trim() || 'home' } : null;
   }).filter(Boolean);
   if (nav.length) app.nav = nav;
+  app.viewTitles = {};
+  app.viewSubs = {};
+  (S.proj.pages || []).forEach(function (pg) {
+    var av = (pg.elements || []).find(function (n) { return n && n.type === 'appview'; });
+    if (!av) return;
+    var v = String((av.props && av.props.view) || pg.id || '').trim();
+    if (!v) return;
+    if (av.props && av.props.title) app.viewTitles[v] = String(av.props.title);
+    // 案例的每个 appview 默认都写着同一句品牌 tagline；它只是占位文案。
+    // 只有用户真正改成与 tagline 不同的页面说明时才覆盖运行时，避免一点标题就把
+    // “共 4 个可选项目 / 共 8 件在售”这类数据驱动的副标题冲掉。
+    var pvSub = String((av.props && av.props.sub) || '').trim();
+    if (pvSub && pvSub !== String(app.tagline || '').trim()) app.viewSubs[v] = pvSub;
+  });
 }
 function projectFilePayload() {
   syncAppFromAppView();
@@ -9706,7 +9720,7 @@ function uiBlockMarkup(t, p, editor) {
       var avPageView = String(p.view || 'home').replace(/[^A-Za-z0-9_-]/g, '') || 'home';
       avLive = avLive.replace(/window\.CBS_PREVIEW_VIEW = "[^"]*"/, 'window.CBS_PREVIEW_VIEW = "' + avPageView + '"');
       return '<div style="position:relative;height:100%;border-radius:' + radius + 'px;overflow:hidden;border:1px solid ' + line + ';background:#fff">' +
-        '<iframe title="业务应用真实运行时预览" srcdoc="' + esc(avLive) + '" sandbox="allow-scripts allow-forms allow-modals" style="display:block;width:100%;height:100%;border:0;background:#fff;pointer-events:none"></iframe>' +
+        '<iframe title="业务应用真实运行时预览" srcdoc="' + esc(avLive) + '" sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-popups" style="display:block;width:100%;height:100%;border:0;background:#fff"></iframe>' +
         '<span style="position:absolute;right:9px;bottom:8px;padding:4px 8px;border-radius:999px;background:rgba(23,22,19,.78);color:#fff;font-size:9px;letter-spacing:.02em;pointer-events:none">真实运行时预览 · 数据来自案例 seed</span>' +
       '</div>';
     }
@@ -12264,6 +12278,7 @@ function buildField(f, n) {
         n.props.appJson = JSON.stringify(app);
       }
       syncNode(n); scheduleSave(); refreshStatus();
+      if (n.type === 'appview') requestAppPreview();
       if (isCommit) commit();
     };
   }
@@ -18660,7 +18675,48 @@ $('optPageFade').addEventListener('change', function () { S.proj.pageFade = this
 
 /* ---- 网页预览 ---- */
 var previewModal = $('previewModal'), previewFrame = $('previewFrame'), pvW = 0;
+var appPvSeq = 0, appPvTimer = null;
+function requestAppPreview() {
+  if (!(typeof S !== 'undefined' && S.proj && S.proj.app && S.proj.app.mode)) return;
+  clearTimeout(appPvTimer);
+  appPvTimer = setTimeout(function () {
+    if (typeof syncAppFromAppView === 'function') syncAppFromAppView();
+    var requestId = 'apv' + (++appPvSeq);
+    S.appPvRequest = requestId;
+    window.parent.postMessage({
+      type: 'cbs:yxpp:preview',
+      requestId: requestId,
+      project: JSON.parse(JSON.stringify(S.proj)),
+    }, '*');
+  }, 320);
+}
+function applyAppPreviewResult(html) {
+  if (!html) { toast('运行时预览生成失败，保存后会重新生成'); return; }
+  S.previewHtml = String(html);
+  renderCanvas();
+  if (previewModal.classList.contains('is-open')) refreshPreview();
+}
+function appPreviewHtml() {
+  if (!(typeof S !== 'undefined' && S.proj && S.proj.app && S.proj.app.mode && S.previewHtml)) return '';
+  var page = curPage();
+  var el = page && Array.isArray(page.elements) ? page.elements.filter(function (x) { return x.type === 'appview'; })[0] : null;
+  var view = String((el && el.props && el.props.view) || S.proj.homePage || 'home').replace(/[^A-Za-z0-9_-]/g, '') || 'home';
+  return String(S.previewHtml)
+    .replace(/window\.CBS_PREVIEW_VIEW = "[^"]*"/, 'window.CBS_PREVIEW_VIEW = "' + view + '"')
+    .replace(/window\.CBS_PREVIEW_VIEW = '[^']*'/, "window.CBS_PREVIEW_VIEW = '" + view + "'");
+}
 function refreshPreview() {
+  var appHtml = appPreviewHtml();
+  if (appHtml) {
+    var live = previewFrame.cloneNode(false);
+    live.removeAttribute('srcdoc');
+    previewFrame.parentNode.replaceChild(live, previewFrame);
+    previewFrame = live;
+    previewFrame.srcdoc = appHtml;
+    $('pvSub').textContent = '真实运行时 · 可点击/可提交 · ' + S.proj.pages.length + ' 页 · 当前 ' + ((curPage() && curPage().name) || '首页');
+    $('pvSize').textContent = (pvW ? pvW + ' px 宽' : '桌面全宽') + ' · 运行时 ' + appHtml.length.toLocaleString() + ' 字符';
+    return;
+  }
   var res = buildExport('css', curPage().id);
   var fresh = previewFrame.cloneNode(false);
   fresh.removeAttribute('srcdoc');
@@ -18693,6 +18749,13 @@ Array.prototype.forEach.call($('pvDevTabs').children, function (b) {
   b.addEventListener('click', function () { setPvWidth(Number(b.getAttribute('data-pvw'))); });
 });
 $('btnPreviewWindow').addEventListener('click', function () {
+  var appHtml = appPreviewHtml();
+  if (appHtml) {
+    var blob = new Blob([appHtml], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    return;
+  }
   var res = buildExport('css', curPage().id);
   var blob = new Blob([res.code], { type: 'text/html;charset=utf-8' });
   var url = URL.createObjectURL(blob);
@@ -21735,6 +21798,13 @@ setupGlobalSearch();
   window.addEventListener('message', function (ev) {
     var d = ev.data || {};
     if (!d || typeof d.type !== 'string' || d.type.indexOf('cbs:yxpp:') !== 0) return;
+    if (d.type === 'cbs:yxpp:preview-result') {
+      if (d.requestId && d.requestId === S.appPvRequest) {
+        S.appPvRequest = '';
+        applyAppPreviewResult(d.html || '');
+      }
+      return;
+    }
     if (d.type === 'cbs:yxpp:load') {
       S.ifaces = Array.isArray(d.ifaces) ? d.ifaces : [];
       S.previewHtml = String(d.previewHtml || '');

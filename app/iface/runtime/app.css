@@ -301,7 +301,14 @@ body.mode-content .grid .card:nth-child(3n+2) .card-cover{background:linear-grad
 body.mode-content .grid .card:nth-child(3n) .card-cover{background:linear-gradient(135deg,#30384A,#65748C)}
 body.mode-commerce{--bg:#F7F5EF;--line:#E0DACC;--soft:#F0EBE0;--card:#fff}
 body.mode-commerce .hero-card{background:#1F2A24}
+body.mode-commerce .grid .card:nth-child(4n+1) .card-cover{background:linear-gradient(135deg,#244137,#5E7C68)}
+body.mode-commerce .grid .card:nth-child(4n+2) .card-cover{background:linear-gradient(135deg,#583929,#A57152)}
+body.mode-commerce .grid .card:nth-child(4n+3) .card-cover{background:linear-gradient(135deg,#2D384B,#66758D)}
+body.mode-commerce .grid .card:nth-child(4n) .card-cover{background:linear-gradient(135deg,#643B3D,#9A6663)}
 body.mode-catalog{--bg:#F3F6F1;--line:#D7DED2;--soft:#E9EFE4;--card:#fff}
+body.mode-catalog .grid .card:nth-child(3n+1) .card-cover{background:linear-gradient(135deg,#253E3D,#5B7B76)}
+body.mode-catalog .grid .card:nth-child(3n+2) .card-cover{background:linear-gradient(135deg,#55412D,#9B7A51)}
+body.mode-catalog .grid .card:nth-child(3n) .card-cover{background:linear-gradient(135deg,#323A4A,#68788E)}
 body.mode-desk{--bg:#F1F3F5;--line:#DCE0E4;--soft:#EBEEF1;--card:#fff;--radius:10px}
 body.mode-desk .hero-card{background:#16202A}
 body.mode-desk .hero h1{font-size:34px}

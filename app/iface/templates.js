@@ -9,9 +9,15 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const spec = require('./spec');
+const frontend = require('./frontend');
+const nativeHtml = require('./native-html');
 const store = require('../store');
 
 const CASES_DIR = path.join(__dirname, 'cases');
+
+// 案例库只保留经过实机验收的原生多页 .yxpp 案例；其余 22 套只作为接口/表组数据源，
+// 不再出现在 Hub、模版库和“新建工程”的案例卡里，也不再携带假前端。
+const REAL_CASE_IDS = new Set(['builtin:mall', 'builtin:blog', 'builtin:ticket', 'builtin:booking']);
 
 const BUILTINS = [
   {
@@ -146,13 +152,22 @@ const BUILTINS = [
   },
 ];
 
-function projectOf(file) {
+function projectOf(file, withHtml) {
   const raw = fs.readFileSync(path.join(CASES_DIR, file), 'utf8');
   const data = JSON.parse(raw);
   const project = spec.normalizeProject(data);
   const studioProject = project && project.frontend && project.frontend.project;
   if (studioProject && data.seed && data.seed.sql) {
     studioProject.previewSeed = { enabled: data.seed.enabled !== false, sql: data.seed.sql, note: data.seed.note || '' };
+  }
+  // 案例只存 PageStudio 的 project：原生组件案例在打包/生成代码时由 native-html 渲染成 HTML，
+  // 历史的 app 案例仍从 project.app 生成真实运行时；不在 .yxpp 里落手写假页面。
+  if (withHtml && project && project.frontend && studioProject) {
+    if (studioProject.nativeCase) {
+      project.frontend.html = nativeHtml.build(studioProject, { name: project.frontend.name || project.name || '业务应用' });
+    } else if (studioProject.app && studioProject.app.mode) {
+      project.frontend.html = frontend.htmlFromProject(studioProject, { name: project.frontend.name || project.name || '业务应用' });
+    }
   }
   return project;
 }
@@ -177,8 +192,8 @@ function nameTaken(name) {
   return list().some((t) => String(t.name || '').trim().normalize('NFKC').toLowerCase() === key);
 }
 
-function list() {
-  const builtins = BUILTINS.map((t) => {
+function listAll() {
+  return BUILTINS.map((t) => {
     try {
       const project = projectOf(t.file);
       return { id: t.id, name: t.name, description: t.description, tags: t.tags, kind: 'builtin', counts: counts(project), createdAt: null };
@@ -186,14 +201,21 @@ function list() {
       return { id: t.id, name: t.name, description: t.description, tags: t.tags, kind: 'builtin', counts: { interfaces: 0, tables: 0, routes: 0 }, createdAt: null, error: e.message };
     }
   });
+}
+
+function userList() {
   const files = fs.readdirSync(templateDir()).filter((f) => f.endsWith('.json'));
-  const user = files.map((f) => {
+  return files.map((f) => {
     try {
       const data = JSON.parse(fs.readFileSync(path.join(templateDir(), f), 'utf8'));
       return { id: `user:${f.replace(/\.json$/, '')}`, name: data.name, description: data.description || '', tags: data.tags || [], kind: 'user', counts: counts(spec.normalizeProject(data.project)), createdAt: data.createdAt, file: path.join(templateDir(), f) };
     } catch (e) { return null; }
   }).filter(Boolean).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  return [...builtins, ...user];
+}
+
+function list() {
+  // 案例库只列 4 套真实案例；22 套下架数据仍保留在 listAll() 里供接口/表组套件使用。
+  return [...listAll().filter((t) => REAL_CASE_IDS.has(t.id)), ...userList()];
 }
 
 function get(id) {
@@ -201,7 +223,7 @@ function get(id) {
   if (key.startsWith('builtin:')) {
     const b = BUILTINS.find((x) => x.id === key);
     if (!b) throw new Error('没有这个内置模版');
-    return { kind: 'builtin', name: b.name, file: b.file, project: projectOf(b.file) };
+    return { kind: 'builtin', name: b.name, file: b.file, project: projectOf(b.file, true) };
   }
   if (key.startsWith('user:')) {
     const file = path.join(templateDir(), `${key.slice(5)}.json`);
@@ -235,4 +257,4 @@ function remove(id) {
   return { ok: true };
 }
 
-module.exports = { BUILTINS, list, get, saveAs, remove, counts };
+module.exports = { BUILTINS, list, listAll, get, saveAs, remove, counts };

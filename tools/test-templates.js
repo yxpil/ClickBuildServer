@@ -20,9 +20,11 @@ function check(name, ok, extra) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? `  ${extra}` : ''}`);
 }
 
-const list = templates.list();
+const visible = templates.list().filter((t) => t.kind === 'builtin');
+const list = templates.listAll();
 const builtinCount = list.filter((t) => t.kind === 'builtin').length;
-check('模版列表返回 26 个内置', builtinCount === 26, list.map((t) => t.name).join('/'));
+check('案例库只展示 4 套真实案例', visible.length === 4, visible.map((t) => t.name).join('/'));
+check('下架案例仍作为 26 套接口/表组数据源', builtinCount === 26, String(builtinCount));
 
 for (const t of list.filter((x) => x.kind === 'builtin')) {
   const got = templates.get(t.id);

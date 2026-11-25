@@ -49,7 +49,9 @@ function main() {
   ok(kits.length >= 8, '预设套件至少 8 套', String(kits.length));
   ok(new Set(kits.map((x) => x.id)).size === kits.length, '套件 id 不重复');
   ok(kits.every((x) => x.counts.interfaces > 0 && x.counts.routes > 0), '每套都有接口与路由');
-  ok(kits.every((x) => x.readiness.frontend && x.readiness.seed), '每套都带演示数据和业务页面');
+  ok(kits.every((x) => x.readiness.seed), '每套都带演示数据');
+  const withFront = kits.filter((x) => x.readiness.frontend);
+  ok(withFront.length === 4 && ['kit:mall', 'kit:blog', 'kit:ticket', 'kit:booking'].every((id) => withFront.some((x) => x.id === id)), '4 套业务闭环带原生多页页面', withFront.map((x) => x.name).join('/'));
 
   const mall = kits.find((x) => x.id === 'kit:mall');
   ok(mall && mall.counts.interfaces === 4 && mall.counts.routes === 19, '商城套件 4 接口 / 19 路由', `${mall.counts.interfaces}/${mall.counts.routes}`);

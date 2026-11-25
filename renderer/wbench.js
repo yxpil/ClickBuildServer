@@ -1398,7 +1398,7 @@ function showMoreMenu() {
     <div class="more-sect">
       <h5>内容与复用</h5>
       <div class="more-grid">
-        ${item('templates', '模版库', '套用内置业务工程')}
+        ${item('templates', '案例库', '4 套原生可运行案例')}
         ${item('ifaceKits', '接口套件', '商城、博客、社区整套接入')}
         ${item('ifaceTables', '表格套件', '用户、商品、订单等表组加入接口')}
         ${item('favLib', '常用接口', '收藏、分类、搜索、复用')}
@@ -3799,7 +3799,7 @@ curl.exe -X POST "http://127.0.0.1:18100/api/orders" -H "Content-Type: applicati
       <div class="hb-p">启动应用先进入“工程历史”。左键工程卡片直接打开；右键有“打开 / 复制工程 / 删除工程”；卡片右上角红叉也是删除。顶部搜索会同时过滤工程名、描述、路径和模版标签。</div>
       <div class="hb-grid">
         <div class="hb-card"><b>新建任务</b><p>生成空白工程并进入工作台。三种任务类型：只前端、只后端、混合。</p></div>
-        <div class="hb-card"><b>从模版开始</b><p>下方模版卡片会带完整业务结构；点一张就按模版新建工程，适合先看成品再改。</p></div>
+        <div class="hb-card"><b>从真实案例开始</b><p>下方 4 套案例都是 PageStudio 原生多页 .yxpp，页面能点、表单能提交；点一张就按案例新建工程。</p></div>
         <div class="hb-card"><b>导入 .yxpn</b><p>“更多…”里的“导入 .yxpn”，会把工程包还原成可编辑工程；导出时连前端和文档一起带走。</p></div>
         <div class="hb-card"><b>工程文件与缓存</b><p>每个工程保存为同名 .yxpn 包；包旁的 <span class="hb-inline">.cache/工程名/</span> 是自动生成的可读副本，只用于查看，不是工程本体。旧版 .json 工程会在启动时自动迁移，原文件保留为 .json.bak。</p></div>
         <div class="hb-card"><b>多项目标签</b><p>打开另一个工程会开新标签；<span class="hb-kbd">Ctrl+Tab</span> 切换，标签上中键或右键可关闭。</p></div>
@@ -5011,13 +5011,13 @@ async function showTemplates() {
   const r = await api.templates();
   if (!r.ok) return toast('读取模版失败：' + r.error);
   modal(`<div class="p-4">
-    <div class="flex items-center gap-2 mb-3"><b class="text-[13px]">工程模版</b>
+    <div class="flex items-center gap-2 mb-3"><b class="text-[13px]">真实案例</b>
       <span class="pill">${r.list.length} 个</span>
       <button class="btn thin ml-auto" id="tplSave">把当前工程存为模版</button>
       <button class="btn thin" id="tplClose">关闭</button></div>
     <div class="border border-neutral-300 max-h-[62vh] overflow-auto">
       ${r.list.map((t) => `<div class="flex items-start gap-3 p-3 border-b border-neutral-200">
-        <div class="w-8 h-8 shrink-0 border border-neutral-900 flex items-center justify-center mono text-[11px]">${t.kind === 'builtin' ? '内置' : '我的'}</div>
+        <div class="w-8 h-8 shrink-0 border border-neutral-900 flex items-center justify-center mono text-[11px]">${t.kind === 'builtin' ? '原生' : '我的'}</div>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2"><b>${esc(t.name)}</b>
             <span class="text-[11px] text-neutral-500 mono">${t.counts.interfaces} 接口 · ${t.counts.tables} 表 · ${t.counts.routes} 路由</span></div>
@@ -5030,7 +5030,7 @@ async function showTemplates() {
         </div>
       </div>`).join('')}
     </div>
-    <div class="text-[11px] text-neutral-500 mt-2">套用会先保存当前工程，再用模版新建一个工程；当前内容不会被覆盖。内置模版只读，另存一份后可以随意改。</div>
+    <div class="text-[11px] text-neutral-500 mt-2">套用会先保存当前工程，再用案例新建一个工程；当前内容不会被覆盖。只保留 4 套真实验收过的原生多页案例，旧 22 套已下架。</div>
   </div>`, (root) => {
     root.querySelector('#tplClose').onclick = closeModal;
     root.querySelector('#tplSave').onclick = () => { closeModal(); showSaveTemplate(); };
@@ -5038,7 +5038,7 @@ async function showTemplates() {
       b.onclick = async () => {
         const got = await api.templateGet(b.dataset.tplApply);
         if (!got.ok) return toast('读取失败：' + got.error);
-        const ok = await activateFreshProject(got.project, (p) => `已从模版「${got.name}」新建「${p.name}」`);
+        const ok = await activateFreshProject(got.project, (p) => `已从案例「${got.name}」新建「${p.name}」`);
         if (ok) closeModal();
       };
     });
@@ -7358,8 +7358,9 @@ function refreshStudioState() {
   if (!el) return;
   const f = S.project && S.project.frontend;
   const pages = f && f.project && Array.isArray(f.project.pages) ? f.project.pages.length : 1;
+  const isApp = !!(f && f.project && f.project.app && f.project.app.mode);
   el.textContent = f
-    ? `已连接工程：${f.name || '前端工程'} · ${pages} 页 · 自动同步`
+    ? `已连接工程：${f.name || '前端工程'} · ${isApp ? '业务应用 · ' : ''}${pages} 页 · 自动同步`
     : '空白画布 · 编辑后自动绑定到当前工程';
   el.disabled = false;
 }
@@ -7450,18 +7451,19 @@ function studioIfaces() {
     })),
   }));
 }
+async function studioPreviewHtml(project) {
+  if (!(project && project.app && project.app.mode && project.previewSeed && project.previewSeed.sql)) return '';
+  try {
+    const got = await api.studioPreview({ project, name: (S.project && S.project.name) || project.name || '' });
+    return (got && got.html) || '';
+  } catch (e) { return ''; }
+}
 async function studioLoadProject(project, binding) {
   if (!project) return;
   const ui = window.__i18n || {};
   const locale = String((S.settings && S.settings.language) || ui.locale || 'zh-CN');
   const ifaces = studioIfaces();
-  let previewHtml = '';
-  if (project.app && project.app.mode && project.previewSeed && project.previewSeed.sql) {
-    try {
-      const got = await api.studioPreview({ project, name: (S.project && S.project.name) || project.name || '' });
-      previewHtml = (got && got.html) || '';
-    } catch (e) { previewHtml = ''; }
-  }
+  const previewHtml = await studioPreviewHtml(project);
   postToStudio({
     type: 'cbs:yxpp:load',
     project,
@@ -7521,10 +7523,12 @@ async function saveStudioToProject(reason, force) {
       return false;
     }
     const project = got.project;
-    // 案例前端自带可交互 HTML（登录、路由试运行等）；设计编辑只更新 project，不把这段运行时脚本冲掉。
+    // app 模式的 .yxpp 只认 PageStudio 原生 project；html 由主进程从 project.app 重新生成，
+    // 不能把画布 buildExport 的静态页或旧案例手写页塞回去，否则按钮、导航、表单全不工作。
+    const nativeApp = !!(project.app && project.app.mode);
     const old = S.project.frontend;
     const customHtml = !!(old && old.html && /<script[\s>]/i.test(old.html) && !isStudioExportHtml(old.html));
-    const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind', html: customHtml ? old.html : (got.html || '') });
+    const built = await api.frontendBuild({ project, name: S.project.name, framework: 'tailwind', html: nativeApp ? '' : (customHtml ? old.html : (got.html || '')) });
     if (!built || !built.ok) throw new Error((built && built.error) || '生成 .yxpp 失败');
     S.project.frontend = built.yxpp;
     await api.save(S.project);
@@ -7560,8 +7564,9 @@ async function exportStudioYxpp() {
   const got = await captureStudioProject();
   if (!got || !got.project || !got.project.page) return toast('读取前端工程失败', 4000);
   const old = S.project.frontend;
+  const nativeApp = !!(got.project.app && got.project.app.mode);
   const customHtml = !!(old && old.html && /<script[\s>]/i.test(old.html) && !isStudioExportHtml(old.html));
-  const built = await api.frontendBuild({ project: got.project, name: S.project.name, framework: 'tailwind', html: customHtml ? old.html : (got.html || '') });
+  const built = await api.frontendBuild({ project: got.project, name: S.project.name, framework: 'tailwind', html: nativeApp ? '' : (customHtml ? old.html : (got.html || '')) });
   if (!built || !built.ok) return toast('生成 .yxpp 失败', 5000);
   downloadJson(`${String(S.project.name || '前端工程').replace(/[\\/:*?"<>|]/g, '_')}.yxpp`, built.yxpp);
   toast('已导出 .yxpp', 3000);
@@ -7620,6 +7625,15 @@ window.addEventListener('message', (ev) => {
     const target = { import: '#yxppImport', export: '#yxppExport', sync: '#yxppAttach', deploy: '#yxppDeploy' }[d.action];
     const btn = target && $(target);
     if (btn) btn.click();
+  }
+  if (d.type === 'cbs:yxpp:preview' && d.requestId) {
+    const requestId = d.requestId;
+    const project = d.project || {};
+    studioPreviewHtml(project).then((html) => {
+      postToStudio({ type: 'cbs:yxpp:preview-result', requestId, html: html || '' });
+    }).catch(() => {
+      postToStudio({ type: 'cbs:yxpp:preview-result', requestId, html: '' });
+    });
   }
   if (d.type === 'cbs:yxpp:project' && d.requestId && studioReqs.has(d.requestId)) {
     const fn = studioReqs.get(d.requestId);
@@ -7723,7 +7737,7 @@ function renderHubSections() {
   }).join('') : `<div class="hub-empty">${q ? '没有匹配的工程。' : '还没有历史工程，从下面的模版挑一个开始。'}</div>`;
 
   const tplHtml = templates.length ? templates.map((t, i) => `<article class="hub-tpl" data-hub-tpl="${esc(t.id)}" title="使用模版「${esc(t.name)}」">
-      <div class="hub-tpl-top"><span class="hub-tpl-index">${String(i + 1).padStart(2, '0')}</span><span class="hub-tpl-kind">${t.kind === 'builtin' ? '内置' : '我的'}</span></div>
+      <div class="hub-tpl-top"><span class="hub-tpl-index">${String(i + 1).padStart(2, '0')}</span><span class="hub-tpl-kind">${t.kind === 'builtin' ? '原生' : '我的'}</span></div>
       <h3>${esc(t.name)}</h3>
       <div class="hub-tpl-meta">${t.counts.interfaces} 接口 · ${t.counts.tables} 表 · ${t.counts.routes} 路由</div>
       <div class="hub-tpl-desc">${esc(t.description || '')}</div>
@@ -7736,7 +7750,7 @@ function renderHubSections() {
       <div class="hub-projects">${projectHtml}</div>
     </section>
     <section class="hub-section">
-      <div class="hub-section-head"><h2>从模版开始</h2><span class="hub-count" data-hub-count="templates">${templates.length} / ${HUB.templates.length}</span><span class="hub-hint">音乐网站、小说网站以及全部内置模版都在这里</span></div>
+      <div class="hub-section-head"><h2>真实案例</h2><span class="hub-count" data-hub-count="templates">${templates.length} / ${HUB.templates.length}</span><span class="hub-hint">4 套 PageStudio 原生多页 .yxpp；可点击、可提交，走真实接口</span></div>
       <div class="hub-templates">${tplHtml}</div>
     </section>`;
 }
@@ -7745,9 +7759,9 @@ function renderProjectHub() {
   $('#projectHub').innerHTML = `<div class="hub-shell">
     <div class="hub-top">
       <div class="hub-brand"><img src="../assets/logo.png" alt="ClickBuild" width="26" height="26"><span class="hub-brand-word">ClickBuild</span><span>项目工作台</span></div>
-      <div class="hub-top-note">先选择工程或模版</div>
+      <div class="hub-top-note">先选择工程或案例</div>
       <div class="hub-search">
-        <input id="hubSearch" placeholder="搜索工程 / 模版 / 标签…" value="${esc(HUB.filter)}" autocomplete="off">
+        <input id="hubSearch" placeholder="搜索工程 / 案例 / 标签…" value="${esc(HUB.filter)}" autocomplete="off">
         <button class="btn thin primary" id="hubNew">新建任务</button>
       </div>
       <button class="hub-win" data-hub-win="minimize" title="最小化"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1.2"/></svg></button>
@@ -7755,12 +7769,12 @@ function renderProjectHub() {
       <button class="hub-win close" data-hub-win="close" title="关闭"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M1.2 1.2l8.6 8.6M9.8 1.2l-8.6 8.6" stroke="currentColor" stroke-width="1.2"/></svg></button>
     </div>
     <div class="hub-body">
-      <div class="hub-kicker">工程与模版</div>
+      <div class="hub-kicker">工程与案例</div>
       <div class="hub-heading">工程历史</div>
-      <div class="hub-sub">打开应用先在这里选择历史工程，选中之后才进入工作台。历史文件、模版和复制入口都在这一页。</div>
+      <div class="hub-sub">打开应用先在这里选择历史工程，选中之后才进入工作台。历史文件、案例和复制入口都在这一页。</div>
       <div id="hubSections"></div>
     </div>
-    <div class="hub-footer"><span>ClickBuild 项目中心</span><span>${HUB.list.length} 个历史工程</span><span>${HUB.templates.length} 个模版</span></div>
+    <div class="hub-footer"><span>ClickBuild 项目中心</span><span>${HUB.list.length} 个历史工程</span><span>${HUB.templates.length} 个案例</span></div>
   </div>`;
 
   const input = $('#hubSearch');
@@ -7830,7 +7844,7 @@ async function refreshHubList() {
   if (shell) {
     const counts = shell.querySelectorAll('.hub-footer span');
     if (counts[1]) counts[1].textContent = `${HUB.list.length} 个历史工程`;
-    if (counts[2]) counts[2].textContent = `${HUB.templates.length} 个模版`;
+    if (counts[2]) counts[2].textContent = `${HUB.templates.length} 个案例`;
   }
 }
 
@@ -7876,7 +7890,7 @@ async function duplicateHubProject(name) {
 async function hubUseTemplate(id) {
   const got = await api.templateGet(id);
   if (!got || got.ok === false) return toast('读取模版失败：' + ((got && got.error) || '未知错误'), 5000);
-  if (S.project && !(await confirmBox('从模版新建工程', `用「${got.name}」新建工程并开一个新标签？当前工程会先保存，原标签不会被覆盖。`))) return;
+  if (S.project && !(await confirmBox('从案例新建工程', `用「${got.name}」新建工程并开一个新标签？当前工程会先保存，原标签不会被覆盖。`))) return;
   if (S.project && !(await flushAndSave('套用模版'))) return toast('当前工程保存失败，已取消新建', 5000);
   const p = got.project;
   p.name = uniqueProjectName(got.name || p.name);
@@ -7884,7 +7898,7 @@ async function hubUseTemplate(id) {
   const w = await api.save(p);
   if (w && w.ok === false) return toast('新工程保存失败：' + (w.error || ''), 5000);
   await enterWorkspace((w && w.project) || p);
-  toast(`已从模版「${got.name}」新建「${p.name}」`, 4500);
+  toast(`已从案例「${got.name}」新建「${p.name}」`, 4500);
 }
 
 async function hubNewBlank(kind) {

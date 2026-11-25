@@ -1034,7 +1034,7 @@ function normalizeProject(project) {
       sql: String(p.seed.sql || ''),
       note: String(p.seed.note || ''),
     } : null,
-    frontend: (p.frontend && p.frontend.project && Array.isArray(p.frontend.project.elements)) ? {
+    frontend: (p.frontend && p.frontend.project && (Array.isArray(p.frontend.project.elements) || (Array.isArray(p.frontend.project.pages) && p.frontend.project.pages.length))) ? {
       format: 'yxpp',
       version: 1,
       name: String(p.frontend.name || '前端工程'),

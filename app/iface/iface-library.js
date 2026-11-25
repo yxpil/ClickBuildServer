@@ -65,7 +65,7 @@ const KITS = [
 // 表格套件默认覆盖全部内置工程模版：8 套接口套件优先排在最前，
 // 其余模版按名称表组补齐，避免“预设表”只覆盖少数业务。
 const TABLE_KITS = KITS.concat(
-  templates.list()
+  templates.listAll()
     .filter((x) => x.kind === 'builtin' && !KITS.some((k) => k.templateId === x.id))
     .filter((x) => x.counts && x.counts.tables > 0)
     .map((x) => ({

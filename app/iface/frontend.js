@@ -381,6 +381,7 @@ ${nodes}
 function normalizeStudioProject(input) {
   const p = input && typeof input === 'object' ? input : null;
   if (p && p.app && p.app.mode) {
+    if (Array.isArray(p.pages) && p.pages.length) return p;
     if (!p.page) p.page = { w: 1200, h: 880, bg: p.app.bg || '#F6F3EC' };
     if (!Array.isArray(p.elements)) p.elements = [];
     return p;
