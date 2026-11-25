@@ -27,6 +27,7 @@ const deployer = require('./deploy');
 const tableImport = require('./table-import');
 const tableData = require('./table-data');
 const dbAdmin = require('./db-admin');
+const infraAdmin = require('./infra-admin');
 const shellNew = require('./shell-new');
 const store = require('../store');
 
@@ -244,6 +245,19 @@ function registerIpc() {
   ipcMain.handle('iface:db:create-table', (e, payload) => dbAdmin.createTable((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:db:drop-table', (e, payload) => dbAdmin.dropTable((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:db:rename-table', (e, payload) => dbAdmin.renameTable((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:infra:connections', (e, project) => infraAdmin.allConnections(project || {}));
+  ipcMain.handle('iface:infra:test', (e, payload) => infraAdmin.test((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:overview', (e, payload) => infraAdmin.redisOverview((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:scan', (e, payload) => infraAdmin.redisScan((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:key', (e, payload) => infraAdmin.redisKey((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:command', (e, payload) => infraAdmin.redisCommand((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:delete', (e, payload) => infraAdmin.redisDelete((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:buckets', (e, payload) => infraAdmin.s3Buckets((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:objects', (e, payload) => infraAdmin.s3Objects((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:stat', (e, payload) => infraAdmin.s3Stat((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:url', (e, payload) => infraAdmin.s3Url((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:delete', (e, payload) => infraAdmin.s3Delete((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:create-bucket', (e, payload) => infraAdmin.s3CreateBucket((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz', opts || {}));
   ipcMain.handle('iface:ident', (e, name, prefix) => spec.safeIdent(name, prefix || 'tbl'));
   ipcMain.handle('iface:tableImport', (e, file) => tableImport.parseFile(file));

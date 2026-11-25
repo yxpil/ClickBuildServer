@@ -280,6 +280,73 @@ html.cb-dark .db-count .db-pk { background: #182b45; border-color: #305b91; colo
 html.cb-dark .db-count .db-pk.warn { background: #342817; border-color: #8a6a32; color: #ecd0a0; }
 html.cb-dark .db-write-pill.rw { background: #12291c; border-color: #2f6c49; color: #9be0b8; }
 html.cb-dark .db-write-pill.ro { background: #342817; border-color: #8a6a32; color: #ecd0a0; }
+html.cb-dark .db-kind-btn, html.cb-dark .db-bucket-head input, html.cb-dark .db-detail-url input, html.cb-dark .db-conn-form select { background: #10161d; color: #e7ecf3; }
+html.cb-dark .db-kind-btn.on { background: #e7ecf3; color: #10161d; }
+html.cb-dark .db-kind-btn.on i { color: #4a5664; }
+html.cb-dark .db-stats > div { border-right-color: #26303c; }
+html.cb-dark .db-stats { border-bottom-color: #26303c; }
+html.cb-dark .db-detail { background: #171f28; border-left-color: #26303c; }
+html.cb-dark .db-detail-blank { border-left-color: #26303c; }
+html.cb-dark .db-kv td:first-child { background: #1a222c; }
+html.cb-dark .db-redis-value { background: #10161d; color: #e7ecf3; border-color: #303b48; }
+html.cb-dark .db-bucket-head { border-bottom-color: #26303c; }
+html.cb-dark .db-note { border-top-color: #26303c; }
+html.cb-dark .db-type-pill { background: #182b45; border-color: #305b91; color: #b8d4f5; }
+html.cb-dark .db-link { color: #a9c7f2; }
+
+/* 多类型连接：同一工作台切换 MySQL / Redis / 对象存储 */
+.db-kind-bar { flex: none; display: flex; gap: 0; padding: 6px 8px; border-bottom: 1px solid var(--cb-line, #d8d6cf); }
+.db-kind-btn {
+  flex: 1; min-width: 0; height: 24px; border: 1px solid var(--cb-line, #d8d6cf);
+  background: #fff; color: var(--cb-text, #17191d); font: 10px/1 var(--cb-font);
+  cursor: pointer; padding: 0 3px; white-space: nowrap; position: relative;
+}
+.db-kind-btn + .db-kind-btn { border-left: 0; }
+.db-kind-btn.on { background: var(--cb-text, #17191d); color: var(--cb-bg, #fff); font-weight: 700; }
+.db-kind-btn i { font-style: normal; font-size: 8px; margin-left: 3px; color: var(--cb-muted, #888); }
+.db-kind-btn.on i { color: #d8dde5; }
+.db-kind-btn:hover:not(.on) { background: #f4f2ec; }
+.db-stats { flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid var(--cb-line, #e3e1db); }
+.db-stats > div { padding: 8px 10px; border-right: 1px solid #efede7; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.db-stats > div:last-child { border-right: 0; }
+.db-stats b { font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-stats span { font-size: 9px; color: var(--cb-muted, #777); white-space: nowrap; }
+.db-split { flex: 1; min-height: 0; display: flex; }
+.db-list-scroll { flex: 1; min-width: 0; }
+.db-detail {
+  width: 360px; flex: none; min-height: 0; overflow: auto; border-left: 1px solid var(--cb-line, #d8d6cf);
+  padding: 12px; background: var(--cb-panel, #fbfaf7);
+}
+.db-detail-blank { width: 360px; flex: none; border-left: 1px solid var(--cb-line, #d8d6cf); min-height: 0; }
+.db-detail-loading { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--cb-muted, #777); }
+.db-detail-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.db-detail-head b { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-detail-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; color: var(--cb-muted, #777); margin: 4px 0 9px; }
+.db-type-pill { font-size: 9px; padding: 2px 5px; border: 1px solid #c9d7ea; background: #f2f7ff; color: #2456a6; text-transform: lowercase; }
+.db-type-pill.hash { border-color: #d9c9ea; background: #f8f2ff; color: #6a3f96; }
+.db-type-pill.list { border-color: #e5d3b0; background: #fff8eb; color: #8a5a12; }
+.db-type-pill.set { border-color: #bfe0c9; background: #f1faf4; color: #0f7a46; }
+.db-type-pill.zset { border-color: #e6b8b2; background: #fff6f4; color: #7f261d; }
+.db-link { border: 0; background: transparent; padding: 0; color: #2456a6; cursor: pointer; font: 11px/1.4 var(--cb-font); text-align: left; }
+.db-link:hover { text-decoration: underline; }
+.db-kv { border: 1px solid var(--cb-line, #d8d6cf); margin-top: 6px; }
+.db-kv td { white-space: normal !important; word-break: break-all; max-width: 230px; }
+.db-kv td:first-child { width: 110px; font-weight: 600; background: var(--cb-panel, #f5f4ef); }
+.db-redis-value {
+  margin: 6px 0 0; padding: 9px; border: 1px solid var(--cb-line, #d8d6cf); background: #fff;
+  font: 10px/1.6 Consolas, "Cascadia Code", monospace; white-space: pre-wrap; word-break: break-all;
+  max-height: 38vh; overflow: auto;
+}
+.db-cmd-input { flex: none; height: 36px; }
+.db-bucket-head { flex: none; display: flex; gap: 6px; padding: 9px 12px; border-bottom: 1px solid #efede7; }
+.db-bucket-head input { flex: 1; max-width: 280px; height: 27px; border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 11px; padding: 0 7px; }
+.db-note { flex: none; padding: 7px 12px; border-top: 1px solid var(--cb-line, #d8d6cf); font-size: 10px; color: var(--cb-muted, #777); }
+.db-detail-url { display: flex; gap: 5px; margin-top: 8px; }
+.db-detail-url input { flex: 1; min-width: 0; height: 24px; border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 9px; padding: 0 5px; }
+.dc-kind-title { font-weight: 400; font-size: 10px; color: var(--cb-muted, #777); margin-left: 6px; }
+.dc-wide { grid-column: 1 / -1; }
+.db-conn-form select { border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 11px; padding: 5px 7px; outline: 0; }
+.db-conn-form .dc-mysql.hidden, .db-conn-form .dc-redis.hidden, .db-conn-form .dc-s3.hidden { display: none !important; }
 
 /* 实时数据页的可写行操作 */
 .live-chip.rw { border-color: #bfe0c9; background: #f1faf4; color: #0f7a46; }

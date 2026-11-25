@@ -45,8 +45,8 @@ const TYPE_KEYS = TYPES.map((t) => t.key);
 function defaultConnections() {
   return {
     mysql: [{ key: 'main', label: '本机 MariaDB', host: '127.0.0.1', port: 13306, user: 'root', password: '', database: 'clickbuild' }],
-    redis: [{ key: 'main', label: '本机 Redis', host: '127.0.0.1', port: 16379, db: 0 }],
-    s3: [{ key: 'main', label: '本机 RustFS', endpoint: '127.0.0.1', port: 19000, accessKey: 'clickbuild', secretKey: 'clickbuild123', bucket: 'clickbuild' }],
+    redis: [{ key: 'main', label: '本机 Redis', host: '127.0.0.1', port: 16379, password: '', db: 0, tls: false }],
+    s3: [{ key: 'main', label: '本机 RustFS', endpoint: '127.0.0.1', port: 19000, useSSL: false, region: '', accessKey: 'clickbuild', secretKey: 'clickbuild123', bucket: 'clickbuild' }],
   };
 }
 
@@ -760,7 +760,14 @@ function starterProject(taskType) {
   p.interfaces = [];
   if (kind === 'frontend') return p;
   if (kind === 'database') {
-    p.dbProject = { conn: 'main', database: 'clickbuild', table: '' };
+    p.dbProject = {
+      kind: 'mysql', conn: 'main', database: 'clickbuild', redisDb: 0, bucket: 'clickbuild', table: '',
+      lastByKind: {
+        mysql: { conn: 'main', database: 'clickbuild', table: '' },
+        redis: { conn: 'main', redisDb: 0 },
+        s3: { conn: 'main', bucket: 'clickbuild' },
+      },
+    };
     return p;
   }
 
@@ -950,6 +957,35 @@ function cloneIface(iface, names) {
   return copy;
 }
 
+function normalizeDbProject(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const kind = ['mysql', 'redis', 's3'].includes(raw.kind) ? raw.kind : 'mysql';
+  const top = {
+    conn: String(raw.conn || 'main'),
+    database: String(raw.database || ''),
+    redisDb: Number(raw.redisDb || 0),
+    bucket: String(raw.bucket || 'clickbuild'),
+    table: String(raw.table || ''),
+  };
+  const given = raw.lastByKind && typeof raw.lastByKind === 'object' ? raw.lastByKind : {};
+  const pick = (k, extra) => {
+    const src = given[k] && typeof given[k] === 'object' ? given[k] : {};
+    return { conn: String(src.conn || top.conn || 'main'), ...extra(src) };
+  };
+  const lastByKind = {
+    mysql: pick('mysql', (s) => ({ database: String(s.database === undefined ? top.database : s.database), table: String(s.table || '') })),
+    redis: pick('redis', (s) => ({ redisDb: Number(s.redisDb === undefined ? top.redisDb : s.redisDb) })),
+    s3: pick('s3', (s) => ({ bucket: String(s.bucket || top.bucket || 'clickbuild') })),
+  };
+  lastByKind[kind] = {
+    conn: top.conn,
+    ...(kind === 'mysql' ? { database: top.database, table: top.table } : {}),
+    ...(kind === 'redis' ? { redisDb: top.redisDb } : {}),
+    ...(kind === 's3' ? { bucket: top.bucket } : {}),
+  };
+  return { kind, ...top, lastByKind };
+}
+
 function normalizeProject(project) {
   const p = project && typeof project === 'object' ? project : {};
   let categories = Array.isArray(p.categories) && p.categories.length ? p.categories : [{ id: 'biz', name: '业务表格' }];
@@ -969,11 +1005,7 @@ function normalizeProject(project) {
     name: p.name || '接口工程',
     description: p.description || '',
     taskType: TASK_TYPES.includes(p.taskType) ? p.taskType : 'mixed',
-    dbProject: p.dbProject && typeof p.dbProject === 'object' ? {
-      conn: String(p.dbProject.conn || 'main'),
-      database: String(p.dbProject.database || ''),
-      table: String(p.dbProject.table || ''),
-    } : null,
+    dbProject: normalizeDbProject(p.dbProject),
     categories,
     ioTypes: normalizeIoTypes(p.ioTypes),
     functions,

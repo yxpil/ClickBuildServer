@@ -1810,17 +1810,48 @@ function openIface(id) {
 /* ---------------- 数据库工作台 ---------------- */
 // 与实时数据页共用同一套 db-admin：库表树、数据、结构、SQL；写操作不再藏着。
 function initialDbState(project) {
-  const conns = (project && project.connections && project.connections.mysql) || [];
   const hint = (project && project.dbProject) || {};
-  const conn = conns.find((c) => c.key === hint.conn) || conns[0] || {};
+  const kind = ['mysql', 'redis', 's3'].includes(hint.kind) ? hint.kind : 'mysql';
+  const book = ((hint.lastByKind || {})[kind]) || {};
+  const conns = (project && project.connections && project.connections[kind]) || [];
+  const conn = conns.find((c) => c.key === book.conn) || conns.find((c) => c.key === hint.conn) || conns[0] || {};
   return {
-    ready: false, loading: false, connKey: conn.key || '', database: hint.database || conn.database || '', table: hint.table || '',
-    connections: [], databases: [], tables: [], columns: [], primary: [],
+    kind, ready: false, loading: false, connKey: conn.key || '', database: book.database !== undefined ? book.database : (hint.database || conn.database || ''), table: book.table || '',
+    connections: [], connsByKind: { mysql: [], redis: [], s3: [] }, databases: [], tables: [], columns: [], primary: [],
     rows: [], total: 0, page: 1, size: 50, pages: 1,
-    tab: 'data', write: true, error: null, notice: '',
+    tab: kind === 'redis' ? 'keys' : kind === 's3' ? 'objects' : 'data', write: true, error: null, notice: '',
     structure: null, sql: '', sqlResult: null, sqlError: null, sqlBusy: false,
     busy: false, querySeq: 0, history: [],
+    redisDb: Number(book.redisDb !== undefined ? book.redisDb : (hint.redisDb || conn.db || 0)), redisInfo: null, keys: [], pattern: '*', cursor: '0', selectedKey: '', keyInfo: null,
+    redisCmd: '', cmdResult: null, cmdError: null, cmdBusy: false, cmdHistory: [],
+    bucket: book.bucket || hint.bucket || conn.bucket || 'clickbuild', buckets: [], objects: [], prefix: '', objectInfo: null, selectedObject: '',
+    bucketNew: '',
   };
+}
+function rememberDbState(kind) {
+  const p = S.project && S.project.dbProject;
+  if (!p) return;
+  if (!p.lastByKind || typeof p.lastByKind !== 'object') p.lastByKind = {};
+  p.lastByKind[kind] = kind === 'mysql'
+    ? { conn: S.db.connKey, database: S.db.database || '', table: S.db.table || '' }
+    : kind === 'redis'
+      ? { conn: S.db.connKey, redisDb: Number(S.db.redisDb || 0) }
+      : { conn: S.db.connKey, bucket: S.db.bucket || 'clickbuild' };
+  p.kind = kind;
+  p.conn = S.db.connKey;
+  if (kind === 'mysql') { p.database = S.db.database || ''; p.table = S.db.table || ''; }
+  if (kind === 'redis') p.redisDb = Number(S.db.redisDb || 0);
+  if (kind === 's3') p.bucket = S.db.bucket || 'clickbuild';
+}
+let dbSaveChain = Promise.resolve();
+function dbPersist() {
+  dbSaveChain = dbSaveChain.then(() => save(true)).catch(() => false);
+  return dbSaveChain;
+}
+function dbRemember() {
+  if (!S.project || !S.project.dbProject) return;
+  rememberDbState(S.db.kind);
+  dbPersist();
 }
 function dbCtx(extra) {
   return { project: S.project, connKey: S.db.connKey, database: S.db.database, ...(extra || {}) };
@@ -1846,14 +1877,211 @@ function dbDraw() {
 function dbApplyTaskHint() {
   const project = S.project || {};
   const hint = project.dbProject || {};
+  if (hint.kind && ['mysql', 'redis', 's3'].includes(hint.kind)) S.db.kind = hint.kind;
+  const book = hint.lastByKind && hint.lastByKind[S.db.kind] ? hint.lastByKind[S.db.kind] : {};
+  if (book.conn && !S.db.connKey) S.db.connKey = book.conn;
   if (hint.conn && !S.db.connKey) S.db.connKey = hint.conn;
-  if (hint.database && !S.db.database) S.db.database = hint.database;
+  if (S.db.kind === 'mysql') {
+    if (book.database !== undefined && !S.db.database) S.db.database = book.database;
+    else if (hint.database && !S.db.database) S.db.database = hint.database;
+  }
+  if (S.db.kind === 'redis' && book.redisDb !== undefined) S.db.redisDb = Number(book.redisDb || 0);
+  else if (hint.redisDb !== undefined) S.db.redisDb = Number(hint.redisDb || 0);
+  if (S.db.kind === 's3') {
+    if (book.bucket && !S.db.bucket) S.db.bucket = book.bucket;
+    else if (hint.bucket && !S.db.bucket) S.db.bucket = hint.bucket;
+  }
 }
 async function ensureDB(force) {
   dbApplyTaskHint();
   if (!S.project) return;
   if (S.db.loading) return;
   if (S.db.ready && !force) return;
+  await dbReloadAll();
+}
+function dbKindBar() {
+  const kinds = [
+    ['mysql', 'MySQL'],
+    ['redis', 'Redis'],
+    ['s3', '对象存储'],
+  ];
+  return `<div class="db-kind-bar">${kinds.map(([k, label]) => {
+    const n = ((S.db.connsByKind || {})[k] || []).length;
+    return `<button class="db-kind-btn ${S.db.kind === k ? 'on' : ''}" data-db-kind="${k}" title="${label} 连接 ${n} 个">${label}<i>${n}</i></button>`;
+  }).join('')}</div>`;
+}
+function dbKindLabel() {
+  return S.db.kind === 'redis' ? 'Redis' : S.db.kind === 's3' ? '对象存储' : 'MariaDB';
+}
+function fmtBytes(n) {
+  const v = Number(n || 0);
+  if (!v) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let x = v;
+  while (x >= 1024 && i < u.length - 1) { x /= 1024; i++; }
+  return `${x >= 10 || i === 0 ? Math.round(x) : x.toFixed(1)} ${u[i]}`;
+}
+function fmtTime(v) {
+  if (!v) return '—';
+  try { return new Date(v).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(v); }
+}
+async function redisReload(seq) {
+  const s = seq || ++S.db.querySeq;
+  S.db.keys = [];
+  S.db.selectedKey = '';
+  S.db.keyInfo = null;
+  const r = await api.redisOverview({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb });
+  if (s !== S.db.querySeq) return;
+  if (!r || r.ok === false) {
+    S.db.error = r || { error: '读取 Redis 失败', hint: '检查 Redis 地址、密码和库号。' };
+    S.db.redisInfo = null;
+    return;
+  }
+  S.db.redisInfo = r;
+  if (r.db !== undefined && Number.isFinite(Number(r.db)) && !S.db.redisDb) S.db.redisDb = Number(r.db);
+  const sc = await api.redisScan({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, pattern: S.db.pattern || '*', cursor: '0' });
+  if (s !== S.db.querySeq) return;
+  if (!sc || sc.ok === false) {
+    S.db.error = sc || { error: '扫描 Redis 键失败', hint: '检查连接权限。' };
+    return;
+  }
+  S.db.keys = sc.keys || [];
+  S.db.cursor = sc.cursor || '0';
+  S.db.write = !(dbConn() || {}).readonly;
+  S.db.error = null;
+}
+async function redisScanMore(reset) {
+  if (S.db.loading) return;
+  S.db.busy = true;
+  const cursor = reset ? '0' : S.db.cursor;
+  const r = await api.redisScan({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, pattern: S.db.pattern || '*', cursor });
+  S.db.busy = false;
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  S.db.keys = reset ? (r.keys || []) : (S.db.keys || []).concat(r.keys || []);
+  S.db.cursor = r.cursor || '0';
+  S.db.error = null;
+  const ov = await api.redisOverview({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb });
+  if (ov && ov.ok) S.db.redisInfo = ov;
+  dbDraw();
+}
+async function redisOpenKey(key) {
+  if (!key) return;
+  S.db.selectedKey = key;
+  S.db.keyInfo = null;
+  dbDraw();
+  const r = await api.redisKey({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, key });
+  if (S.db.selectedKey !== key) return;
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  S.db.keyInfo = r;
+  dbDraw();
+}
+async function redisDeleteKey(key) {
+  if (!key) return;
+  if (!S.db.write) return toast('这个 Redis 连接是只读的，先到连接设置取消只读', 5000);
+  if (!(await confirmBox('删除 Redis 键', `DEL ${key}？这个键会立即从 Redis 删除。`))) return;
+  const r = await api.redisDelete({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, key });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  if (S.db.selectedKey === key) { S.db.selectedKey = ''; S.db.keyInfo = null; }
+  toast(`已删除 ${r.deleted || 0} 个键`, 3000);
+  await redisScanMore(true);
+}
+async function runRedisCmd() {
+  const text = (S.db.redisCmd || '').trim();
+  if (!text || S.db.cmdBusy) return;
+  S.db.cmdBusy = true;
+  S.db.cmdError = null;
+  dbDraw();
+  const r = await api.redisCommand({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, command: text });
+  S.db.cmdBusy = false;
+  if (!r || r.ok === false) {
+    S.db.cmdError = r || { error: '执行失败' };
+    S.db.cmdResult = null;
+  } else {
+    S.db.cmdResult = r;
+    S.db.cmdHistory = [text, ...(S.db.cmdHistory || []).filter((x) => x !== text)].slice(0, 12);
+  }
+  dbDraw();
+  if (r && r.ok) redisScanMore(true);
+}
+async function s3Reload(seq) {
+  const s = seq || ++S.db.querySeq;
+  S.db.objects = [];
+  S.db.objectInfo = null;
+  S.db.selectedObject = '';
+  const br = await api.s3Buckets({ project: S.project, connKey: S.db.connKey });
+  if (s !== S.db.querySeq) return;
+  if (!br || br.ok === false) {
+    S.db.error = br || { error: '读取对象存储失败', hint: '检查 Endpoint、AccessKey、SecretKey 和 SSL。' };
+    S.db.buckets = [];
+    return;
+  }
+  S.db.buckets = br.buckets || [];
+  if (!S.db.bucket || !S.db.buckets.some((b) => b.name === S.db.bucket)) S.db.bucket = (S.db.buckets[0] || {}).name || '';
+  if (!S.db.bucket) { S.db.objects = []; S.db.write = !(dbConn() || {}).readonly; S.db.error = null; return; }
+  const or = await api.s3Objects({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, prefix: S.db.prefix || '', limit: 200 });
+  if (s !== S.db.querySeq) return;
+  if (!or || or.ok === false) {
+    S.db.error = or || { error: '读取对象失败', hint: '检查桶名和连接权限。' };
+    return;
+  }
+  S.db.objects = or.objects || [];
+  S.db.write = !(dbConn() || {}).readonly;
+  S.db.error = null;
+}
+async function s3ReloadObjects() {
+  if (!S.db.bucket) return;
+  S.db.busy = true;
+  const r = await api.s3Objects({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, prefix: S.db.prefix || '', limit: 200 });
+  S.db.busy = false;
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  S.db.objects = r.objects || [];
+  S.db.objectInfo = null;
+  S.db.selectedObject = '';
+  S.db.error = null;
+  dbDraw();
+}
+async function s3OpenObject(key) {
+  if (!key) return;
+  S.db.selectedObject = key;
+  S.db.objectInfo = null;
+  dbDraw();
+  const r = await api.s3Stat({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, key });
+  if (S.db.selectedObject !== key) return;
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  S.db.objectInfo = r;
+  dbDraw();
+}
+async function s3CopyUrl(key) {
+  const r = await api.s3Url({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, key, expires: 3600 });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  try {
+    await navigator.clipboard.writeText(r.url);
+    toast('已复制 1 小时有效的下载链接', 3500);
+  } catch (e) {
+    S.db.objectInfo = { ...(S.db.objectInfo || {}), url: r.url };
+    dbDraw();
+    toast('浏览器不允许直接写剪贴板，链接已显示在详情里', 4000);
+  }
+}
+async function s3DeleteObject(key) {
+  if (!key) return;
+  if (!S.db.write) return toast('这个对象存储连接是只读的，先到连接设置取消只读', 5000);
+  if (!(await confirmBox('删除对象', `删除 ${S.db.bucket}/${key}？对象会立即从桶里移除。`))) return;
+  const r = await api.s3Delete({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, key });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  toast('对象已删除', 3000);
+  await s3ReloadObjects();
+}
+async function s3CreateBucket(name) {
+  const bucket = String(name || '').trim();
+  if (!bucket) return toast('先填桶名', 3000);
+  if (!S.db.write) return toast('这个对象存储连接是只读的', 4000);
+  const r = await api.s3CreateBucket({ project: S.project, connKey: S.db.connKey, bucket });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  S.db.bucket = bucket;
+  S.db.bucketNew = '';
+  toast(`已建桶 ${bucket}`, 3000);
   await dbReloadAll();
 }
 async function dbReloadAll() {
@@ -1863,18 +2091,24 @@ async function dbReloadAll() {
   S.db.ready = false;
   S.db.error = null;
   try {
-    const conns = await api.dbConnections(S.project);
+    const all = await api.infraConnections(S.project);
     if (seq !== S.db.querySeq) return;
-    S.db.connections = Array.isArray(conns) ? conns : [];
+    S.db.connsByKind = all || { mysql: [], redis: [], s3: [] };
+    S.db.connections = (S.db.connsByKind && S.db.connsByKind[S.db.kind]) || [];
     if (!S.db.connections.some((c) => c.key === S.db.connKey)) {
       S.db.connKey = (S.db.connections[0] || {}).key || '';
-      S.db.database = (S.db.connections[0] || {}).database || '';
+      if (S.db.kind === 'mysql') S.db.database = (S.db.connections[0] || {}).database || '';
+      if (S.db.kind === 'redis') S.db.redisDb = Number((S.db.connections[0] || {}).db || 0);
+      if (S.db.kind === 's3') S.db.bucket = (S.db.connections[0] || {}).bucket || 'clickbuild';
       S.db.table = '';
     }
     if (!S.db.connKey) {
-      S.db.error = { error: '工程没有 MariaDB 连接', hint: '先从 DB 左栏点“新连接”，填 host / port / user / password。' };
+      const label = S.db.kind === 'mysql' ? 'MariaDB' : S.db.kind === 'redis' ? 'Redis' : '对象存储';
+      S.db.error = { error: `工程没有 ${label} 连接`, hint: '点左栏“＋”新建一个自定义连接，地址和凭据都可以直接填外部服务。' };
       return;
     }
+    if (S.db.kind === 'redis') { await redisReload(seq); return; }
+    if (S.db.kind === 's3') { await s3Reload(seq); return; }
     const dr = await api.dbDatabases(dbCtx({ database: null }));
     if (seq !== S.db.querySeq) return;
     if (!dr || dr.ok === false) {
@@ -1945,6 +2179,7 @@ async function dbOpenTable(name) {
   if (!name) return;
   S.db.tab = 'data';
   S.db.table = name;
+  if (S.db.kind === 'mysql') rememberDbState('mysql');
   await dbLoadTable(name);
   dbDraw();
 }
@@ -1996,7 +2231,8 @@ function dbTree() {
   const connOptions = (S.db.connections || []).map((c) => `<option value="${esc(c.key)}" ${c.key === S.db.connKey ? 'selected' : ''}>${esc(c.label)} · ${esc(c.host)}:${esc(c.port)}</option>`).join('');
   const dbOptions = (S.db.databases || []).map((d) => `<option value="${esc(d.name)}" ${d.name === S.db.database ? 'selected' : ''}>${esc(d.name)}${d.system ? ' · 系统' : ''}</option>`).join('');
   return `<aside class="db-tree">
-    <div class="db-tree-title"><span>数据库</span><button class="db-ico-btn" data-db-newconn title="新建连接">＋</button><button class="db-ico-btn" data-db-conn title="连接设置">⚙</button></div>
+    <div class="db-tree-title"><span>连接</span><button class="db-ico-btn" data-db-newconn title="新建连接">＋</button><button class="db-ico-btn" data-db-conn title="连接设置">⚙</button></div>
+    ${dbKindBar()}
     <div class="db-tree-ctl">
       <select id="dbConnSel" title="切换连接">${connOptions || '<option>暂无连接</option>'}</select>
       <select id="dbDbSel" title="切换数据库">${dbOptions || '<option>暂无数据库</option>'}</select>
@@ -2092,7 +2328,224 @@ function dbSqlBody() {
   <div id="dbSqlResult" class="db-sql-result">${dbSqlResultHtml()}</div>
   ${(S.db.history || []).length ? `<div class="db-sql-history"><b>最近执行</b>${S.db.history.slice(0, 6).map((h, i) => `<button data-db-history="${i}" title="${esc(h)}">${esc(h.replace(/\s+/g, ' ').slice(0, 120))}</button>`).join('')}</div>` : ''}`;
 }
+function redisTree() {
+  const conn = dbConn();
+  const connOptions = (S.db.connections || []).map((c) => `<option value="${esc(c.key)}" ${c.key === S.db.connKey ? 'selected' : ''}>${esc(c.label)} · ${esc(c.host)}:${esc(c.port)}</option>`).join('');
+  const dbOptions = Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${i === Number(S.db.redisDb) ? 'selected' : ''}>db ${i}</option>`).join('');
+  return `<aside class="db-tree">
+    <div class="db-tree-title"><span>连接</span><button class="db-ico-btn" data-db-newconn title="新建连接">＋</button><button class="db-ico-btn" data-db-conn title="连接设置">⚙</button></div>
+    ${dbKindBar()}
+    <div class="db-tree-ctl">
+      <select id="dbConnSel" title="切换 Redis 连接">${connOptions || '<option>暂无连接</option>'}</select>
+      <select id="dbRedisDbSel" title="切换 Redis 库">${dbOptions}</select>
+      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.host)}:${esc(conn.port)}</span>${conn.hasPassword ? '<span>有密码</span>' : '<span>无密码</span>'}${conn.tls ? '<span>TLS</span>' : ''}` : '未配置连接'}</div>
+    </div>
+    <div class="db-tree-filter"><input id="dbRedisPattern" placeholder="MATCH 模式，如 user:*" value="${esc(S.db.pattern || '*')}"><button class="db-ico-btn" data-redis-scan title="按模式扫描">↻</button></div>
+    <div class="db-tree-list" id="dbTreeKeyList">${redisKeyList()}</div>
+    <div class="db-tree-foot">${(S.db.redisInfo && S.db.redisInfo.dbSize) || 0} 个键 · db ${esc(S.db.redisDb)}</div>
+  </aside>`;
+}
+function redisKeyList() {
+  const keys = S.db.keys || [];
+  if (!keys.length) return '<div class="db-tree-empty">这个模式没有扫到键<br><span>把模式改成 * 再扫描</span></div>';
+  return keys.map((k) => `<button class="db-table-row ${S.db.selectedKey === k.key ? 'on' : ''}" data-redis-key="${esc(k.key)}" title="${esc(k.key)} · ${esc(k.type)}">
+    <span class="db-table-ico ${esc(k.type)}">${esc((k.type || '?').slice(0, 1).toUpperCase())}</span>
+    <span class="db-table-name">${esc(k.key)}</span>
+    <span class="db-table-rows">${esc(k.type)}</span>
+  </button>`).join('');
+}
+function redisValueHtml(info) {
+  if (!info) return '';
+  const v = info.value;
+  if (v === null || v === undefined) return '<span class="db-null">空值</span>';
+  if (typeof v === 'object' && !Array.isArray(v)) {
+    return `<table class="db-grid db-kv"><tbody>${Object.entries(v).map(([k, x]) => `<tr><td>${esc(k)}</td><td>${esc(String(x))}</td></tr>`).join('')}</tbody></table>`;
+  }
+  if (Array.isArray(v)) {
+    return `<table class="db-grid db-kv"><tbody>${v.map((x, i) => `<tr><td>${i}</td><td>${esc(String(x))}</td></tr>`).join('')}</tbody></table>`;
+  }
+  return `<pre class="db-redis-value">${esc(String(v).slice(0, 4000))}${String(v).length > 4000 ? '\n…已截断' : ''}</pre>`;
+}
+function redisKeyPanel() {
+  if (!S.db.selectedKey) return `<div class="db-blank db-detail-blank"><b>选一个键查看值</b><span>左侧键名点一下，这里会显示类型、TTL、内存占用和内容。</span></div>`;
+  const k = S.db.keyInfo;
+  if (!k) return `<div class="db-detail db-detail-loading"><span class="live-spin"></span>正在读取 ${esc(S.db.selectedKey)}…</div>`;
+  if (k.ok === false) return dbErrorCard(k, 'data-redis-retry-key');
+  return `<div class="db-detail">
+    <div class="db-detail-head"><b>${esc(k.key)}</b><span class="db-type-pill">${esc(k.type)}</span><button class="db-mini" data-redis-copy-key title="复制键名">复制</button></div>
+    <div class="db-detail-meta"><span>TTL ${k.ttl === -1 ? '永久' : k.ttl + ' 秒'}</span><span>内存 ${k.memory === null ? '—' : fmtBytes(k.memory)}</span></div>
+    ${redisValueHtml(k)}
+  </div>`;
+}
+function redisKeysBody() {
+  if (!S.db.connKey) return `<div class="db-blank"><b>先配置 Redis 连接</b><span>左栏“＋”支持任意外部 host、端口、密码、TLS 和库号。</span></div>`;
+  if (S.db.error && !S.db.keys.length) return dbErrorCard(S.db.error, 'data-redis-scan');
+  return `<div class="db-data-head">
+    <div class="db-count"><b>${(S.db.redisInfo && S.db.redisInfo.dbSize) || 0}</b> 个键 <span>本次扫到 ${(S.db.keys || []).length} 个</span><span class="db-pk">SCAN ${esc(S.db.cursor || '0')}</span></div>
+    <div class="db-actions">
+      <span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span>
+      <button class="btn thin" data-redis-scan>重新扫描</button>
+      <button class="btn thin" data-redis-scan-more ${S.db.cursor === '0' ? 'disabled' : ''}>继续扫描</button>
+    </div>
+  </div>
+  <div class="db-split">
+    <div class="db-grid-scroll db-list-scroll"><table class="db-grid">
+      <thead><tr><th>键</th><th>类型</th><th class="db-act-head">操作</th></tr></thead>
+      <tbody>${(S.db.keys || []).map((k) => `<tr class="${S.db.selectedKey === k.key ? 'on' : ''}">
+        <td title="${esc(k.key)}"><button class="db-link" data-redis-key="${esc(k.key)}">${esc(k.key)}</button></td>
+        <td><span class="db-type-pill ${esc(k.type)}">${esc(k.type)}</span></td>
+        <td class="db-row-actions"><button class="db-mini" data-redis-key="${esc(k.key)}">查看</button><button class="db-mini danger" data-redis-del="${esc(k.key)}" ${S.db.write ? '' : 'disabled'}>删</button></td>
+      </tr>`).join('')}</tbody></table></div>
+    ${redisKeyPanel()}
+  </div>
+  <div class="db-note">SCAN 每次最多取 100 个键；模式匹配只用于筛选，不会阻塞 Redis。</div>`;
+}
+function redisConsoleBody() {
+  return `<div class="db-sql-head">
+    <div><b>Redis 命令台</b><span>一条一条执行，支持 SET / GET / HGETALL / LRANGE / ZRANGE 等常用命令；FLUSHALL、CONFIG、SHUTDOWN 会被拦下。</span></div>
+    <div class="db-actions"><button class="btn solid" data-redis-run ${S.db.cmdBusy ? 'disabled' : ''}>${S.db.cmdBusy ? '执行中…' : '运行'}</button><button class="btn thin" data-redis-cmd-clear>清空</button></div>
+  </div>
+  <input id="dbRedisCmd" class="db-sql-input db-cmd-input" spellcheck="false" placeholder='GET user:1 ； SET counter 1 ； HGETALL session:abc' value="${esc(S.db.redisCmd || '')}">
+  <div class="db-sql-result">${S.db.cmdError ? dbErrorCard(S.db.cmdError) : S.db.cmdResult ? `<div class="db-sql-sum">${esc(S.db.cmdResult.command)} · ${S.db.cmdResult.elapsed} ms${S.db.cmdResult.write ? ' · 写操作' : ''}</div><pre class="db-redis-value">${esc(JSON.stringify(S.db.cmdResult.value, null, 2))}</pre>` : '<div class="db-sql-empty">命令结果会显示在这里。Ctrl+Enter 直接执行。</div>'}</div>
+  ${(S.db.cmdHistory || []).length ? `<div class="db-sql-history"><b>最近执行</b>${S.db.cmdHistory.slice(0, 10).map((h, i) => `<button data-redis-history="${i}" title="${esc(h)}">${esc(h.slice(0, 120))}</button>`).join('')}</div>` : ''}`;
+}
+function renderRedis() {
+  const conn = dbConn();
+  const info = S.db.redisInfo || {};
+  $('#workspace').innerHTML = `<div class="db-shell">
+    ${redisTree()}
+    <section class="db-main">
+      <div class="db-top">
+        <div class="db-crumb"><span>Redis</span><b>/</b><span>db ${esc(S.db.redisDb)}</span><b>/</b><strong>${esc((conn && conn.label) || '未命名')}</strong></div>
+        <div class="db-top-actions">
+          <label class="db-write-toggle" title="打开后允许 SET / DEL 等写命令；关掉会把这条连接标为只读"><input type="checkbox" id="dbWriteToggle" ${S.db.write ? 'checked' : ''}>允许写入</label>
+          <button class="btn thin" data-db-conn>连接设置</button>
+          <button class="btn thin" data-db-reload>刷新</button>
+        </div>
+      </div>
+      ${S.db.loading ? '<div class="db-loading"><span class="live-spin"></span>正在读取 Redis…</div>' : ''}
+      ${S.db.error && S.db.keys.length ? dbErrorCard(S.db.error, 'data-redis-scan') : ''}
+      <div class="db-stats">
+        <div><b>${esc(info.version || '—')}</b><span>版本</span></div>
+        <div><b>${Number(info.dbSize || 0).toLocaleString()}</b><span>当前库键数</span></div>
+        <div><b>${Number(info.clients || 0)}</b><span>客户端</span></div>
+        <div><b>${fmtBytes(info.memory)}</b><span>已用内存</span></div>
+        <div><b>${info.uptime ? Math.floor(info.uptime / 3600) + ' h' : '—'}</b><span>运行时长</span></div>
+      </div>
+      <div class="db-tabs">
+        <button class="dbtab ${S.db.tab === 'keys' ? 'on' : ''}" data-db-tab="keys">键浏览</button>
+        <button class="dbtab ${S.db.tab === 'console' ? 'on' : ''}" data-db-tab="console">命令台</button>
+        <span class="db-tab-hint">${esc((conn && conn.host) || '')}:${esc((conn && conn.port) || '')} · db ${esc(S.db.redisDb)}</span>
+      </div>
+      <div class="db-body">${S.db.tab === 'console' ? redisConsoleBody() : redisKeysBody()}</div>
+    </section>
+  </div>`;
+  bindDB();
+}
+function s3Tree() {
+  const conn = dbConn();
+  const connOptions = (S.db.connections || []).map((c) => `<option value="${esc(c.key)}" ${c.key === S.db.connKey ? 'selected' : ''}>${esc(c.label)} · ${esc(c.endpoint)}:${esc(c.port)}</option>`).join('');
+  const bucketOptions = (S.db.buckets || []).map((b) => `<option value="${esc(b.name)}" ${b.name === S.db.bucket ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+  return `<aside class="db-tree">
+    <div class="db-tree-title"><span>连接</span><button class="db-ico-btn" data-db-newconn title="新建连接">＋</button><button class="db-ico-btn" data-db-conn title="连接设置">⚙</button></div>
+    ${dbKindBar()}
+    <div class="db-tree-ctl">
+      <select id="dbConnSel" title="切换对象存储连接">${connOptions || '<option>暂无连接</option>'}</select>
+      <select id="dbBucketSel" title="切换桶">${bucketOptions || '<option>暂无桶</option>'}</select>
+      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.endpoint)}:${esc(conn.port)}</span><span>${conn.useSSL ? 'HTTPS' : 'HTTP'}</span>` : '未配置连接'}</div>
+    </div>
+    <div class="db-tree-filter"><input id="dbS3Prefix" placeholder="前缀过滤，如 images/" value="${esc(S.db.prefix || '')}"><button class="db-ico-btn" data-s3-load title="读取桶内对象">↻</button></div>
+    <div class="db-tree-list">${(S.db.objects || []).length ? (S.db.objects || []).map((o) => `<button class="db-table-row ${S.db.selectedObject === o.key ? 'on' : ''}" data-s3-object="${esc(o.key)}" title="${esc(o.key)}">
+      <span class="db-table-ico s3">O</span><span class="db-table-name">${esc(o.key)}</span><span class="db-table-rows">${fmtBytes(o.size)}</span>
+    </button>`).join('') : '<div class="db-tree-empty">桶里没有对象<br><span>换前缀，或用其他 S3 客户端上传</span></div>'}</div>
+    <div class="db-tree-foot">${(S.db.objects || []).length} 个对象 · ${(S.db.buckets || []).length} 个桶</div>
+  </aside>`;
+}
+function s3ObjectPanel() {
+  if (!S.db.selectedObject) return `<div class="db-blank db-detail-blank"><b>选一个对象查看详情</b><span>左侧对象点一下，这里显示大小、ETag、Content-Type 和更新时间。</span></div>`;
+  const o = S.db.objectInfo;
+  if (!o) return `<div class="db-detail db-detail-loading"><span class="live-spin"></span>正在读取 ${esc(S.db.selectedObject)}…</div>`;
+  if (o.ok === false) return dbErrorCard(o, 'data-s3-retry-object');
+  return `<div class="db-detail">
+    <div class="db-detail-head"><b>${esc(o.key)}</b><button class="db-mini" data-s3-copy-key title="复制对象键">复制</button></div>
+    <div class="db-detail-meta"><span>${fmtBytes(o.size)}</span><span>${esc(o.contentType || '未知类型')}</span><span>${fmtTime(o.lastModified)}</span></div>
+    <table class="db-grid db-kv"><tbody>
+      <tr><td>桶</td><td>${esc(o.bucket)}</td></tr>
+      <tr><td>ETag</td><td>${esc(o.etag || '—')}</td></tr>
+      <tr><td>Content-Type</td><td>${esc(o.contentType || '—')}</td></tr>
+      <tr><td>更新时间</td><td>${esc(fmtTime(o.lastModified))}</td></tr>
+      ${Object.entries(o.metadata || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join('')}
+    </tbody></table>
+    ${o.url ? `<div class="db-detail-url"><input readonly value="${esc(o.url)}"><button class="db-mini" data-s3-copy-text="${esc(o.url)}">再复制</button></div>` : ''}
+    <div class="flex gap-2 mt-3"><button class="btn thin" data-s3-url="${esc(o.key)}">生成下载链接</button><button class="btn thin" data-s3-del="${esc(o.key)}" ${S.db.write ? '' : 'disabled'}>删除对象</button></div>
+  </div>`;
+}
+function s3ObjectsBody() {
+  if (!S.db.connKey) return `<div class="db-blank"><b>先配置对象存储连接</b><span>左栏“＋”支持 AWS S3、MinIO、RustFS 等兼容服务，Endpoint / 端口 / SSL / Region / AK / SK 都可以自定义。</span></div>`;
+  if (S.db.error && !S.db.objects.length) return dbErrorCard(S.db.error, 'data-s3-load');
+  if (!S.db.bucket) return `<div class="db-blank"><b>还没有桶</b><span>去“桶管理”新建一个，或到连接设置填已有桶名。</span><button class="btn thin mt-2" data-db-tab="buckets">去桶管理</button></div>`;
+  return `<div class="db-data-head">
+    <div class="db-count"><b>${(S.db.objects || []).length}</b> 个对象 <span>${esc(S.db.bucket)}${S.db.prefix ? ' / ' + esc(S.db.prefix) : ''}</span></div>
+    <div class="db-actions">
+      <span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span>
+      <button class="btn thin" data-s3-load>刷新</button>
+    </div>
+  </div>
+  <div class="db-split">
+    <div class="db-grid-scroll db-list-scroll"><table class="db-grid">
+      <thead><tr><th>对象键</th><th>大小</th><th>更新时间</th><th class="db-act-head">操作</th></tr></thead>
+      <tbody>${(S.db.objects || []).map((o) => `<tr class="${S.db.selectedObject === o.key ? 'on' : ''}">
+        <td title="${esc(o.key)}"><button class="db-link" data-s3-object="${esc(o.key)}">${esc(o.key)}</button></td>
+        <td>${fmtBytes(o.size)}</td><td>${esc(fmtTime(o.lastModified))}</td>
+        <td class="db-row-actions"><button class="db-mini" data-s3-object="${esc(o.key)}">详情</button><button class="db-mini" data-s3-url="${esc(o.key)}">链接</button><button class="db-mini danger" data-s3-del="${esc(o.key)}" ${S.db.write ? '' : 'disabled'}>删</button></td>
+      </tr>`).join('')}</tbody></table></div>
+    ${s3ObjectPanel()}
+  </div>
+  <div class="db-note">一次读取前 200 个对象；前缀过滤在服务端完成。下载链接默认 1 小时有效。</div>`;
+}
+function s3BucketsBody() {
+  return `<div class="db-data-head"><div class="db-count"><b>${(S.db.buckets || []).length}</b> 个桶 <span>${esc((dbConn() || {}).endpoint)}:${esc((dbConn() || {}).port)}</span></div>
+    <div class="db-actions"><span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span></div></div>
+  <div class="db-bucket-head"><input id="dbNewBucket" placeholder="新桶名，如 my-assets" value="${esc(S.db.bucketNew || '')}" ${S.db.write ? '' : 'disabled'}><button class="btn thin" data-s3-create-bucket ${S.db.write ? '' : 'disabled'}>新建桶</button></div>
+  <div class="db-grid-scroll"><table class="db-grid"><thead><tr><th>桶名</th><th>创建时间</th><th class="db-act-head">操作</th></tr></thead><tbody>${(S.db.buckets || []).map((b) => `<tr class="${S.db.bucket === b.name ? 'on' : ''}"><td><b>${esc(b.name)}</b></td><td>${esc(fmtTime(b.creationDate))}</td><td class="db-row-actions"><button class="db-mini" data-s3-bucket="${esc(b.name)}">${S.db.bucket === b.name ? '当前' : '打开'}</button></td></tr>`).join('')}</tbody></table></div>
+  <div class="db-note">连接外部 S3 时，桶列表来自服务端真实 ListBuckets；没有权限只列桶时会直接显示错误原因。</div>`;
+}
+function renderS3() {
+  const conn = dbConn();
+  const total = (S.db.objects || []).reduce((a, o) => a + Number(o.size || 0), 0);
+  $('#workspace').innerHTML = `<div class="db-shell">
+    ${s3Tree()}
+    <section class="db-main">
+      <div class="db-top">
+        <div class="db-crumb"><span>对象存储</span><b>/</b><span>${esc(S.db.bucket || '未选桶')}</span><b>/</b><strong>${esc((conn && conn.label) || '未命名')}</strong></div>
+        <div class="db-top-actions">
+          <label class="db-write-toggle" title="打开后允许建桶和删除对象；关掉会把这条连接标为只读"><input type="checkbox" id="dbWriteToggle" ${S.db.write ? 'checked' : ''}>允许写入</label>
+          <button class="btn thin" data-db-conn>连接设置</button>
+          <button class="btn thin" data-db-reload>刷新</button>
+        </div>
+      </div>
+      ${S.db.loading ? '<div class="db-loading"><span class="live-spin"></span>正在读取对象存储…</div>' : ''}
+      ${S.db.error && S.db.objects.length ? dbErrorCard(S.db.error, 'data-s3-load') : ''}
+      <div class="db-stats">
+        <div><b>${(S.db.buckets || []).length}</b><span>桶</span></div>
+        <div><b>${(S.db.objects || []).length}</b><span>当前桶对象</span></div>
+        <div><b>${fmtBytes(total)}</b><span>当前列表体积</span></div>
+        <div><b>${conn && conn.useSSL ? 'HTTPS' : 'HTTP'}</b><span>协议</span></div>
+        <div><b>${esc((conn && conn.region) || '默认')}</b><span>Region</span></div>
+      </div>
+      <div class="db-tabs">
+        <button class="dbtab ${S.db.tab === 'objects' ? 'on' : ''}" data-db-tab="objects">对象浏览</button>
+        <button class="dbtab ${S.db.tab === 'buckets' ? 'on' : ''}" data-db-tab="buckets">桶管理</button>
+        <span class="db-tab-hint">${esc((conn && conn.endpoint) || '')}:${esc((conn && conn.port) || '')}</span>
+      </div>
+      <div class="db-body">${S.db.tab === 'buckets' ? s3BucketsBody() : s3ObjectsBody()}</div>
+    </section>
+  </div>`;
+  bindDB();
+}
 function renderDB() {
+  if (S.db.kind === 'redis') return renderRedis();
+  if (S.db.kind === 's3') return renderS3();
   const err = S.db.error;
   const conn = dbConn();
   $('#workspace').innerHTML = `<div class="db-shell">
@@ -2135,16 +2588,47 @@ function bindDB() {
   const connSel = $('#dbConnSel');
   if (connSel) connSel.onchange = async () => {
     S.db.connKey = connSel.value;
-    S.db.database = ((S.db.connections || []).find((c) => c.key === S.db.connKey) || {}).database || '';
+    const c = (S.db.connections || []).find((x) => x.key === S.db.connKey) || {};
+    if (S.db.kind === 'mysql') S.db.database = c.database || '';
+    if (S.db.kind === 'redis') S.db.redisDb = Number(c.db || 0);
+    if (S.db.kind === 's3') S.db.bucket = c.bucket || S.db.bucket;
     S.db.table = '';
+    dbRemember();
     await dbReloadAll();
   };
   const dbSel = $('#dbDbSel');
   if (dbSel) dbSel.onchange = async () => {
     S.db.database = dbSel.value;
     S.db.table = '';
+    dbRemember();
     await dbReloadAll();
   };
+  const redisDbSel = $('#dbRedisDbSel');
+  if (redisDbSel) redisDbSel.onchange = async () => {
+    S.db.redisDb = Number(redisDbSel.value) || 0;
+    S.db.tab = 'keys';
+    dbRemember();
+    await dbReloadAll();
+  };
+  const bucketSel = $('#dbBucketSel');
+  if (bucketSel) bucketSel.onchange = async () => {
+    S.db.bucket = bucketSel.value;
+    S.db.prefix = '';
+    dbRemember();
+    await s3ReloadObjects();
+  };
+  const redisPattern = $('#dbRedisPattern');
+  if (redisPattern) {
+    redisPattern.oninput = () => { S.db.pattern = redisPattern.value || '*'; };
+    redisPattern.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); redisScanMore(true); } };
+  }
+  const s3Prefix = $('#dbS3Prefix');
+  if (s3Prefix) {
+    s3Prefix.oninput = () => { S.db.prefix = s3Prefix.value; };
+    s3Prefix.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); s3ReloadObjects(); } };
+  }
+  const newBucket = $('#dbNewBucket');
+  if (newBucket) newBucket.oninput = () => { S.db.bucketNew = newBucket.value; };
   const filter = $('#dbTableFilter');
   if (filter) filter.oninput = () => {
     const q = filter.value.trim().toLowerCase();
@@ -2158,8 +2642,9 @@ function bindDB() {
     const c = dbConn();
     if (!c) return toast('当前没有可用连接，先新建连接', 3500);
     c.readonly = !write.checked;
-    if (S.project && S.project.connections && Array.isArray(S.project.connections.mysql)) {
-      const hit = S.project.connections.mysql.find((x) => x.key === c.key);
+    const kind = S.db.kind || 'mysql';
+    if (S.project && S.project.connections && Array.isArray(S.project.connections[kind])) {
+      const hit = S.project.connections[kind].find((x) => x.key === c.key);
       if (hit) hit.readonly = !write.checked;
       save(true);
     }
@@ -2175,13 +2660,75 @@ function bindDB() {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runDbSql(); }
     };
   }
+  const cmd = $('#dbRedisCmd');
+  if (cmd) {
+    cmd.oninput = () => { S.db.redisCmd = cmd.value; };
+    cmd.onkeydown = (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runRedisCmd(); }
+    };
+  }
   shell.addEventListener('click', async (e) => {
     const t = e.target.closest('button');
     if (!t || !shell.contains(t) || t.disabled) return;
+    if (t.hasAttribute('data-db-kind')) {
+      const kind = t.dataset.dbKind;
+      if (kind === S.db.kind) return;
+      rememberDbState(S.db.kind);
+      S.db.kind = kind;
+      S.db.ready = false;
+      S.db.table = '';
+      S.db.error = null;
+      S.db.tab = kind === 'redis' ? 'keys' : kind === 's3' ? 'objects' : 'data';
+      const p = S.project && S.project.dbProject;
+      const book = p && p.lastByKind ? (p.lastByKind[kind] || {}) : {};
+      S.db.connKey = book.conn || '';
+      S.db.database = kind === 'mysql' ? (book.database || '') : '';
+      S.db.table = kind === 'mysql' ? (book.table || '') : '';
+      S.db.redisDb = kind === 'redis' ? Number(book.redisDb || 0) : 0;
+      S.db.bucket = kind === 's3' ? (book.bucket || 'clickbuild') : 'clickbuild';
+      if (p) {
+        p.kind = kind;
+        p.conn = S.db.connKey;
+        p.database = S.db.database;
+        p.redisDb = S.db.redisDb;
+        p.bucket = S.db.bucket;
+        p.table = S.db.table;
+        dbPersist();
+      }
+      await dbReloadAll();
+      return;
+    }
+    if (t.hasAttribute('data-redis-scan')) { await redisScanMore(true); return; }
+    if (t.hasAttribute('data-redis-scan-more')) { await redisScanMore(false); return; }
+    if (t.hasAttribute('data-redis-key')) { await redisOpenKey(t.dataset.redisKey); return; }
+    if (t.hasAttribute('data-redis-del')) { await redisDeleteKey(t.dataset.redisDel); return; }
+    if (t.hasAttribute('data-redis-retry-key')) { await redisOpenKey(S.db.selectedKey); return; }
+    if (t.hasAttribute('data-redis-run')) { await runRedisCmd(); return; }
+    if (t.hasAttribute('data-redis-cmd-clear')) { S.db.redisCmd = ''; S.db.cmdResult = null; S.db.cmdError = null; dbDraw(); return; }
+    if (t.hasAttribute('data-redis-history')) { S.db.redisCmd = (S.db.cmdHistory || [])[Number(t.dataset.redisHistory)] || ''; dbDraw(); return; }
+    if (t.hasAttribute('data-redis-copy-key')) {
+      try { await navigator.clipboard.writeText(S.db.selectedKey || ''); toast('已复制键名', 2500); } catch (err) { toast('复制失败', 2500); }
+      return;
+    }
+    if (t.hasAttribute('data-s3-load')) { await s3ReloadObjects(); return; }
+    if (t.hasAttribute('data-s3-object')) { await s3OpenObject(t.dataset.s3Object); return; }
+    if (t.hasAttribute('data-s3-retry-object')) { await s3OpenObject(S.db.selectedObject); return; }
+    if (t.hasAttribute('data-s3-url')) { await s3CopyUrl(t.dataset.s3Url); return; }
+    if (t.hasAttribute('data-s3-del')) { await s3DeleteObject(t.dataset.s3Del); return; }
+    if (t.hasAttribute('data-s3-copy-key')) {
+      try { await navigator.clipboard.writeText(S.db.selectedObject || ''); toast('已复制对象键', 2500); } catch (err) { toast('复制失败', 2500); }
+      return;
+    }
+    if (t.hasAttribute('data-s3-copy-text')) {
+      try { await navigator.clipboard.writeText(t.dataset.s3CopyText || ''); toast('已复制链接', 2500); } catch (err) { toast('复制失败', 2500); }
+      return;
+    }
+    if (t.hasAttribute('data-s3-bucket')) { S.db.bucket = t.dataset.s3Bucket; S.db.tab = 'objects'; S.db.prefix = ''; await s3ReloadObjects(); return; }
+    if (t.hasAttribute('data-s3-create-bucket')) { await s3CreateBucket($('#dbNewBucket') && $('#dbNewBucket').value); return; }
     if (t.hasAttribute('data-db-table')) { await dbOpenTable(t.dataset.dbTable); return; }
     if (t.hasAttribute('data-db-tab')) {
       S.db.tab = t.dataset.dbTab;
-      if ((S.db.tab === 'structure') && S.db.table && !S.db.structure) await dbLoadTable(S.db.table);
+      if (S.db.kind === 'mysql' && (S.db.tab === 'structure') && S.db.table && !S.db.structure) await dbLoadTable(S.db.table);
       dbDraw();
       return;
     }
@@ -2198,11 +2745,11 @@ function bindDB() {
     if (t.hasAttribute('data-db-run')) { await runDbSql(); return; }
     if (t.hasAttribute('data-db-sql-clear')) { S.db.sql = ''; S.db.sqlResult = null; S.db.sqlError = null; dbDraw(); return; }
     if (t.hasAttribute('data-db-history')) { S.db.sql = S.db.history[Number(t.dataset.dbHistory)] || ''; dbDraw(); return; }
-    if (t.hasAttribute('data-db-newtable')) { showCreateTable(); return; }
+    if (t.hasAttribute('data-db-newtable')) { if (S.db.kind === 'mysql') showCreateTable(); return; }
     if (t.hasAttribute('data-db-rename')) { renameDbTable(); return; }
     if (t.hasAttribute('data-db-drop')) { dropDbTable(); return; }
-    if (t.hasAttribute('data-db-conn')) { showDbConnection(); return; }
-    if (t.hasAttribute('data-db-newconn')) { showDbConnection(null, true); return; }
+    if (t.hasAttribute('data-db-conn')) { showDbConnection(dbConn() && dbConn().key, false, S.db.kind); return; }
+    if (t.hasAttribute('data-db-newconn')) { showDbConnection(null, true, S.db.kind); return; }
   });
 }
 async function runDbSql() {
@@ -2324,7 +2871,7 @@ function showCreateTable() {
   let idx = 0;
   const first = dbTypeRow(idx++, { name: 'id', type: 'BIGINT', primary: true, auto: true });
   const second = dbTypeRow(idx++, { name: 'name', type: 'VARCHAR', length: '255' });
-  modal(`<div class="p-4 db-modal" style="width:820px;max-width:96vw">
+  modal(`<div class="p-4 db-modal" style="width:100%;max-width:none">
     <div class="text-[14px] font-semibold">新建表</div>
     <div class="text-[11px] text-neutral-500 mt-1 mb-3">在 ${esc(S.db.database)} 建表；建完会自动打开并刷新结构。</div>
     <div class="ct-head"><input id="ctTable" placeholder="表名" class="ct-table-name"><input id="ctComment" placeholder="表注释（可选）"></div>
@@ -2372,7 +2919,7 @@ function showCreateTable() {
       S.db.table = table;
       await dbOpenTable(table);
     };
-  });
+  }, { width: 880, maxHeight: '88vh' });
 }
 async function renameDbTable() {
   if (!S.db.table) return;
@@ -2396,89 +2943,149 @@ async function dropDbTable() {
   toast(`已删除表 ${r.table}`, 3500);
   await dbReloadAll();
 }
-function showDbConnection(key, isNew) {
-  const list = (S.project.connections && S.project.connections.mysql) || [];
-  const hit = list.find((c) => c.key === key) || (isNew ? { key: '', label: '新连接', host: '127.0.0.1', port: 13306, user: 'root', password: '', database: 'clickbuild', readonly: false } : (dbConn() || {}));
+function showDbConnection(key, isNew, kind) {
+  const k = ['mysql', 'redis', 's3'].includes(kind) ? kind : (S.db.kind || 'mysql');
+  const raw = (S.project.connections && S.project.connections[k]) || [];
+  const hit = raw.find((c) => c.key === key) || (isNew ? {
+    key: raw.length ? 'external' : 'main', label: k === 'redis' ? '外部 Redis' : k === 's3' ? '外部对象存储' : '外部 MariaDB',
+    host: k === 'mysql' ? '127.0.0.1' : '127.0.0.1', endpoint: '127.0.0.1',
+    port: k === 'mysql' ? 3306 : k === 'redis' ? 6379 : 9000,
+    user: 'root', password: '', database: 'clickbuild', db: 0, tls: false,
+    useSSL: false, region: '', accessKey: '', secretKey: '', bucket: 'clickbuild', readonly: false,
+  } : (dbConn() || {}));
   const c = hit || {};
-  modal(`<div class="p-4 db-modal" style="width:680px;max-width:96vw">
-    <div class="text-[14px] font-semibold">${isNew ? '新建数据库连接' : '数据库连接设置'}</div>
-    <div class="text-[11px] text-neutral-500 mt-1 mb-3">连接保存在当前工程；密码只存在本机工程 JSON 里，不会写进生成的服务之外的地方。</div>
+  const kindLabel = k === 'mysql' ? 'MariaDB / MySQL' : k === 'redis' ? 'Redis / Valkey' : '对象存储 / S3';
+  modal(`<div class="p-4 db-modal" style="width:100%;max-width:none">
+    <div class="text-[14px] font-semibold">${isNew ? '新建连接' : '连接设置'} <span class="dc-kind-title">${kindLabel}</span></div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">地址和凭据全部可以自定义：本机内置服务只是默认值，也可以直接填云数据库、云 Redis、AWS S3 / MinIO / RustFS 等外部服务。密码只保存在本机工程 JSON 里。</div>
     <div class="db-conn-form">
+      ${isNew ? `<label class="dc-wide">连接类型 <select id="dcKind">${[['mysql', 'MariaDB / MySQL'], ['redis', 'Redis / Valkey'], ['s3', '对象存储 / S3']].map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
       <label>连接键 <input id="dcKey" value="${esc(c.key || '')}" ${isNew ? '' : 'disabled'} placeholder="main"></label>
-      <label>显示名 <input id="dcLabel" value="${esc(c.label || '')}" placeholder="本机 MariaDB"></label>
-      <label>主机 <input id="dcHost" value="${esc(c.host || '127.0.0.1')}"></label>
-      <label>端口 <input id="dcPort" value="${esc(c.port || 13306)}"></label>
-      <label>用户 <input id="dcUser" value="${esc(c.user || 'root')}"></label>
-      <label>密码 <input id="dcPass" type="password" value="${esc(c.password || '')}"></label>
-      <label>默认库 <input id="dcDb" value="${esc(c.database || 'clickbuild')}" placeholder="clickbuild"></label>
+      <label>显示名 <input id="dcLabel" value="${esc(c.label || '')}" placeholder="外部服务"></label>
+      <label class="dc-host">${k === 's3' ? 'Endpoint / 主机' : '主机'} <input id="dcHost" value="${esc(k === 's3' ? c.endpoint || '127.0.0.1' : c.host || '127.0.0.1')}" placeholder="127.0.0.1 或 db.example.com"></label>
+      <label>端口 <input id="dcPort" value="${esc(c.port || (k === 'mysql' ? 3306 : k === 'redis' ? 6379 : 9000))}"></label>
+      <label class="dc-mysql ${k === 'mysql' ? '' : 'hidden'}">用户 <input id="dcUser" value="${esc(c.user || 'root')}"></label>
+      <label class="dc-mysql ${k === 'mysql' ? '' : 'hidden'}">密码 <input id="dcPass" type="password" value="${esc(c.password || '')}"></label>
+      <label class="dc-mysql ${k === 'mysql' ? '' : 'hidden'}">默认库 <input id="dcDb" value="${esc(c.database || 'clickbuild')}" placeholder="clickbuild"></label>
+      <label class="dc-redis ${k === 'redis' ? '' : 'hidden'}">密码 <input id="dcRedisPass" type="password" value="${esc(c.password || '')}" placeholder="没有密码就留空"></label>
+      <label class="dc-redis ${k === 'redis' ? '' : 'hidden'}">库号 <input id="dcRedisDb" value="${esc(c.db || 0)}" placeholder="0"></label>
+      <label class="dc-s3 ${k === 's3' ? '' : 'hidden'}">AccessKey <input id="dcAk" value="${esc(c.accessKey || '')}" placeholder="AK"></label>
+      <label class="dc-s3 ${k === 's3' ? '' : 'hidden'}">SecretKey <input id="dcSk" type="password" value="${esc(c.secretKey || '')}" placeholder="SK"></label>
+      <label class="dc-s3 ${k === 's3' ? '' : 'hidden'}">Region <input id="dcRegion" value="${esc(c.region || '')}" placeholder="可选，如 us-east-1"></label>
+      <label class="dc-s3 ${k === 's3' ? '' : 'hidden'}">默认桶 <input id="dcBucket" value="${esc(c.bucket || 'clickbuild')}" placeholder="clickbuild"></label>
+      <label class="ct-check dc-redis ${k === 'redis' ? '' : 'hidden'}"><input type="checkbox" id="dcTls" ${c.tls ? 'checked' : ''}>Redis 使用 TLS</label>
+      <label class="ct-check dc-s3 ${k === 's3' ? '' : 'hidden'}"><input type="checkbox" id="dcSsl" ${c.useSSL ? 'checked' : ''}>对象存储使用 HTTPS</label>
       <label class="ct-check conn-ro"><input type="checkbox" id="dcReadonly" ${c.readonly ? 'checked' : ''}>标记为只读</label>
     </div>
     <div class="db-form-msg" id="dcMsg"></div>
     <div class="flex gap-2 mt-3"><button class="btn thin" id="dcTest">测试连接</button><span class="db-conn-test" id="dcTestOut"></span><div class="ml-auto flex gap-2"><button class="btn thin" id="dcCancel">取消</button><button class="btn solid" id="dcSave">保存</button></div></div>
   </div>`, (root) => {
-    const read = () => ({
-      key: root.querySelector('#dcKey').value.trim(),
-      label: root.querySelector('#dcLabel').value.trim() || root.querySelector('#dcKey').value.trim() || 'MariaDB',
-      host: root.querySelector('#dcHost').value.trim() || '127.0.0.1',
-      port: Number(root.querySelector('#dcPort').value) || 3306,
-      user: root.querySelector('#dcUser').value.trim() || 'root',
-      password: root.querySelector('#dcPass').value,
-      database: root.querySelector('#dcDb').value.trim(),
-      readonly: root.querySelector('#dcReadonly').checked,
-    });
+    const curKind = () => (root.querySelector('#dcKind') ? root.querySelector('#dcKind').value : k);
+    const applyKind = () => {
+      const now = curKind();
+      root.querySelectorAll('.dc-mysql').forEach((el) => el.classList.toggle('hidden', now !== 'mysql'));
+      root.querySelectorAll('.dc-redis').forEach((el) => el.classList.toggle('hidden', now !== 'redis'));
+      root.querySelectorAll('.dc-s3').forEach((el) => el.classList.toggle('hidden', now !== 's3'));
+    };
+    if (root.querySelector('#dcKind')) root.querySelector('#dcKind').onchange = () => {
+      const now = curKind();
+      const host = root.querySelector('#dcHost');
+      if (host && !host.value.trim()) host.value = '127.0.0.1';
+      const port = root.querySelector('#dcPort');
+      if (port && !port.value.trim()) port.value = now === 'mysql' ? '3306' : now === 'redis' ? '6379' : '9000';
+      applyKind();
+    };
+    const read = () => {
+      const now = curKind();
+      const host = root.querySelector('#dcHost').value.trim() || '127.0.0.1';
+      const port = Number(root.querySelector('#dcPort').value) || (now === 'mysql' ? 3306 : now === 'redis' ? 6379 : 9000);
+      const base = {
+        key: root.querySelector('#dcKey').value.trim(),
+        label: root.querySelector('#dcLabel').value.trim() || root.querySelector('#dcKey').value.trim() || (now === 'mysql' ? 'MariaDB' : now === 'redis' ? 'Redis' : '对象存储'),
+        readonly: root.querySelector('#dcReadonly').checked,
+      };
+      if (now === 'mysql') return { ...base, host, port, user: root.querySelector('#dcUser').value.trim() || 'root', password: root.querySelector('#dcPass').value, database: root.querySelector('#dcDb').value.trim() };
+      if (now === 'redis') return { ...base, host, port, password: root.querySelector('#dcRedisPass').value, db: Number(root.querySelector('#dcRedisDb').value) || 0, tls: root.querySelector('#dcTls').checked };
+      return { ...base, endpoint: host, port, accessKey: root.querySelector('#dcAk').value.trim(), secretKey: root.querySelector('#dcSk').value, region: root.querySelector('#dcRegion').value.trim(), bucket: root.querySelector('#dcBucket').value.trim() || 'clickbuild', useSSL: root.querySelector('#dcSsl').checked };
+    };
     root.querySelector('#dcCancel').onclick = closeModal;
     root.querySelector('#dcTest').onclick = async () => {
       const msg = root.querySelector('#dcMsg');
       const out = root.querySelector('#dcTestOut');
       const v = read();
+      const now = curKind();
       if (!v.key) { msg.textContent = '连接键不能为空'; return; }
       out.textContent = '测试中…';
       const temp = JSON.parse(JSON.stringify(S.project));
-      temp.connections = temp.connections || { mysql: [] };
-      const arr = temp.connections.mysql || [];
+      temp.connections = temp.connections || { mysql: [], redis: [], s3: [] };
+      const arr = Array.isArray(temp.connections[now]) ? temp.connections[now] : [];
       const i = arr.findIndex((x) => x.key === v.key);
       if (i >= 0) arr[i] = v; else arr.push(v);
-      temp.connections.mysql = arr;
-      const r = await api.dbTest({ project: temp, connKey: v.key, database: v.database });
-      if (r && r.ok) { out.textContent = `连接成功 · ${r.version} · ${r.databases} 个库`; msg.textContent = ''; }
-      else { out.textContent = ''; msg.textContent = dbFriendly(r); }
+      temp.connections[now] = arr;
+      const r = await api.infraTest({ project: temp, kind: now, connKey: v.key, db: v.db });
+      if (r && r.ok) {
+        if (now === 'mysql') out.textContent = `连接成功 · ${r.version || 'MariaDB'} · ${r.databases || 0} 个库`;
+        else if (now === 'redis') out.textContent = `连接成功 · ${r.version || 'Redis'} · db ${r.db} · ${r.dbSize || 0} 个键`;
+        else out.textContent = `连接成功 · ${r.buckets || 0} 个桶 · ${r.useSSL ? 'HTTPS' : 'HTTP'}`;
+        msg.textContent = '';
+      } else { out.textContent = ''; msg.textContent = dbFriendly(r); }
     };
     root.querySelector('#dcSave').onclick = async () => {
+      const now = curKind();
       const v = read();
       const msg = root.querySelector('#dcMsg');
       if (!v.key) { msg.textContent = '连接键不能为空'; return; }
-      const arr = S.project.connections && Array.isArray(S.project.connections.mysql) ? S.project.connections.mysql : [];
-      const i = arr.findIndex((x) => x.key === key);
-      if (isNew && arr.some((x) => x.key === v.key)) { msg.textContent = `连接键 ${v.key} 已存在`; return; }
+      const all = S.project.connections || { mysql: [], redis: [], s3: [] };
+      const arr = Array.isArray(all[now]) ? all[now] : [];
+      const oldKey = key || '';
+      if (isNew && arr.some((x) => x.key === v.key)) { msg.textContent = `这个类型下连接键 ${v.key} 已存在`; return; }
+      const i = arr.findIndex((x) => x.key === oldKey);
       if (i >= 0) arr[i] = v; else arr.push(v);
-      S.project.connections = S.project.connections || { mysql: [], redis: [], s3: [] };
-      S.project.connections.mysql = arr;
-      if (!S.project.dbProject) S.project.dbProject = { conn: v.key, database: v.database, table: '' };
+      S.project.connections = all;
+      S.project.connections[now] = arr;
+      if (!S.project.dbProject) S.project.dbProject = { kind: now, conn: v.key, database: '', redisDb: 0, bucket: 'clickbuild', table: '', lastByKind: {} };
+      S.project.dbProject.kind = now;
       S.project.dbProject.conn = v.key;
-      if (v.database) S.project.dbProject.database = v.database;
+      S.project.dbProject.lastByKind = S.project.dbProject.lastByKind || {};
+      S.project.dbProject.lastByKind[now] = now === 'mysql'
+        ? { conn: v.key, database: v.database || '', table: '' }
+        : now === 'redis'
+          ? { conn: v.key, redisDb: Number(v.db || 0) }
+          : { conn: v.key, bucket: v.bucket || 'clickbuild' };
+      if (now === 'mysql') {
+        if (v.database) S.project.dbProject.database = v.database;
+        S.project.dbProject.table = '';
+      }
+      if (now === 'redis') S.project.dbProject.redisDb = Number(v.db || 0);
+      if (now === 's3' && v.bucket) S.project.dbProject.bucket = v.bucket;
       const ok = await save(true);
       if (!ok) { msg.textContent = '工程保存失败'; return; }
       closeModal();
+      S.db.kind = now;
       S.db.connKey = v.key;
-      S.db.database = v.database || S.db.database;
-      S.db.table = '';
+      if (now === 'mysql') { S.db.database = v.database || S.db.database; S.db.table = ''; }
+      if (now === 'redis') { S.db.redisDb = Number(v.db || 0); S.db.tab = 'keys'; }
+      if (now === 's3') { S.db.bucket = v.bucket || S.db.bucket; S.db.tab = 'objects'; }
       S.db.ready = false;
-      toast('连接已保存', 3000);
+      toast('连接已保存，正在重新连接', 3000);
       await dbReloadAll();
     };
-  });
+    applyKind();
+  }, { width: 800, maxHeight: '88vh' });
 }
 async function openLiveTableInDb(it, t) {
   if (!it || !t) return;
   const conn = liveConnOf(t);
   if (!conn) return toast('这个表没有配置 MariaDB 连接', 5000);
   S.db = initialDbState(S.project);
+  S.db.kind = 'mysql';
   S.db.connKey = conn.key;
   S.db.database = t.schema || conn.database || '';
   S.db.table = t.name;
   S.db.write = !conn.readonly;
   S.db.ready = false;
   if (S.project.dbProject) {
+    S.project.dbProject.kind = 'mysql';
     S.project.dbProject.conn = conn.key;
     S.project.dbProject.database = S.db.database;
     S.project.dbProject.table = t.name;

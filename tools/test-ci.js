@@ -14,6 +14,7 @@ const tests = [
   ['tools/test-table-import.js'],
   ['tools/test-table-data.js'],
   ['tools/test-db-ui.js'],
+  ['tools/test-infra-ui.js'],
   ['tools/test-cross-table.js'],
   ['tools/test-shell-new.js'],
   ['tools/test-formtable.js'],

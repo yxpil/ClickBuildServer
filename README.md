@@ -39,6 +39,25 @@
 
 每个接口、每条路由都可以单独改 SQL、单独开缓存、单独限流/定时窗/熔断；互不牵连。
 
+## MariaDB / Redis / 对象存储都能自定义（1.1.90）
+
+这一版把数据库工作台从“只能看应用内置的三套服务”改成**三类连接都能填外部地址与凭据**。内置的 MariaDB 13306、Redis 16379、RustFS 19000 只作为默认值，不再限制连接目标。
+
+- **三类连接共用一个工作台**：左栏顶部是 MySQL / Redis / 对象存储三个类型按钮，各自显示连接数量；连接下拉框切换具体实例。每类连接会分别记住上次使用的连接、库 / 库号 / 桶和表，切到别的类型再切回来不会退回第一套默认连接。
+- **连接设置可切类型**：新建连接时先选类型，再显示对应字段。MariaDB / MySQL 填主机、端口、用户、密码、默认库；Redis 填主机、端口、密码、库号和是否 TLS；对象存储填 Endpoint、端口、AccessKey、SecretKey、Region、默认桶和是否 HTTPS。保存后立即测试并重新连接，密码和 SecretKey 只写在本机工程 JSON 里，连接列表接口只返回 `hasPassword` 之类的脱敏标记。
+- **Redis 不再只是看 INFO**：支持 SCAN 键浏览（模式过滤、游标续扫）、类型 / TTL / 内存占用、字符串与 hash / list / set / zset 值查看、复制键名、删除；命令台支持单条命令、历史和 `Ctrl+Enter`，`FLUSHALL / FLUSHDB / SHUTDOWN / CONFIG / SCRIPT / MODULE / SLAVEOF / REPLICAOF` 等危险命令直接拒绝；只读连接写操作返回 `ER_READONLY`。
+- **对象存储按桶和前缀浏览**：列桶、切桶、建桶；对象列表支持前缀过滤、大小、更新时间、ETag、Content-Type；可生成 1 小时有效的预签名下载链接，也可删除对象。兼容 AWS S3、MinIO、RustFS 等 S3 协议服务，HTTPS 默认关闭，连云厂商时手动勾选。
+- **后端统一收口**：新增 `app/iface/infra-admin.js`，用已有的 `mysql2`、`ioredis`、`minio` 实现连接测试、Redis 概览 / 扫描 / 读键 / 命令 / 删除、S3 桶 / 对象 / 元信息 / 预签名 / 删对象 / 建桶，没有新增依赖；13 个 IPC 与 preload 方法一一对应。
+- **验证不是对着假数据**：真实 MariaDB、Redis 8.10.3、RustFS 上 `tools/test-infra-live.js` **18/18** 通过；静态接线 `tools/test-infra-ui.js` **23/23**；完整 `npm run test:ci` **22/22**。源码 Electron 实机新建外部 Redis `external`（127.0.0.1:16379、db 5）与外部 RustFS `assets`（HTTP、独立 AK/SK、桶 clickbuild），测试连接、扫描键、读值、浏览前缀对象、看元信息全部成功；连接弹窗的取消 / 保存按钮也修掉了被 640px 外框裁切的问题。
+
+![MySQL / MariaDB 工作台：自定义连接、库表树与可编辑数据](docs/screenshots/db-multi-mysql.png)
+
+![新建连接时按类型显示主机、端口、账号、密码、库号、TLS 等字段](docs/screenshots/db-custom-connection.png)
+
+![外部 Redis：db 5、SCAN 键列表与字符串值](docs/screenshots/db-redis-browser.png)
+
+![外部 RustFS：桶、前缀对象、ETag 与预签名入口](docs/screenshots/db-s3-browser.png)
+
 ## 数据库工程、可编辑数据与部署设置（1.1.89）
 
 这一版补上三类一直缺的能力：**把海量表数据从只读展示改成可写工作台**、**新增“数据库工程”任务模式**、**把部署也当成一次导出并显式设置翻页控件**。
