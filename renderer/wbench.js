@@ -3001,7 +3001,7 @@ function tabIo(it) {
         <button class="btn thin" data-action="addIoType">＋ 加类型</button>
       </div>
     </div>
-    <div style="overflow:auto;border:1px solid #d4d4d4">
+    <div class="help-table-frame">
       <table class="help-grid io-grid" style="width:100%;min-width:1160px;table-layout:fixed;margin:0">
         <thead><tr>
           <th style="width:112px">类型名称</th><th style="width:106px">返回处理</th><th style="width:112px">默认存储</th>
@@ -3034,7 +3034,7 @@ function tabIo(it) {
       </div>
       <span class="ml-auto text-neutral-500 mono">${it.routes.length} 条路由</span>
     </div>
-    <div style="overflow:auto;border:1px solid #d4d4d4">
+    <div class="help-table-frame">
       <table class="help-grid" style="min-width:1160px;margin:0">
         <thead><tr>
           <th style="width:220px">路由</th><th style="width:155px">接口类型</th><th style="width:130px">存储</th>

@@ -169,6 +169,10 @@ html.cb-dark .gt tbody tr:hover td { background: #1d252f; }
 html.cb-dark .gt tbody tr.sel td { background: #1c2b40; }
 html.cb-dark .gt tbody tr.add-field-row td { background: #121820; color: #7e8b9d; }
 html.cb-dark .gt tbody tr.add-field-row:hover td { background: #1d2631; color: var(--cb-accent); }
+html.cb-dark .help-grid { background: var(--cb-panel); }
+html.cb-dark .help-grid th { background: #141a21; color: #9ba9ba; border-color: var(--cb-line); }
+html.cb-dark .help-grid td { color: #c3cddc; border-color: var(--cb-line-soft); }
+html.cb-dark .help-table-frame { border-color: var(--cb-line); background: var(--cb-panel); }
 html.cb-dark .cell-in:focus { background: #10161d; }
 html.cb-dark .grid-empty-copy { color: #8390a2; }
 html.cb-dark .grid-empty-copy b { color: var(--cb-text); }
