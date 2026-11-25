@@ -5,6 +5,7 @@
 const Redis = require('ioredis');
 const Minio = require('minio');
 const spec = require('./spec');
+const sshTunnel = require('./ssh-tunnel');
 
 const KINDS = ['mysql', 'redis', 's3'];
 const MAX_KEYS = 500;
@@ -28,8 +29,8 @@ function connectionsOf(project, kind) {
       label: c.label || c.key || (k === 'redis' ? 'Redis' : k === 's3' ? 'S3' : 'MariaDB'),
       readonly: !!c.readonly,
     };
-    if (k === 'mysql') return { ...base, kind: k, host: c.host || '127.0.0.1', port: Number(c.port || 3306), user: c.user || 'root', database: c.database || 'clickbuild' };
-    if (k === 'redis') return { ...base, kind: k, host: c.host || '127.0.0.1', port: Number(c.port || 6379), db: Number(c.db || 0), tls: !!c.tls, hasPassword: !!c.password };
+    if (k === 'mysql') return { ...base, kind: k, host: c.host || '127.0.0.1', port: Number(c.port || 3306), user: c.user || 'root', database: c.database || 'clickbuild', ssh: sshTunnel.sshSummary(c) };
+    if (k === 'redis') return { ...base, kind: k, host: c.host || '127.0.0.1', port: Number(c.port || 6379), db: Number(c.db || 0), tls: !!c.tls, hasPassword: !!c.password, ssh: sshTunnel.sshSummary(c) };
     return { ...base, kind: k, endpoint: c.endpoint || '127.0.0.1', port: Number(c.port || 9000), useSSL: c.useSSL === true, region: c.region || '', bucket: c.bucket || 'clickbuild' };
   });
 }
@@ -76,25 +77,31 @@ async function withRedis(project, opts, fn) {
   const c = info.conn;
   if (c.readonly && o.write) return { ok: false, code: 'ER_READONLY', error: '这个 Redis 连接是只读的', hint: '到连接设置取消“只读”再写入' };
   const db = Number(o.db === undefined ? c.db || 0 : o.db);
-  const client = new Redis({
-    host: c.host || '127.0.0.1',
-    port: Number(c.port || 6379),
-    password: c.password || undefined,
-    db: Number.isFinite(db) ? db : 0,
-    tls: c.tls ? {} : undefined,
-    lazyConnect: true,
-    connectTimeout: 5000,
-    maxRetriesPerRequest: 1,
-    enableReadyCheck: true,
-  });
-  client.on('error', () => { /* 错误在 connect / 命令返回里处理 */ });
+  let tunnel = null;
   try {
-    await client.connect();
-    return await fn(client, { ...info, db });
+    if (c.sshEnabled) tunnel = await sshTunnel.openTunnel(c, c.host, c.port);
+    const client = new Redis({
+      host: tunnel ? tunnel.host : c.host || '127.0.0.1',
+      port: tunnel ? tunnel.port : Number(c.port || 6379),
+      password: c.password || undefined,
+      db: Number.isFinite(db) ? db : 0,
+      tls: c.tls ? {} : undefined,
+      lazyConnect: true,
+      connectTimeout: 5000,
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: true,
+    });
+    client.on('error', () => { /* 错误在 connect / 命令返回里处理 */ });
+    try {
+      await client.connect();
+      return await fn(client, { ...info, db });
+    } finally {
+      client.disconnect();
+    }
   } catch (e) {
     return friendly('redis', c, e);
   } finally {
-    client.disconnect();
+    if (tunnel) { try { tunnel.close(); } catch (_) { /* noop */ } }
   }
 }
 
@@ -253,6 +260,97 @@ async function redisDelete(project, opts) {
   });
 }
 
+function redisText(v) {
+  if (v === null || v === undefined) return '';
+  return String(v);
+}
+
+async function redisSaveKey(project, opts) {
+  const o = opts || {};
+  const key = String(o.key || '').trim();
+  if (!key) return { ok: false, code: 'KEY', error: '缺少 key', hint: '先填键名' };
+  if (key.length > 512) return { ok: false, code: 'KEY', error: '键名太长', hint: 'Redis 键名最多 512 字节' };
+  const type = ['string', 'hash', 'list', 'set', 'zset'].includes(String(o.type || '')) ? String(o.type) : 'string';
+  const ttl = Number(o.ttl === undefined ? -1 : o.ttl);
+  const value = o.value;
+  return withRedis(project, { ...o, write: true }, async (r) => {
+    const existingType = await r.type(key);
+    const replace = o.replace !== false;
+    if (existingType !== 'none' && replace) await r.del(key);
+    let written = 0;
+    if (type === 'string') {
+      const text = redisText(value);
+      await r.set(key, text);
+      written = 1;
+    } else if (type === 'hash') {
+      const rows = Array.isArray(value)
+        ? value.map((x) => ({ field: redisText(x && x.field), value: redisText(x && x.value) })).filter((x) => x.field)
+        : Object.entries(value || {}).map(([field, v]) => ({ field, value: redisText(v) }));
+      if (!rows.length) return { ok: false, code: 'VALUE', error: 'Hash 至少需要一个字段', hint: '填字段名和值' };
+      const args = [];
+      for (const row of rows) args.push(row.field, row.value);
+      await r.hset(key, ...args);
+      written = rows.length;
+    } else if (type === 'list') {
+      const rows = (Array.isArray(value) ? value : String(value || '').split('\n')).map(redisText).filter((x) => x !== '');
+      if (!rows.length) return { ok: false, code: 'VALUE', error: 'List 至少需要一个元素', hint: '每行一个元素' };
+      await r.rpush(key, ...rows);
+      written = rows.length;
+    } else if (type === 'set') {
+      const rows = (Array.isArray(value) ? value : String(value || '').split('\n')).map(redisText).filter((x) => x !== '');
+      if (!rows.length) return { ok: false, code: 'VALUE', error: 'Set 至少需要一个成员', hint: '每行一个成员' };
+      await r.sadd(key, ...rows);
+      written = rows.length;
+    } else {
+      const rows = Array.isArray(value) ? value : [];
+      const args = [];
+      for (const row of rows) {
+        const member = redisText(row && row.member);
+        if (!member) continue;
+        const score = Number(row && row.score);
+        if (!Number.isFinite(score)) continue;
+        args.push(score, member);
+      }
+      if (!args.length) return { ok: false, code: 'VALUE', error: 'ZSet 至少需要一个成员和分数', hint: '成员不能为空，分数必须是数字' };
+      await r.zadd(key, ...args);
+      written = args.length / 2;
+    }
+    if (Number.isFinite(ttl) && ttl > 0) await r.expire(key, Math.round(ttl));
+    else if (ttl === -1 || ttl === 0) await r.persist(key).catch(() => 0);
+    const afterType = await r.type(key);
+    const afterTtl = await r.ttl(key);
+    return { ok: true, key, type: afterType, ttl: afterTtl, written, replaced: existingType !== 'none' && replace };
+  });
+}
+
+async function redisExpire(project, opts) {
+  const o = opts || {};
+  const key = String(o.key || '');
+  if (!key) return { ok: false, code: 'KEY', error: '缺少 key' };
+  const ttl = Number(o.ttl);
+  if (!Number.isFinite(ttl) || ttl < -1) return { ok: false, code: 'TTL', error: 'TTL 必须是 -1 或非负秒数' };
+  return withRedis(project, { ...o, write: true }, async (r) => {
+    const exists = await r.exists(key);
+    if (!exists) return { ok: false, code: 'NOT_FOUND', error: '键不存在', hint: '可能已经被删除' };
+    if (ttl === -1) await r.persist(key); else await r.expire(key, Math.round(ttl));
+    return { ok: true, key, ttl: await r.ttl(key) };
+  });
+}
+
+async function redisRename(project, opts) {
+  const o = opts || {};
+  const key = String(o.key || '');
+  const next = String(o.next || '').trim();
+  if (!key || !next) return { ok: false, code: 'KEY', error: '缺少原键名或新键名' };
+  if (key === next) return { ok: false, code: 'KEY', error: '新键名和原键名相同' };
+  return withRedis(project, { ...o, write: true }, async (r) => {
+    const exists = await r.exists(next);
+    if (exists && o.overwrite !== true) return { ok: false, code: 'EXISTS', error: `键 ${next} 已存在`, hint: '换一个名字，或勾选覆盖' };
+    await (o.overwrite === true ? r.rename(key, next) : r.renamenx(key, next));
+    return { ok: true, key, next };
+  });
+}
+
 function s3Client(c) {
  const useSSL = c.useSSL === true || c.useSSL === 'true' || Number(c.port) === 443;
   return new Minio.Client({
@@ -344,6 +442,75 @@ async function s3CreateBucket(project, opts) {
   });
 }
 
+async function s3Put(project, opts) {
+  const o = opts || {};
+  const bucket = String(o.bucket || '');
+  const key = String(o.key || '').replace(/^\/+/, '');
+  if (!bucket || !key) return { ok: false, code: 'KEY', error: '缺少桶名或对象键' };
+  const b64 = String(o.contentBase64 || '');
+  if (!b64) return { ok: false, code: 'EMPTY', error: '文件是空的', hint: '空文件请用“新建目录”' };
+  let buf;
+  try { buf = Buffer.from(b64, 'base64'); } catch (e) { return { ok: false, code: 'BASE64', error: '文件内容解码失败' }; }
+  if (buf.length > 25 * 1024 * 1024) return { ok: false, code: 'TOO_LARGE', error: '单个对象超过 25 MB', hint: '大文件请用 S3 客户端或分片上传' };
+  return withS3(project, { ...o, write: true }, async (client, ctx) => {
+    const meta = { 'Content-Type': String(o.contentType || 'application/octet-stream') };
+    await client.putObject(bucket, key, buf, buf.length, meta);
+    return { ok: true, bucket, key, size: buf.length, contentType: meta['Content-Type'] };
+  });
+}
+
+async function s3Get(project, opts) {
+  const o = opts || {};
+  const bucket = String(o.bucket || '');
+  const key = String(o.key || '');
+  if (!bucket || !key) return { ok: false, code: 'KEY', error: '缺少桶名或对象键' };
+  return withS3(project, { ...o, write: false }, async (client, ctx) => {
+    const st = await client.statObject(bucket, key);
+    if (Number(st.size || 0) > 20 * 1024 * 1024) {
+      return { ok: false, code: 'TOO_LARGE', error: '对象超过 20 MB', hint: '先用“生成下载链接”在浏览器里下载，或使用 S3 客户端' };
+    }
+    const stream = await client.getObject(bucket, key);
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      stream.on('data', (c) => chunks.push(Buffer.from(c)));
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+    const buf = Buffer.concat(chunks);
+    const contentType = (st.metaData && (st.metaData['content-type'] || st.metaData['Content-Type'])) || 'application/octet-stream';
+    return {
+      ok: true, bucket, key, size: buf.length, contentType,
+      name: key.split('/').pop() || 'download.bin',
+      contentBase64: buf.toString('base64'),
+    };
+  });
+}
+
+async function s3CreateFolder(project, opts) {
+  const o = opts || {};
+  const bucket = String(o.bucket || '');
+  let key = String(o.key || '').replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!bucket || !key) return { ok: false, code: 'KEY', error: '缺少桶名或目录名' };
+  if (!/^[^\u0000-\u001f]+$/.test(key)) return { ok: false, code: 'KEY', error: '目录名包含非法字符' };
+  return withS3(project, { ...o, write: true }, async (client, ctx) => {
+    const folderKey = `${key}/`;
+    await client.putObject(bucket, folderKey, Buffer.alloc(0), 0, { 'Content-Type': 'application/x-directory' });
+    return { ok: true, bucket, key: folderKey };
+  });
+}
+
+async function s3DeleteBucket(project, opts) {
+  const o = opts || {};
+  const bucket = String(o.bucket || '');
+  if (!bucket) return { ok: false, code: 'BUCKET', error: '缺少桶名' };
+  return withS3(project, { ...o, write: true }, async (client, ctx) => {
+    const rows = await s3List(client, bucket, '', 1);
+    if (rows.length) return { ok: false, code: 'NOT_EMPTY', error: '桶里还有对象', hint: '先清空桶，再删除桶' };
+    await client.removeBucket(bucket);
+    return { ok: true, bucket };
+  });
+}
+
 module.exports = {
   KINDS,
   kindOf,
@@ -357,10 +524,17 @@ module.exports = {
   redisKey,
   redisCommand,
   redisDelete,
+  redisSaveKey,
+  redisExpire,
+  redisRename,
   s3Buckets,
   s3Objects,
   s3Stat,
   s3Url,
   s3Delete,
   s3CreateBucket,
+  s3Put,
+  s3Get,
+  s3CreateFolder,
+  s3DeleteBucket,
 };

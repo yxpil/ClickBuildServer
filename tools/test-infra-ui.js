@@ -18,6 +18,8 @@ function ok(name, cond, extra) {
 
 const methods = ['test', 'redisOverview', 'redisScan', 'redisKey', 'redisCommand', 'redisDelete', 's3Buckets', 's3Objects', 's3Stat', 's3Url', 's3Delete', 's3CreateBucket'];
 ok('infra-admin 导出三类连接方法', methods.every((m) => typeof infra[m] === 'function'), methods.filter((m) => typeof infra[m] !== 'function'));
+const adv = ['redisSaveKey', 'redisExpire', 'redisRename', 's3Put', 's3Get', 's3CreateFolder', 's3DeleteBucket'];
+ok('infra-admin 导出 Redis / S3 真实写操作', adv.every((m) => typeof infra[m] === 'function'), adv.filter((m) => typeof infra[m] !== 'function'));
 ok('三类连接类型', infra.KINDS.join(',') === 'mysql,redis,s3', infra.KINDS);
 ok('命令拆分支持引号', JSON.stringify(infra.splitCommand('SET "a b" c')) === JSON.stringify(['SET', 'a b', 'c']));
 
@@ -51,15 +53,20 @@ ok('数据库工程默认 kind=mysql', dbStarter.dbProject.kind === 'mysql', dbS
 
 const ipc = read('app/iface/ipc.js');
 ok('IPC 注册三类连接', ['iface:infra:connections', 'iface:infra:test', 'iface:redis:scan', 'iface:redis:command', 'iface:s3:buckets', 'iface:s3:objects', 'iface:s3:delete'].every((k) => ipc.includes(k)));
+ok('IPC 注册 Redis / S3 写操作', ['iface:redis:save', 'iface:redis:expire', 'iface:redis:rename', 'iface:s3:put', 'iface:s3:get', 'iface:s3:create-folder', 'iface:s3:delete-bucket'].every((k) => ipc.includes(k)));
 const preload = read('preload.js');
 ok('preload 暴露三类连接', ['infraConnections', 'infraTest', 'redisScan', 'redisCommand', 's3Buckets', 's3Objects', 's3Delete'].every((k) => preload.includes(k)));
+ok('preload 暴露 Redis / S3 写操作', ['redisSave', 'redisExpire', 'redisRename', 's3Put', 's3Get', 's3CreateFolder', 's3DeleteBucket'].every((k) => preload.includes(k)));
 
 const wb = read('renderer/wbench.js');
 ok('工作台有三类切换与渲染', ['function dbKindBar', 'function renderRedis', 'function renderS3'].every((s) => wb.includes(s)));
 ok('连接表单有类型选择', ['dcKind', 'dcRedisPass', 'dcRedisDb', 'dcTls', 'dcAk', 'dcSk', 'dcRegion', 'dcSsl'].every((s) => wb.includes(s)));
 ok('Redis 键浏览与命令台', ['data-redis-key', 'data-redis-del', 'data-redis-run', 'redisConsoleBody'].every((s) => wb.includes(s)));
+ok('Redis 键可新建编辑与改 TTL', ['function showRedisKeyEditor', 'function showRedisTtl', 'function showRedisRename', 'data-redis-new', 'data-redis-edit', 'data-redis-ttl', 'data-redis-rename'].every((s) => wb.includes(s)));
 ok('S3 桶与对象浏览', ['data-s3-object', 'data-s3-url', 'data-s3-del', 'data-s3-create-bucket', 's3BucketsBody'].every((s) => wb.includes(s)));
+ok('S3 上传下载目录与删桶', ['function s3UploadFile', 'function s3DownloadObject', 'function s3CreateFolder', 'function s3DeleteBucket', 'data-s3-upload', 'data-s3-download', 'data-s3-folder', 'data-s3-del-bucket'].every((s) => wb.includes(s)));
 ok('连接设置提示可填外部服务', wb.includes('云数据库') && wb.includes('AWS S3 / MinIO / RustFS'));
+ok('MySQL / Redis 连接支持 SSH', ['dcSsh', 'dcSshHost', 'dcSshPort', 'dcSshUser', 'dcSshPass', 'dcSshKeyPath', 'dcSshPassphrase', 'dc-ssh-fields'].every((s) => wb.includes(s)));
 ok('写开关按当前类型保存', wb.includes('S.project.connections = all') && wb.includes('S.project.dbProject.kind = now'));
 ok('切换类型记忆各自连接', wb.includes('function rememberDbState') && wb.includes('p.lastByKind[kind]') && wb.includes('rememberDbState(S.db.kind)'));
 ok('连接弹窗不再被 640 外框裁切', wb.includes("{ width: 800, maxHeight: '88vh' }") && wb.includes("{ width: 880, maxHeight: '88vh' }"));

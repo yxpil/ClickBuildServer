@@ -253,7 +253,7 @@
 .db-conn-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 .db-conn-form label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--cb-muted, #666); }
 .db-conn-form input { border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 11px; padding: 5px 7px; outline: 0; }
-.db-conn-form .conn-ro { flex-direction: row; align-items: center; gap: 6px; }
+.db-conn-form .conn-ro, .db-conn-form .ct-check { flex-direction: row; align-items: center; gap: 6px; }
 .db-conn-test { font-size: 10px; color: #0f7a46; align-self: center; }
 .ct-head { display: flex; gap: 8px; margin-bottom: 6px; }
 .ct-head input { border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 11px; padding: 5px 7px; }
@@ -387,3 +387,27 @@ html.cb-dark .dp-row { border-bottom-color: #26303c; }
 html.cb-dark .dp-row:hover { background: #17202a; }
 html.cb-dark .dp-row b { color: #e7ecf3; }
 html.cb-dark .dp-row i { color: #8f9aa8; }
+
+/* 1.1.91 数据库高级工具 */
+.db-db-actions { display: flex; gap: 5px; padding: 5px 0 2px; }
+.db-db-actions .btn { flex: 1; padding: 3px 5px; font-size: 9.5px; }
+.db-sql-preview {
+  margin: 8px 0 0; padding: 10px; border: 1px solid var(--cb-line, #d8d6cf); background: #fff;
+  font: 10px/1.6 Consolas, "Cascadia Code", monospace; white-space: pre-wrap; word-break: break-all;
+  max-height: 46vh; overflow: auto;
+}
+.ac-row { display: grid; grid-template-columns: 1.2fr 1.5fr 70px 70px 1fr 1.2fr; gap: 6px; align-items: center; margin-top: 6px; }
+.ac-row input { width: 100%; min-width: 0; border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 10px; padding: 5px 6px; outline: 0; }
+.ac-row .ct-check { white-space: nowrap; }
+.db-priv-grid { display: flex; flex-wrap: wrap; gap: 5px 14px; padding: 7px 9px; border: 1px solid var(--cb-line, #d8d6cf); background: #fff; }
+.db-grant { display: inline-block; font: 9px/1.6 Consolas, "Cascadia Code", monospace; color: #2456a6; word-break: break-all; }
+.db-conn-form .dc-ssh, .dc-ssh-fields { grid-column: 1 / -1; }
+.dc-ssh-fields { display: grid; grid-template-columns: 1fr 90px 1fr 1fr; gap: 8px 10px; margin-top: 2px; padding: 9px; border: 1px dashed var(--cb-line, #d8d6cf); background: #fbfaf7; }
+.dc-ssh-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: var(--cb-muted, #777); }
+.dc-ssh-fields input { width: 100%; border: 1px solid var(--cb-line, #d8d6cf); background: #fff; color: var(--cb-text, #17191d); font-size: 11px; padding: 5px 7px; outline: 0; }
+.db-conn-form .dc-ssh.hidden { display: none !important; }
+html.cb-dark .db-sql-preview, html.cb-dark .ac-row input, html.cb-dark .db-priv-grid, html.cb-dark .dc-ssh-fields, html.cb-dark .dc-ssh-fields input { background: #10161d; color: #e7ecf3; }
+html.cb-dark .dc-ssh-fields { background: #141b23; }
+html.cb-dark .db-grant { color: #a9c7f2; }
+
+

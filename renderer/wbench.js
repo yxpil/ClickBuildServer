@@ -1821,7 +1821,7 @@ function initialDbState(project) {
     rows: [], total: 0, page: 1, size: 50, pages: 1,
     tab: kind === 'redis' ? 'keys' : kind === 's3' ? 'objects' : 'data', write: true, error: null, notice: '',
     structure: null, sql: '', sqlResult: null, sqlError: null, sqlBusy: false,
-    busy: false, querySeq: 0, history: [],
+    busy: false, querySeq: 0, history: [], server: null, serverBusy: false, serverError: null,
     redisDb: Number(book.redisDb !== undefined ? book.redisDb : (hint.redisDb || conn.db || 0)), redisInfo: null, keys: [], pattern: '*', cursor: '0', selectedKey: '', keyInfo: null,
     redisCmd: '', cmdResult: null, cmdError: null, cmdBusy: false, cmdHistory: [],
     bucket: book.bucket || hint.bucket || conn.bucket || 'clickbuild', buckets: [], objects: [], prefix: '', objectInfo: null, selectedObject: '',
@@ -1986,6 +1986,128 @@ async function redisDeleteKey(key) {
   toast(`已删除 ${r.deleted || 0} 个键`, 3000);
   await redisScanMore(true);
 }
+function redisValueText(info) {
+  const k = info || {};
+  const v = k.value;
+  if (k.type === 'hash' && v && typeof v === 'object') return Object.entries(v).map(([f, x]) => `${f}=${x == null ? '' : x}`).join('\n');
+  if ((k.type === 'list' || k.type === 'set') && Array.isArray(v)) return v.map((x) => String(x)).join('\n');
+  if (k.type === 'zset' && Array.isArray(v)) {
+    const out = [];
+    for (let i = 0; i + 1 < v.length; i += 2) out.push(`${v[i + 1]} ${v[i]}`);
+    return out.join('\n');
+  }
+  if (k.type === 'stream') return v == null ? '' : String(v);
+  return v == null ? '' : String(v);
+}
+function redisValueHint(type) {
+  if (type === 'hash') return '每行一个字段：field=value';
+  if (type === 'list' || type === 'set') return '每行一个元素';
+  if (type === 'zset') return '每行一个成员：score member（分数在前）';
+  if (type === 'stream') return 'Stream 只读展示长度，编辑请用命令台';
+  return '直接输入字符串值';
+}
+async function showRedisKeyEditor(mode) {
+  if (mode === 'edit' && !S.db.selectedKey) return toast('先选一个键');
+  if (!S.db.write) return toast('这个 Redis 连接是只读的，先到连接设置取消只读', 5000);
+  if (mode === 'edit' && !S.db.keyInfo) await redisOpenKey(S.db.selectedKey);
+  const info = mode === 'edit' ? S.db.keyInfo : null;
+  if (mode === 'edit' && (!info || info.ok === false)) return toast('读取键值失败');
+  const type = info ? info.type : 'string';
+  const ttl = info ? info.ttl : -1;
+  const value = info ? redisValueText(info) : '';
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="text-[14px] font-semibold">${mode === 'edit' ? '编辑 Redis 键' : '新建 Redis 键'}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">复杂类型保存时会按当前内容重写整个键；编辑前先确认可以覆盖。</div>
+    <div class="db-form-grid">
+      <label class="db-field"><span>键名</span><input id="rkKey" value="${esc(info ? info.key : '')}" ${mode === 'edit' ? 'disabled' : ''} placeholder="user:1"></label>
+      <label class="db-field"><span>类型</span><select id="rkType">${[['string', 'String'], ['hash', 'Hash'], ['list', 'List'], ['set', 'Set'], ['zset', 'ZSet']].map(([v, l]) => `<option value="${v}" ${v === type ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="db-field"><span>TTL（秒，-1 永久）</span><input id="rkTtl" value="${esc(ttl)}"></label>
+    </div>
+    <label class="db-field mt-3"><span>值 <i id="rkHint">${esc(redisValueHint(type))}</i></span><textarea id="rkValue" rows="10" spellcheck="false">${esc(value)}</textarea></label>
+    <div class="db-form-msg" id="rkMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="rkCancel">取消</button><button class="btn solid" id="rkSave">保存</button></div>
+  </div>`, (root) => {
+    const typeSel = root.querySelector('#rkType');
+    const valueEl = root.querySelector('#rkValue');
+    typeSel.onchange = () => { root.querySelector('#rkHint').textContent = redisValueHint(typeSel.value); };
+    root.querySelector('#rkCancel').onclick = closeModal;
+    root.querySelector('#rkSave').onclick = async () => {
+      const msg = root.querySelector('#rkMsg');
+      const key = root.querySelector('#rkKey').value.trim();
+      const typeNow = typeSel.value;
+      const raw = valueEl.value;
+      let val = raw;
+      if (typeNow === 'hash') {
+        val = raw.split(/\r?\n/).map((line) => {
+          const i = line.indexOf('=');
+          return i >= 0 ? { field: line.slice(0, i).trim(), value: line.slice(i + 1) } : null;
+        }).filter(Boolean);
+      } else if (typeNow === 'list' || typeNow === 'set') {
+        val = raw.split(/\r?\n/).filter((x) => x !== '');
+      } else if (typeNow === 'zset') {
+        val = raw.split(/\r?\n/).map((line) => {
+          const m = /^\s*([-+]?[0-9]*\.?[0-9]+)\s+(.+)$/.exec(line);
+          return m ? { score: Number(m[1]), member: m[2] } : null;
+        }).filter(Boolean);
+      }
+      if (!key) { msg.textContent = '键名不能为空'; return; }
+      const btn = root.querySelector('#rkSave');
+      btn.disabled = true; btn.textContent = '保存中…';
+      const r = await api.redisSave({
+        project: S.project, connKey: S.db.connKey, db: S.db.redisDb,
+        key, type: typeNow, value: val, ttl: Number(root.querySelector('#rkTtl').value || -1),
+        replace: mode === 'edit',
+      });
+      if (!r || r.ok === false) {
+        msg.textContent = dbFriendly(r);
+        btn.disabled = false; btn.textContent = '保存';
+        return;
+      }
+      closeModal();
+      toast(`已保存 ${key} · ${r.type} · ${r.ttl === -1 ? '永久' : r.ttl + ' 秒'}`, 4000);
+      S.db.selectedKey = key;
+      await redisScanMore(true);
+      await redisOpenKey(key);
+    };
+  }, { width: 820, maxHeight: '88vh' });
+}
+async function showRedisTtl() {
+  if (!S.db.selectedKey) return toast('先选一个键');
+  const info = S.db.keyInfo || {};
+  const value = await ask('修改 TTL', String(info.ttl === -1 ? -1 : info.ttl || 0), '-1 表示永久，0 表示立即过期。');
+  if (value === null || value === undefined || String(value).trim() === '') return;
+  const r = await api.redisExpire({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, key: S.db.selectedKey, ttl: Number(value) });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  toast(`TTL 已改为 ${r.ttl === -1 ? '永久' : r.ttl + ' 秒'}`, 3000);
+  await redisOpenKey(S.db.selectedKey);
+}
+async function showRedisRename() {
+  if (!S.db.selectedKey) return toast('先选一个键');
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="text-[14px] font-semibold">重命名 Redis 键</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">${esc(S.db.selectedKey)} → 新键名。同名键默认不覆盖。</div>
+    <label class="db-field"><span>新键名</span><input id="rrNext" placeholder="new:key"></label>
+    <label class="ct-check mt-2"><input type="checkbox" id="rrOverwrite">覆盖同名键</label>
+    <div class="db-form-msg" id="rrMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="rrCancel">取消</button><button class="btn solid" id="rrSave">重命名</button></div>
+  </div>`, (root) => {
+    root.querySelector('#rrCancel').onclick = closeModal;
+    root.querySelector('#rrSave').onclick = async () => {
+      const next = root.querySelector('#rrNext').value.trim();
+      const msg = root.querySelector('#rrMsg');
+      if (!next) { msg.textContent = '新键名不能为空'; return; }
+      const btn = root.querySelector('#rrSave');
+      btn.disabled = true; btn.textContent = '执行中…';
+      const r = await api.redisRename({ project: S.project, connKey: S.db.connKey, db: S.db.redisDb, key: S.db.selectedKey, next, overwrite: root.querySelector('#rrOverwrite').checked });
+      if (!r || r.ok === false) { msg.textContent = dbFriendly(r); btn.disabled = false; btn.textContent = '重命名'; return; }
+      closeModal();
+      toast(`已重命名为 ${next}`, 3000);
+      S.db.selectedKey = next;
+      await redisScanMore(true);
+      await redisOpenKey(next);
+    };
+  }, { width: 760, maxHeight: '80vh' });
+}
 async function runRedisCmd() {
   const text = (S.db.redisCmd || '').trim();
   if (!text || S.db.cmdBusy) return;
@@ -2084,12 +2206,80 @@ async function s3CreateBucket(name) {
   toast(`已建桶 ${bucket}`, 3000);
   await dbReloadAll();
 }
+async function s3UploadFile() {
+  if (!S.db.write) return toast('这个对象存储连接是只读的，先到连接设置取消只读', 5000);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.onchange = async () => {
+    try {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      if (file.size > 25 * 1024 * 1024) return toast('单个对象不能超过 25 MB', 5000);
+      const defKey = `${S.db.prefix || ''}${file.name}`;
+      const key = await ask('上传对象', defKey, `将上传到 ${S.db.bucket}，也可以改对象键（可带路径）。`);
+      if (!key) return;
+      toast(`正在上传 ${file.name}…`, 3000);
+      const buf = await file.arrayBuffer();
+      const r = await api.s3Put({
+        project: S.project, connKey: S.db.connKey, bucket: S.db.bucket,
+        key, contentBase64: bytesToBase64(buf), contentType: file.type || 'application/octet-stream',
+      });
+      if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+      S.db.selectedObject = key;
+      toast(`已上传 ${key} · ${fmtBytes(r.size)}`, 4000);
+      await s3ReloadObjects();
+      await s3OpenObject(key);
+    } catch (e) {
+      toast(`上传失败：${e.message || e}`, 5000);
+    } finally {
+      input.remove();
+    }
+  };
+  input.click();
+}
+async function s3DownloadObject(key) {
+  if (!key) return;
+  toast('正在读取对象…', 2500);
+  const r = await api.s3Get({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, key });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  const saved = await api.saveBase64File({
+    title: `保存 ${r.name || key}`,
+    defaultName: r.name || key.split('/').pop() || 'download.bin',
+    contentBase64: r.contentBase64,
+  });
+  if (saved && saved.ok) toast(`已保存 ${saved.name} · ${fmtBytes(saved.size)}`, 4000);
+  else if (saved && saved.error) toast(saved.error, 5000);
+}
+async function s3CreateFolder() {
+  if (!S.db.write) return toast('这个对象存储连接是只读的，先到连接设置取消只读', 5000);
+  const name = await ask('新建目录', '', `会创建一个以 / 结尾的目录占位对象；当前前缀：${S.db.prefix || '根目录'}`);
+  if (!name) return;
+  const key = `${S.db.prefix || ''}${name}`;
+  const r = await api.s3CreateFolder({ project: S.project, connKey: S.db.connKey, bucket: S.db.bucket, key });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  toast(`已创建目录 ${r.key}`, 3500);
+  await s3ReloadObjects();
+}
+async function s3DeleteBucket(name) {
+  if (!name) return;
+  if (!S.db.write) return toast('这个对象存储连接是只读的', 4000);
+  if (!(await confirmBox('删除桶', `删除桶 ${name}？只有空桶才能删除，桶里的对象不会自动清空。`))) return;
+  const r = await api.s3DeleteBucket({ project: S.project, connKey: S.db.connKey, bucket: name });
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  toast(`已删除桶 ${name}`, 3000);
+  if (S.db.bucket === name) S.db.bucket = '';
+  await s3Reload();
+}
 async function dbReloadAll() {
   if (!S.project) return;
   const seq = ++S.db.querySeq;
   S.db.loading = true;
   S.db.ready = false;
   S.db.error = null;
+  S.db.server = null;
+  S.db.serverError = null;
   try {
     const all = await api.infraConnections(S.project);
     if (seq !== S.db.querySeq) return;
@@ -2236,7 +2426,8 @@ function dbTree() {
     <div class="db-tree-ctl">
       <select id="dbConnSel" title="切换连接">${connOptions || '<option>暂无连接</option>'}</select>
       <select id="dbDbSel" title="切换数据库">${dbOptions || '<option>暂无数据库</option>'}</select>
-      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.user)}@${esc(conn.host)}:${esc(conn.port)}</span>` : '未配置连接'}</div>
+      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.user)}@${esc(conn.host)}:${esc(conn.port)}</span>${conn.ssh && conn.ssh.enabled ? '<span>SSH</span>' : ''}` : '未配置连接'}</div>
+      <div class="db-db-actions"><button class="btn thin" data-db-newdb>＋ 新建库</button><button class="btn thin" data-db-dropdb>删除当前库</button></div>
     </div>
     <div class="db-tree-filter"><input id="dbTableFilter" placeholder="过滤表名"><button class="db-ico-btn" data-db-newtable title="新建表">＋</button><button class="db-ico-btn" data-db-reload title="刷新库表">↻</button></div>
     <div class="db-tree-list" id="dbTreeList">${dbTableTree()}</div>
@@ -2248,6 +2439,7 @@ function dbTabs() {
     <button class="dbtab ${S.db.tab === 'data' ? 'on' : ''}" data-db-tab="data">数据</button>
     <button class="dbtab ${S.db.tab === 'structure' ? 'on' : ''}" data-db-tab="structure">结构</button>
     <button class="dbtab ${S.db.tab === 'sql' ? 'on' : ''}" data-db-tab="sql">SQL 控制台</button>
+    <button class="dbtab ${S.db.tab === 'server' ? 'on' : ''}" data-db-tab="server">服务器</button>
     <span class="db-tab-hint">${S.db.table ? esc(S.db.table) : '未选表'}</span>
   </div>`;
 }
@@ -2268,6 +2460,8 @@ function dbDataBody() {
     <div class="db-actions">
       <span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span>
       <select id="dbPageSize">${[20, 50, 100, 200, 500].map((n) => `<option value="${n}" ${n === S.db.size ? 'selected' : ''}>${n} 行/页</option>`).join('')}</select>
+      <button class="btn thin" data-db-export-csv ${S.db.table ? '' : 'disabled'}>导出 CSV</button>
+      <button class="btn thin" data-db-export-sql ${S.db.table ? '' : 'disabled'}>导出 SQL</button>
       <button class="btn thin" data-db-add ${S.db.write ? '' : 'disabled'}>新建行</button>
       <button class="btn thin" data-db-refresh>刷新</button>
     </div>
@@ -2290,6 +2484,12 @@ function dbStructureBody() {
   return `<div class="db-struct-head">
     <div><b>${esc(S.db.table)}</b><span>${cols.length} 列 · ${indexes.length} 个索引</span></div>
     <div class="db-actions">
+      <button class="btn thin" data-db-ddl>查看 DDL</button>
+      <button class="btn thin" data-db-add-column ${S.db.write ? '' : 'disabled'}>加字段</button>
+      <button class="btn thin" data-db-modify-column ${S.db.write ? '' : 'disabled'}>改字段</button>
+      <button class="btn thin" data-db-drop-column ${S.db.write ? '' : 'disabled'}>删字段</button>
+      <button class="btn thin" data-db-add-index ${S.db.write ? '' : 'disabled'}>加索引</button>
+      <button class="btn thin" data-db-drop-index ${S.db.write ? '' : 'disabled'}>删索引</button>
       <button class="btn thin" data-db-rename>重命名表</button>
       <button class="btn thin" data-db-drop>删除表</button>
       <button class="btn thin" data-db-refresh-struct>刷新结构</button>
@@ -2321,12 +2521,58 @@ function dbSqlResultHtml() {
 function dbSqlBody() {
   const sql = S.db.sql || (S.db.table ? `SELECT * FROM \`${S.db.table}\` LIMIT 100;` : 'SHOW TABLES;');
   return `<div class="db-sql-head">
-    <div><b>SQL 控制台</b><span>Ctrl+Enter 执行；写操作会直接落到当前库。</span></div>
-    <div class="db-actions"><button class="btn solid" data-db-run ${S.db.sqlBusy ? 'disabled' : ''}>${S.db.sqlBusy ? '执行中…' : '运行'}</button><button class="btn thin" data-db-sql-clear>清空</button></div>
+    <div><b>SQL 控制台</b><span>Ctrl+Enter 执行；写操作会直接落到当前库。也可以打开 .sql 文件整份导入。</span></div>
+    <div class="db-actions"><button class="btn thin" data-db-open-sql>打开 .sql</button><button class="btn thin" data-db-export-query>导出结果 CSV</button><button class="btn solid" data-db-run ${S.db.sqlBusy ? 'disabled' : ''}>${S.db.sqlBusy ? '执行中…' : '运行'}</button><button class="btn thin" data-db-sql-clear>清空</button></div>
   </div>
   <textarea id="dbSql" class="db-sql-input" spellcheck="false" placeholder="SELECT * FROM ...">${esc(sql)}</textarea>
   <div id="dbSqlResult" class="db-sql-result">${dbSqlResultHtml()}</div>
   ${(S.db.history || []).length ? `<div class="db-sql-history"><b>最近执行</b>${S.db.history.slice(0, 6).map((h, i) => `<button data-db-history="${i}" title="${esc(h)}">${esc(h.replace(/\s+/g, ' ').slice(0, 120))}</button>`).join('')}</div>` : ''}`;
+}
+function dbServerBody() {
+  if (S.db.serverBusy && !S.db.server) return `<div class="db-blank"><b>正在读取服务器状态</b><span>SHOW PROCESSLIST / GLOBAL STATUS / VARIABLES…</span></div>`;
+  if (S.db.serverError) return dbErrorCard(S.db.serverError, 'data-db-server-refresh');
+  if (!S.db.server) return `<div class="db-blank"><b>服务器状态还没有读取</b><span>点右上角刷新，读取进程列表、连接数、查询计数和关键变量。</span><button class="btn thin mt-2" data-db-server-refresh>读取服务器状态</button></div>`;
+  const st = S.db.server;
+  const pick = (name) => {
+    const hit = (st.status || []).find((x) => x.name === name);
+    return hit ? hit.value : '—';
+  };
+  const vars = st.variables || [];
+  const processes = st.processlist || [];
+  const uptime = Number(pick('Uptime') || 0);
+  return `<div class="db-data-head"><div class="db-count"><b>${esc(vars.find((v) => v.name === 'version') ? vars.find((v) => v.name === 'version').value : 'MariaDB')}</b> <span>服务器状态 · ${st.elapsed || 0} ms</span></div>
+    <div class="db-actions"><button class="btn thin" data-db-server-refresh>刷新状态</button></div></div>
+  <div class="db-stats">
+    <div><b>${uptime ? Math.floor(uptime / 3600) + ' h' : '—'}</b><span>运行时长</span></div>
+    <div><b>${Number(pick('Threads_connected') || 0)}</b><span>当前连接</span></div>
+    <div><b>${Number(pick('Threads_running') || 0)}</b><span>活跃线程</span></div>
+    <div><b>${Number(pick('Queries') || 0).toLocaleString()}</b><span>累计查询</span></div>
+    <div><b>${Number(pick('Slow_queries') || 0).toLocaleString()}</b><span>慢查询</span></div>
+  </div>
+  <div class="db-split">
+    <div class="db-grid-scroll db-list-scroll"><table class="db-grid">
+      <thead><tr><th>ID</th><th>用户</th><th>来源</th><th>库</th><th>命令</th><th>秒</th><th>状态</th><th>SQL</th></tr></thead>
+      <tbody>${processes.map((p) => `<tr><td>${esc(p.id)}</td><td>${esc(p.user)}</td><td>${esc(p.host)}</td><td>${esc(p.db || '')}</td><td>${esc(p.command)}</td><td>${p.time}</td><td>${esc(p.state)}</td><td title="${esc(p.info)}">${esc(p.info ? p.info.slice(0, 80) : '')}</td></tr>`).join('') || `<tr><td colspan="8" class="db-blank-cell">没有进程，或当前账号没有 PROCESS 权限</td></tr>`}</tbody>
+    </table></div>
+    <div class="db-detail"><div class="db-index-title">关键变量</div><table class="db-grid db-kv"><tbody>${vars.map((v) => `<tr><td>${esc(v.name)}</td><td>${esc(v.value)}</td></tr>`).join('')}</tbody></table>
+    <div class="db-index-title">计数器</div><table class="db-grid db-kv"><tbody>${(st.status || []).map((v) => `<tr><td>${esc(v.name)}</td><td>${esc(v.value)}</td></tr>`).join('')}</tbody></table></div>
+  </div>
+  <div class="db-note">服务器页直接读取当前连接的真实 PROCESSLIST、GLOBAL STATUS 和 GLOBAL VARIABLES；没有权限的项会显示错误或空表。</div>`;
+}
+async function dbServerReload() {
+  if (S.db.serverBusy) return;
+  S.db.serverBusy = true;
+  S.db.serverError = null;
+  dbDraw();
+  const r = await api.dbServerInfo(dbPayload());
+  S.db.serverBusy = false;
+  if (!r || r.ok === false) {
+    S.db.serverError = r || { error: '读取服务器状态失败', hint: '当前账号可能没有 PROCESS 权限。' };
+  } else {
+    S.db.server = r;
+    S.db.serverError = null;
+  }
+  dbDraw();
 }
 function redisTree() {
   const conn = dbConn();
@@ -2338,7 +2584,7 @@ function redisTree() {
     <div class="db-tree-ctl">
       <select id="dbConnSel" title="切换 Redis 连接">${connOptions || '<option>暂无连接</option>'}</select>
       <select id="dbRedisDbSel" title="切换 Redis 库">${dbOptions}</select>
-      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.host)}:${esc(conn.port)}</span>${conn.hasPassword ? '<span>有密码</span>' : '<span>无密码</span>'}${conn.tls ? '<span>TLS</span>' : ''}` : '未配置连接'}</div>
+      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.host)}:${esc(conn.port)}</span>${conn.hasPassword ? '<span>有密码</span>' : '<span>无密码</span>'}${conn.tls ? '<span>TLS</span>' : ''}${conn.ssh && conn.ssh.enabled ? '<span>SSH</span>' : ''}` : '未配置连接'}</div>
     </div>
     <div class="db-tree-filter"><input id="dbRedisPattern" placeholder="MATCH 模式，如 user:*" value="${esc(S.db.pattern || '*')}"><button class="db-ico-btn" data-redis-scan title="按模式扫描">↻</button></div>
     <div class="db-tree-list" id="dbTreeKeyList">${redisKeyList()}</div>
@@ -2372,7 +2618,7 @@ function redisKeyPanel() {
   if (!k) return `<div class="db-detail db-detail-loading"><span class="live-spin"></span>正在读取 ${esc(S.db.selectedKey)}…</div>`;
   if (k.ok === false) return dbErrorCard(k, 'data-redis-retry-key');
   return `<div class="db-detail">
-    <div class="db-detail-head"><b>${esc(k.key)}</b><span class="db-type-pill">${esc(k.type)}</span><button class="db-mini" data-redis-copy-key title="复制键名">复制</button></div>
+    <div class="db-detail-head"><b>${esc(k.key)}</b><span class="db-type-pill">${esc(k.type)}</span><button class="db-mini" data-redis-copy-key title="复制键名">复制</button><button class="db-mini" data-redis-edit ${S.db.write ? '' : 'disabled'} title="编辑值">编辑</button><button class="db-mini" data-redis-ttl ${S.db.write ? '' : 'disabled'} title="修改 TTL">TTL</button><button class="db-mini" data-redis-rename ${S.db.write ? '' : 'disabled'} title="重命名键">重命名</button></div>
     <div class="db-detail-meta"><span>TTL ${k.ttl === -1 ? '永久' : k.ttl + ' 秒'}</span><span>内存 ${k.memory === null ? '—' : fmtBytes(k.memory)}</span></div>
     ${redisValueHtml(k)}
   </div>`;
@@ -2384,6 +2630,7 @@ function redisKeysBody() {
     <div class="db-count"><b>${(S.db.redisInfo && S.db.redisInfo.dbSize) || 0}</b> 个键 <span>本次扫到 ${(S.db.keys || []).length} 个</span><span class="db-pk">SCAN ${esc(S.db.cursor || '0')}</span></div>
     <div class="db-actions">
       <span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span>
+      <button class="btn thin" data-redis-new ${S.db.write ? '' : 'disabled'}>新建键</button>
       <button class="btn thin" data-redis-scan>重新扫描</button>
       <button class="btn thin" data-redis-scan-more ${S.db.cursor === '0' ? 'disabled' : ''}>继续扫描</button>
     </div>
@@ -2477,7 +2724,7 @@ function s3ObjectPanel() {
       ${Object.entries(o.metadata || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join('')}
     </tbody></table>
     ${o.url ? `<div class="db-detail-url"><input readonly value="${esc(o.url)}"><button class="db-mini" data-s3-copy-text="${esc(o.url)}">再复制</button></div>` : ''}
-    <div class="flex gap-2 mt-3"><button class="btn thin" data-s3-url="${esc(o.key)}">生成下载链接</button><button class="btn thin" data-s3-del="${esc(o.key)}" ${S.db.write ? '' : 'disabled'}>删除对象</button></div>
+    <div class="flex gap-2 mt-3"><button class="btn thin" data-s3-download="${esc(o.key)}">下载到本机</button><button class="btn thin" data-s3-url="${esc(o.key)}">生成下载链接</button><button class="btn thin" data-s3-del="${esc(o.key)}" ${S.db.write ? '' : 'disabled'}>删除对象</button></div>
   </div>`;
 }
 function s3ObjectsBody() {
@@ -2488,6 +2735,8 @@ function s3ObjectsBody() {
     <div class="db-count"><b>${(S.db.objects || []).length}</b> 个对象 <span>${esc(S.db.bucket)}${S.db.prefix ? ' / ' + esc(S.db.prefix) : ''}</span></div>
     <div class="db-actions">
       <span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span>
+      <button class="btn thin" data-s3-upload ${S.db.write ? '' : 'disabled'}>上传对象</button>
+      <button class="btn thin" data-s3-folder ${S.db.write ? '' : 'disabled'}>新建目录</button>
       <button class="btn thin" data-s3-load>刷新</button>
     </div>
   </div>
@@ -2507,7 +2756,7 @@ function s3BucketsBody() {
   return `<div class="db-data-head"><div class="db-count"><b>${(S.db.buckets || []).length}</b> 个桶 <span>${esc((dbConn() || {}).endpoint)}:${esc((dbConn() || {}).port)}</span></div>
     <div class="db-actions"><span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span></div></div>
   <div class="db-bucket-head"><input id="dbNewBucket" placeholder="新桶名，如 my-assets" value="${esc(S.db.bucketNew || '')}" ${S.db.write ? '' : 'disabled'}><button class="btn thin" data-s3-create-bucket ${S.db.write ? '' : 'disabled'}>新建桶</button></div>
-  <div class="db-grid-scroll"><table class="db-grid"><thead><tr><th>桶名</th><th>创建时间</th><th class="db-act-head">操作</th></tr></thead><tbody>${(S.db.buckets || []).map((b) => `<tr class="${S.db.bucket === b.name ? 'on' : ''}"><td><b>${esc(b.name)}</b></td><td>${esc(fmtTime(b.creationDate))}</td><td class="db-row-actions"><button class="db-mini" data-s3-bucket="${esc(b.name)}">${S.db.bucket === b.name ? '当前' : '打开'}</button></td></tr>`).join('')}</tbody></table></div>
+  <div class="db-grid-scroll"><table class="db-grid"><thead><tr><th>桶名</th><th>创建时间</th><th class="db-act-head">操作</th></tr></thead><tbody>${(S.db.buckets || []).map((b) => `<tr class="${S.db.bucket === b.name ? 'on' : ''}"><td><b>${esc(b.name)}</b></td><td>${esc(fmtTime(b.creationDate))}</td><td class="db-row-actions"><button class="db-mini" data-s3-bucket="${esc(b.name)}">${S.db.bucket === b.name ? '当前' : '打开'}</button><button class="db-mini danger" data-s3-del-bucket="${esc(b.name)}" ${S.db.write ? '' : 'disabled'}>删桶</button></td></tr>`).join('')}</tbody></table></div>
   <div class="db-note">连接外部 S3 时，桶列表来自服务端真实 ListBuckets；没有权限只列桶时会直接显示错误原因。</div>`;
 }
 function renderS3() {
@@ -2555,6 +2804,8 @@ function renderDB() {
         <div class="db-crumb"><span>${esc((conn && conn.label) || 'MariaDB')}</span><b>/</b><span>${esc(S.db.database || '未选库')}</span>${S.db.table ? `<b>/</b><strong>${esc(S.db.table)}</strong>` : ''}</div>
         <div class="db-top-actions">
           <label class="db-write-toggle" title="打开后允许 INSERT / UPDATE / DELETE；关掉会把这条连接标为只读"><input type="checkbox" id="dbWriteToggle" ${S.db.write ? 'checked' : ''}>允许写入</label>
+          <button class="btn thin" data-db-import>导入 SQL</button>
+          <button class="btn thin" data-db-user-manager>账号权限</button>
           <button class="btn thin" data-db-conn>连接设置</button>
           <button class="btn thin" data-db-reload>刷新</button>
         </div>
@@ -2563,7 +2814,7 @@ function renderDB() {
       ${err ? dbErrorCard(err, 'data-db-reload') : ''}
       ${dbTabs()}
       <div class="db-body">
-        ${S.db.tab === 'data' ? dbDataBody() : S.db.tab === 'structure' ? dbStructureBody() : dbSqlBody()}
+        ${S.db.tab === 'data' ? dbDataBody() : S.db.tab === 'structure' ? dbStructureBody() : S.db.tab === 'server' ? dbServerBody() : dbSqlBody()}
       </div>
     </section>
   </div>`;
@@ -2700,6 +2951,10 @@ function bindDB() {
     }
     if (t.hasAttribute('data-redis-scan')) { await redisScanMore(true); return; }
     if (t.hasAttribute('data-redis-scan-more')) { await redisScanMore(false); return; }
+    if (t.hasAttribute('data-redis-new')) { await showRedisKeyEditor('new'); return; }
+    if (t.hasAttribute('data-redis-edit')) { await showRedisKeyEditor('edit'); return; }
+    if (t.hasAttribute('data-redis-ttl')) { await showRedisTtl(); return; }
+    if (t.hasAttribute('data-redis-rename')) { await showRedisRename(); return; }
     if (t.hasAttribute('data-redis-key')) { await redisOpenKey(t.dataset.redisKey); return; }
     if (t.hasAttribute('data-redis-del')) { await redisDeleteKey(t.dataset.redisDel); return; }
     if (t.hasAttribute('data-redis-retry-key')) { await redisOpenKey(S.db.selectedKey); return; }
@@ -2711,6 +2966,9 @@ function bindDB() {
       return;
     }
     if (t.hasAttribute('data-s3-load')) { await s3ReloadObjects(); return; }
+    if (t.hasAttribute('data-s3-upload')) { await s3UploadFile(); return; }
+    if (t.hasAttribute('data-s3-folder')) { await s3CreateFolder(); return; }
+    if (t.hasAttribute('data-s3-download')) { await s3DownloadObject(t.dataset.s3Download); return; }
     if (t.hasAttribute('data-s3-object')) { await s3OpenObject(t.dataset.s3Object); return; }
     if (t.hasAttribute('data-s3-retry-object')) { await s3OpenObject(S.db.selectedObject); return; }
     if (t.hasAttribute('data-s3-url')) { await s3CopyUrl(t.dataset.s3Url); return; }
@@ -2724,14 +2982,31 @@ function bindDB() {
       return;
     }
     if (t.hasAttribute('data-s3-bucket')) { S.db.bucket = t.dataset.s3Bucket; S.db.tab = 'objects'; S.db.prefix = ''; await s3ReloadObjects(); return; }
+    if (t.hasAttribute('data-s3-del-bucket')) { await s3DeleteBucket(t.dataset.s3DelBucket); return; }
     if (t.hasAttribute('data-s3-create-bucket')) { await s3CreateBucket($('#dbNewBucket') && $('#dbNewBucket').value); return; }
     if (t.hasAttribute('data-db-table')) { await dbOpenTable(t.dataset.dbTable); return; }
     if (t.hasAttribute('data-db-tab')) {
       S.db.tab = t.dataset.dbTab;
       if (S.db.kind === 'mysql' && (S.db.tab === 'structure') && S.db.table && !S.db.structure) await dbLoadTable(S.db.table);
+      if (S.db.kind === 'mysql' && S.db.tab === 'server' && !S.db.server) { await dbServerReload(); return; }
       dbDraw();
       return;
     }
+    if (t.hasAttribute('data-db-server-refresh')) { await dbServerReload(); return; }
+    if (t.hasAttribute('data-db-export-csv')) { await exportDbData('csv', { table: true }); return; }
+    if (t.hasAttribute('data-db-export-sql')) { await exportDbData('sql', { table: true }); return; }
+    if (t.hasAttribute('data-db-export-query')) { await exportDbData('csv', { table: false }); return; }
+    if (t.hasAttribute('data-db-import')) { await showSqlImport(); return; }
+    if (t.hasAttribute('data-db-open-sql')) { await showSqlImport(); return; }
+    if (t.hasAttribute('data-db-user-manager')) { await showUserManager(); return; }
+    if (t.hasAttribute('data-db-ddl')) { await showTableDdl(); return; }
+    if (t.hasAttribute('data-db-add-column')) { await showAlterColumn('add'); return; }
+    if (t.hasAttribute('data-db-modify-column')) { await showAlterColumn('modify'); return; }
+    if (t.hasAttribute('data-db-drop-column')) { await showAlterColumn('drop'); return; }
+    if (t.hasAttribute('data-db-add-index')) { await showAlterIndex('add'); return; }
+    if (t.hasAttribute('data-db-drop-index')) { await showAlterIndex('drop'); return; }
+    if (t.hasAttribute('data-db-newdb')) { await showCreateDatabase(); return; }
+    if (t.hasAttribute('data-db-dropdb')) { await showDropDatabase(); return; }
     if (t.hasAttribute('data-db-refresh')) { await dbReloadRows(); return; }
     if (t.hasAttribute('data-db-refresh-struct')) { if (S.db.table) await dbLoadTable(S.db.table); dbDraw(); return; }
     if (t.hasAttribute('data-db-reload')) { await dbReloadAll(); return; }
@@ -2943,6 +3218,310 @@ async function dropDbTable() {
   toast(`已删除表 ${r.table}`, 3500);
   await dbReloadAll();
 }
+async function exportDbData(format, opts) {
+  const o = opts || {};
+  if (o.table && !S.db.table) return toast('先选一张表');
+  const payload = dbPayload({
+    format,
+    limit: 1000,
+    ...(o.table ? { table: S.db.table } : { sql: (($('#dbSql') || {}).value || S.db.sql || '').trim() }),
+  });
+  if (!o.table && !payload.sql) return toast('SQL 控制台是空的，先写一条查询');
+  toast('正在生成导出文件…', 2500);
+  const r = await api.dbExport(payload);
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  const saved = await api.saveTextFile({
+    title: `导出 ${r.name}`,
+    defaultName: r.name,
+    content: r.content,
+    filters: [{ name: format === 'sql' ? 'SQL 文件' : format === 'json' ? 'JSON 文件' : 'CSV 文件', extensions: [format === 'sql' ? 'sql' : format === 'json' ? 'json' : 'csv'] }],
+  });
+  if (saved && saved.ok) toast(`已导出 ${r.rows} 行 · ${fmtBytes(saved.size)}`, 4000);
+  else if (saved && saved.error) toast(saved.error, 5000);
+}
+async function showSqlImport() {
+  const file = await api.openTextFile({ title: '选择 .sql 文件', filters: [{ name: 'SQL 文件', extensions: ['sql', 'txt'] }, { name: '所有文件', extensions: ['*'] }] });
+  if (!file) return;
+  if (file.ok === false) return toast(file.hint || file.error || '打开文件失败', 6000);
+  const preview = String(file.content || '').slice(0, 3000);
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="text-[14px] font-semibold">导入 SQL 文件</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">${esc(file.name)} · ${fmtBytes(file.size)} · 目标是 ${esc(S.db.database || '当前库')}。导入前会先检查写入权限。</div>
+    <pre class="db-sql-preview">${esc(preview)}${String(file.content || '').length > preview.length ? '\n…预览已截断' : ''}</pre>
+    <div class="db-form-msg" id="sqliMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="sqliCancel">取消</button><button class="btn thin" id="sqliLoad">仅载入编辑器</button><button class="btn solid" id="sqliRun">执行导入</button></div>
+  </div>`, (root) => {
+    root.querySelector('#sqliCancel').onclick = closeModal;
+    root.querySelector('#sqliLoad').onclick = () => {
+      S.db.sql = String(file.content || '');
+      S.db.tab = 'sql';
+      closeModal();
+      dbDraw();
+    };
+    root.querySelector('#sqliRun').onclick = async () => {
+      if (!S.db.write) return toast('当前连接是只读的，先打开“允许写入”', 5000);
+      const btn = root.querySelector('#sqliRun');
+      const msg = root.querySelector('#sqliMsg');
+      btn.disabled = true;
+      btn.textContent = '导入中…';
+      msg.textContent = '正在执行，文件越大越久，请不要关闭窗口。';
+      const r = await api.dbImportSql(dbPayload({ sql: String(file.content || ''), continueOnError: false }));
+      if (!r) { msg.textContent = '导入失败'; btn.disabled = false; btn.textContent = '执行导入'; return; }
+      const failed = r.failed;
+      msg.textContent = r.ok ? `导入完成：${r.done} / ${r.total} 条语句，用时 ${r.elapsed} ms` : `已执行 ${r.done} / ${r.total} 条，第 ${failed ? failed.index : '?'} 条失败：${failed ? failed.error : (r.hint || '')}`;
+      btn.disabled = false;
+      btn.textContent = '执行导入';
+      if (r.ok) {
+        toast(`SQL 导入完成 · ${r.done} 条语句`, 5000);
+        await dbReloadAll();
+      }
+    };
+  }, { width: 900, maxHeight: '88vh' });
+}
+async function showTableDdl() {
+  if (!S.db.table) return;
+  const r = await api.dbTableDdl(dbPayload({ table: S.db.table }));
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5000);
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="flex items-center gap-2"><div class="text-[14px] font-semibold">${esc(S.db.table)} · DDL</div><button class="db-mini ml-auto" id="ddlCopy">复制</button></div>
+    <pre class="db-sql-preview">${esc(r.ddl)}</pre>
+    <div class="flex justify-end mt-3"><button class="btn thin" id="ddlClose">关闭</button></div>
+  </div>`, (root) => {
+    root.querySelector('#ddlClose').onclick = closeModal;
+    root.querySelector('#ddlCopy').onclick = () => copyText(r.ddl);
+  }, { width: 900, maxHeight: '88vh' });
+}
+function alterColumnRow(c, i) {
+  return `<div class="ac-row" data-ac-row="${i}">
+    <input data-ac="name" placeholder="字段名" value="${esc(c.name || '')}">
+    <input data-ac="type" placeholder="类型，如 VARCHAR(255)" value="${esc(c.type || 'VARCHAR(255)')}">
+    <label class="ct-check"><input type="checkbox" data-ac="nullable" ${c.nullable ? 'checked' : ''}>可空</label>
+    <label class="ct-check"><input type="checkbox" data-ac="auto" ${c.autoIncrement ? 'checked' : ''}>自增</label>
+    <input data-ac="default" placeholder="默认值" value="${esc(c.default || '')}">
+    <input data-ac="comment" placeholder="注释" value="${esc(c.comment || '')}">
+  </div>`;
+}
+async function showAlterColumn(mode) {
+  if (!S.db.table) return;
+  if (!S.db.structure) await dbLoadTable(S.db.table);
+  const cols = (S.db.structure && S.db.structure.columns) || [];
+  if (!cols.length) return toast('没有读到字段结构');
+  if (mode !== 'add' && !cols.length) return toast('没有可修改的字段');
+  let selected = cols[0];
+  const title = mode === 'add' ? '新增字段' : mode === 'modify' ? '修改字段' : '删除字段';
+  const colOptions = cols.map((c) => `<option value="${esc(c.name)}">${esc(c.name)} · ${esc(c.type)}</option>`).join('');
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="text-[14px] font-semibold">${title} · ${esc(S.db.table)}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">修改字段会执行 ALTER TABLE CHANGE COLUMN，类型和默认值都会按这里重写。</div>
+    ${mode === 'drop' ? `<label class="db-field"><span>要删除的字段</span><select id="acDrop">${colOptions}</select></label>` : `
+      ${mode === 'modify' ? `<label class="db-field"><span>选择已有字段</span><select id="acPick">${colOptions}</select></label>` : ''}
+      <div id="acEditor">${alterColumnRow(mode === 'add' ? { name: '', type: 'VARCHAR(255)', nullable: true } : selected, 0)}</div>
+      ${mode === 'add' ? `<label class="db-field"><span>位置</span><input id="acAfter" placeholder="留空为末尾，或填一个已有字段名，表示放在它后面"></label>` : ''}
+    `}
+    <div class="db-form-msg" id="acMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="acCancel">取消</button><button class="btn solid" id="acSave">${title}</button></div>
+  </div>`, (root) => {
+    const fill = (c) => {
+      const editor = root.querySelector('.ac-row');
+      if (!editor || !c) return;
+      editor.querySelector('[data-ac="name"]').value = c.name || '';
+      editor.querySelector('[data-ac="type"]').value = c.type || 'VARCHAR(255)';
+      editor.querySelector('[data-ac="nullable"]').checked = !!c.nullable;
+      editor.querySelector('[data-ac="auto"]').checked = !!c.autoIncrement;
+      editor.querySelector('[data-ac="default"]').value = c.default === null || c.default === undefined ? '' : c.default;
+      editor.querySelector('[data-ac="comment"]').value = c.comment || '';
+    };
+    const pick = root.querySelector('#acPick');
+    if (pick) pick.onchange = () => {
+      selected = cols.find((c) => c.name === pick.value) || selected;
+      fill(selected);
+    };
+    root.querySelector('#acCancel').onclick = closeModal;
+    root.querySelector('#acSave').onclick = async () => {
+      const msg = root.querySelector('#acMsg');
+      let action;
+      if (mode === 'drop') {
+        const name = root.querySelector('#acDrop').value;
+        if (!(await confirmBox('删除字段', `从 ${S.db.table} 删除字段 ${name}？这一列的数据会一起删除。`))) return;
+        action = { type: 'drop', name };
+      } else {
+        const row = root.querySelector('.ac-row');
+        const name = row.querySelector('[data-ac="name"]').value.trim();
+        const type = row.querySelector('[data-ac="type"]').value.trim();
+        if (!name || !type) { msg.textContent = '字段名和类型都要填'; return; }
+        action = {
+          type: mode, name, dataType: type,
+          nullable: row.querySelector('[data-ac="nullable"]').checked,
+          autoIncrement: row.querySelector('[data-ac="auto"]').checked,
+          default: row.querySelector('[data-ac="default"]').value.trim(),
+          comment: row.querySelector('[data-ac="comment"]').value.trim(),
+        };
+        if (mode === 'add') action.after = (root.querySelector('#acAfter').value || '').trim();
+        if (mode === 'modify' && name !== selected.name) action.newName = name;
+        if (mode === 'modify') action.name = selected.name;
+      }
+      const btn = root.querySelector('#acSave');
+      btn.disabled = true; btn.textContent = '执行中…';
+      const r = await api.dbAlterTable(dbPayload({ table: S.db.table, actions: [action] }));
+      if (!r || r.ok === false) {
+        msg.textContent = dbFriendly(r);
+        btn.disabled = false; btn.textContent = title;
+        return;
+      }
+      closeModal();
+      toast(`已执行：${r.clauses[0]}`, 4500);
+      S.db.structure = null;
+      await dbReloadAll();
+    };
+  }, { width: 900, maxHeight: '88vh' });
+}
+async function showAlterIndex(mode) {
+  if (!S.db.table) return;
+  if (!S.db.structure) await dbLoadTable(S.db.table);
+  const indexes = (S.db.structure && S.db.structure.indexes) || [];
+  if (mode === 'drop' && !indexes.length) return toast('这张表还没有可删除的索引');
+  const opts = indexes.map((x) => `<option value="${esc(x.name)}">${esc(x.name)} · ${esc(x.columns.join(', '))}</option>`).join('');
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="text-[14px] font-semibold">${mode === 'add' ? '新增索引' : '删除索引'} · ${esc(S.db.table)}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">${mode === 'add' ? '索引用逗号分隔列名，可勾选唯一索引。' : '删除索引不会删除数据。'}</div>
+    ${mode === 'add' ? `<div class="db-form-grid"><label class="db-field"><span>索引名（可选）</span><input id="aiName" placeholder="idx_name"></label><label class="db-field"><span>列名</span><input id="aiCols" placeholder="name, created_at"></label><label class="ct-check"><input type="checkbox" id="aiUnique">唯一索引</label></div>` : `<label class="db-field"><span>索引</span><select id="aiDrop">${opts}</select></label>`}
+    <div class="db-form-msg" id="aiMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="aiCancel">取消</button><button class="btn solid" id="aiSave">${mode === 'add' ? '加索引' : '删索引'}</button></div>
+  </div>`, (root) => {
+    root.querySelector('#aiCancel').onclick = closeModal;
+    root.querySelector('#aiSave').onclick = async () => {
+      const msg = root.querySelector('#aiMsg');
+      let action;
+      if (mode === 'add') {
+        const cols = (root.querySelector('#aiCols').value || '').split(',').map((x) => x.trim()).filter(Boolean);
+        if (!cols.length) { msg.textContent = '至少填一列'; return; }
+        action = { type: 'addIndex', name: root.querySelector('#aiName').value.trim(), columns: cols, unique: root.querySelector('#aiUnique').checked };
+      } else {
+        action = { type: 'dropIndex', name: root.querySelector('#aiDrop').value };
+      }
+      const btn = root.querySelector('#aiSave');
+      btn.disabled = true; btn.textContent = '执行中…';
+      const r = await api.dbAlterTable(dbPayload({ table: S.db.table, actions: [action] }));
+      if (!r || r.ok === false) {
+        msg.textContent = dbFriendly(r);
+        btn.disabled = false; btn.textContent = mode === 'add' ? '加索引' : '删索引';
+        return;
+      }
+      closeModal();
+      toast(`已执行：${r.clauses[0]}`, 4000);
+      S.db.structure = null;
+      await dbReloadAll();
+    };
+  }, { width: 860, maxHeight: '88vh' });
+}
+async function showCreateDatabase() {
+  const name = await ask('新建数据库', 'cbs_new_db', '会执行 CREATE DATABASE，字符集 utf8mb4。');
+  if (!name) return;
+  const r = await api.dbCreateDatabase(dbPayload({ name }));
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  S.db.database = name;
+  toast(`已创建数据库 ${name}`, 3500);
+  await dbReloadAll();
+}
+async function showDropDatabase() {
+  if (!S.db.database) return;
+  if (!(await confirmBox('删除数据库', `DROP DATABASE ${S.db.database}？库里所有表和所有数据都会删除，不能撤销。`))) return;
+  if (!(await confirmBox('再次确认', `真的要删除整个数据库 ${S.db.database}？`))) return;
+  const r = await api.dbDropDatabase(dbPayload({ name: S.db.database }));
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  S.db.database = '';
+  S.db.table = '';
+  toast(`已删除数据库 ${r.name}`, 3500);
+  await dbReloadAll();
+}
+function userPrivChecks() {
+  const privs = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'INDEX', 'CREATE VIEW', 'SHOW VIEW', 'EXECUTE', 'TRIGGER', 'ALL PRIVILEGES'];
+  return privs.map((p) => `<label class="ct-check"><input type="checkbox" value="${p}" data-du-priv>${p}</label>`).join('');
+}
+async function showUserManager() {
+  modal(`<div class="db-modal p-4" style="width:100%;max-width:none">
+    <div class="flex items-center gap-2"><div><div class="text-[14px] font-semibold">账号与权限</div><div class="text-[11px] text-neutral-500 mt-1">直接操作当前 MariaDB 的 mysql.user 和 GRANT；需要 CREATE USER / GRANT 权限。</div></div><button class="db-mini ml-auto" id="duRefresh">刷新</button></div>
+    <div id="duList" class="db-grid-scroll mt-3"><div class="db-blank"><b>正在读取账号</b><span>SHOW GRANTS FOR 每个账号…</span></div></div>
+    <div class="db-index-title">账号操作</div>
+    <div class="db-form-grid">
+      <label class="db-field"><span>从已有账号选择</span><select id="duAccount"><option value="">手动填写</option></select></label>
+      <label class="db-field"><span>用户名</span><input id="duUser" placeholder="cbs_user"></label>
+      <label class="db-field"><span>Host</span><input id="duHost" value="%" placeholder="% 或 localhost"></label>
+      <label class="db-field"><span>密码</span><input id="duPass" type="password" placeholder="新建账号或改密码时填写"></label>
+      <label class="db-field"><span>授权库</span><input id="duDb" value="clickbuild" placeholder="* 表示所有库"></label>
+      <label class="db-field"><span>授权表</span><input id="duTable" value="*" placeholder="* 表示整个库"></label>
+    </div>
+    <div class="db-index-title">授权范围</div>
+    <div class="db-priv-grid">${userPrivChecks()}</div>
+    <div class="db-form-msg" id="duMsg"></div>
+    <div class="flex flex-wrap gap-2 mt-4"><button class="btn thin" id="duCreate">新建账号</button><button class="btn thin" id="duGrant">授权</button><button class="btn thin" id="duRevoke">收回权限</button><button class="btn thin" id="duPassword">改密码</button><button class="btn thin danger" id="duDrop">删除账号</button><button class="btn thin ml-auto" id="duClose">关闭</button></div>
+  </div>`, (root) => {
+    const msg = root.querySelector('#duMsg');
+    const list = root.querySelector('#duList');
+    const account = root.querySelector('#duAccount');
+    let users = [];
+    const setMsg = (text) => { msg.textContent = text || ''; };
+    const read = () => ({
+      user: root.querySelector('#duUser').value.trim() || (account.value ? account.value.split('@')[0] : ''),
+      host: root.querySelector('#duHost').value.trim() || (account.value ? account.value.split('@').slice(1).join('@') : '%') || '%',
+      password: root.querySelector('#duPass').value,
+    });
+    const load = async () => {
+      list.innerHTML = '<div class="db-blank"><b>正在读取账号</b><span>SHOW GRANTS FOR 每个账号…</span></div>';
+      const r = await api.dbUsers(dbPayload());
+      if (!r || r.ok === false) {
+        list.innerHTML = `<div class="db-error"><div><b>读取账号失败</b><div>${esc(dbFriendly(r))}</div></div></div>`;
+        return;
+      }
+      users = r.users || [];
+      account.innerHTML = '<option value="">手动填写</option>' + users.map((u) => `<option value="${esc(u.user)}@${esc(u.host)}">${esc(u.user)}@${esc(u.host)}</option>`).join('');
+      list.innerHTML = `<table class="db-grid"><thead><tr><th>用户</th><th>Host</th><th>授权</th></tr></thead><tbody>${users.map((u) => `<tr><td><b>${esc(u.user)}</b></td><td>${esc(u.host || '%')}</td><td>${(u.grants || []).map((g) => `<code class="db-grant">${esc(g)}</code>`).join('<br>')}</td></tr>`).join('') || '<tr><td colspan="3">没有账号</td></tr>'}</tbody></table>`;
+    };
+    account.onchange = () => {
+      if (!account.value) return;
+      const at = account.value.lastIndexOf('@');
+      root.querySelector('#duUser').value = account.value.slice(0, at);
+      root.querySelector('#duHost').value = account.value.slice(at + 1) || '%';
+    };
+    root.querySelector('#duRefresh').onclick = load;
+    root.querySelector('#duClose').onclick = closeModal;
+    const act = async (action) => {
+      const v = read();
+      if (!v.user) { setMsg('先填用户名'); return; }
+      const base = { ...v, action };
+      if (action === 'grant' || action === 'revoke') {
+        base.privileges = [...root.querySelectorAll('[data-du-priv]:checked')].map((x) => x.value);
+        if (!base.privileges.length) { setMsg('至少勾选一项权限'); return; }
+        base.database = root.querySelector('#duDb').value.trim() || '*';
+        base.table = root.querySelector('#duTable').value.trim() || '*';
+      }
+      if (action === 'drop') {
+        const yes = await confirmBox('删除账号', `DROP USER ${v.user}@${v.host}？`);
+        if (!yes) { await showUserManager(); return; }
+      }
+      setMsg('执行中…');
+      const r = await api.dbUserAction(dbPayload(base));
+      if (!r || r.ok === false) {
+        if (action === 'drop') { toast(dbFriendly(r), 6000); await showUserManager(); return; }
+        setMsg(dbFriendly(r)); return;
+      }
+      if (action === 'drop') {
+        toast(`已删除账号 ${v.user}@${v.host}`, 3500);
+        await showUserManager();
+        return;
+      }
+      setMsg('已执行');
+      root.querySelector('#duPass').value = '';
+      await load();
+    };
+    root.querySelector('#duCreate').onclick = () => act('create');
+    root.querySelector('#duGrant').onclick = () => act('grant');
+    root.querySelector('#duRevoke').onclick = () => act('revoke');
+    root.querySelector('#duPassword').onclick = () => act('password');
+    root.querySelector('#duDrop').onclick = () => act('drop');
+    load();
+  }, { width: 980, maxHeight: '88vh' });
+}
 function showDbConnection(key, isNew, kind) {
   const k = ['mysql', 'redis', 's3'].includes(kind) ? kind : (S.db.kind || 'mysql');
   const raw = (S.project.connections && S.project.connections[k]) || [];
@@ -2951,6 +3530,7 @@ function showDbConnection(key, isNew, kind) {
     host: k === 'mysql' ? '127.0.0.1' : '127.0.0.1', endpoint: '127.0.0.1',
     port: k === 'mysql' ? 3306 : k === 'redis' ? 6379 : 9000,
     user: 'root', password: '', database: 'clickbuild', db: 0, tls: false,
+    sshEnabled: false, sshHost: '', sshPort: 22, sshUser: '', sshPassword: '', sshKeyPath: '', sshPassphrase: '',
     useSSL: false, region: '', accessKey: '', secretKey: '', bucket: 'clickbuild', readonly: false,
   } : (dbConn() || {}));
   const c = hit || {};
@@ -2975,6 +3555,15 @@ function showDbConnection(key, isNew, kind) {
       <label class="dc-s3 ${k === 's3' ? '' : 'hidden'}">默认桶 <input id="dcBucket" value="${esc(c.bucket || 'clickbuild')}" placeholder="clickbuild"></label>
       <label class="ct-check dc-redis ${k === 'redis' ? '' : 'hidden'}"><input type="checkbox" id="dcTls" ${c.tls ? 'checked' : ''}>Redis 使用 TLS</label>
       <label class="ct-check dc-s3 ${k === 's3' ? '' : 'hidden'}"><input type="checkbox" id="dcSsl" ${c.useSSL ? 'checked' : ''}>对象存储使用 HTTPS</label>
+      <label class="ct-check dc-ssh ${k === 's3' ? 'hidden' : ''}"><input type="checkbox" id="dcSsh" ${c.sshEnabled ? 'checked' : ''}>通过 SSH 隧道连接</label>
+      <div class="dc-ssh-fields dc-ssh ${k === 's3' ? 'hidden' : ''}">
+        <label>SSH 主机 <input id="dcSshHost" value="${esc(c.sshHost || '')}" placeholder="跳板机地址"></label>
+        <label>SSH 端口 <input id="dcSshPort" value="${esc(c.sshPort || 22)}" placeholder="22"></label>
+        <label>SSH 用户 <input id="dcSshUser" value="${esc(c.sshUser || '')}" placeholder="root"></label>
+        <label>SSH 密码 <input id="dcSshPass" type="password" value="${esc(c.sshPassword || '')}" placeholder="用私钥时可留空"></label>
+        <label class="dc-wide">SSH 私钥文件 <input id="dcSshKeyPath" value="${esc(c.sshKeyPath || '')}" placeholder="C:\\Users\\me\\.ssh\\id_ed25519"></label>
+        <label>私钥口令 <input id="dcSshPassphrase" type="password" value="${esc(c.sshPassphrase || '')}" placeholder="没有就留空"></label>
+      </div>
       <label class="ct-check conn-ro"><input type="checkbox" id="dcReadonly" ${c.readonly ? 'checked' : ''}>标记为只读</label>
     </div>
     <div class="db-form-msg" id="dcMsg"></div>
@@ -2986,6 +3575,9 @@ function showDbConnection(key, isNew, kind) {
       root.querySelectorAll('.dc-mysql').forEach((el) => el.classList.toggle('hidden', now !== 'mysql'));
       root.querySelectorAll('.dc-redis').forEach((el) => el.classList.toggle('hidden', now !== 'redis'));
       root.querySelectorAll('.dc-s3').forEach((el) => el.classList.toggle('hidden', now !== 's3'));
+      root.querySelectorAll('.dc-ssh').forEach((el) => el.classList.toggle('hidden', now === 's3'));
+      const ssh = root.querySelector('#dcSsh');
+      if (ssh) ssh.disabled = now === 's3';
     };
     if (root.querySelector('#dcKind')) root.querySelector('#dcKind').onchange = () => {
       const now = curKind();
@@ -3003,6 +3595,13 @@ function showDbConnection(key, isNew, kind) {
         key: root.querySelector('#dcKey').value.trim(),
         label: root.querySelector('#dcLabel').value.trim() || root.querySelector('#dcKey').value.trim() || (now === 'mysql' ? 'MariaDB' : now === 'redis' ? 'Redis' : '对象存储'),
         readonly: root.querySelector('#dcReadonly').checked,
+        sshEnabled: now !== 's3' && root.querySelector('#dcSsh').checked,
+        sshHost: root.querySelector('#dcSshHost').value.trim(),
+        sshPort: Number(root.querySelector('#dcSshPort').value) || 22,
+        sshUser: root.querySelector('#dcSshUser').value.trim(),
+        sshPassword: root.querySelector('#dcSshPass').value,
+        sshKeyPath: root.querySelector('#dcSshKeyPath').value.trim(),
+        sshPassphrase: root.querySelector('#dcSshPassphrase').value,
       };
       if (now === 'mysql') return { ...base, host, port, user: root.querySelector('#dcUser').value.trim() || 'root', password: root.querySelector('#dcPass').value, database: root.querySelector('#dcDb').value.trim() };
       if (now === 'redis') return { ...base, host, port, password: root.querySelector('#dcRedisPass').value, db: Number(root.querySelector('#dcRedisDb').value) || 0, tls: root.querySelector('#dcTls').checked };

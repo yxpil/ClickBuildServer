@@ -39,6 +39,29 @@
 
 每个接口、每条路由都可以单独改 SQL、单独开缓存、单独限流/定时窗/熔断；互不牵连。
 
+## SQL 文件、表结构、账号与 SSH 都进工作台（1.1.91）
+
+这一版把数据库工作台往 HeidiSQL / Navicat 的日常操作再推一步：数据页能导入导出，结构页能改字段和索引，连接页能走 SSH，账号和服务器状态也有独立入口；Redis 与对象存储从“能看”补成“能写”。
+
+- **SQL 文件导入导出**：数据页新增“导入 SQL”“导出 CSV”“导出 SQL”。导入先读文件并在弹窗里列出语句，确认后逐条执行并返回成功 / 失败数和耗时；导出走原生保存框，CSV 带列头，SQL 输出可回放的 `INSERT` 文本。
+- **表结构直接改**：结构页不只看字段和索引。可查看 `SHOW CREATE TABLE` DDL，新增字段、修改字段类型 / 默认值 / 注释 / 可空、删除字段，新增或删除索引；执行前生成 SQL 预览，失败原样回显数据库错误。
+- **账号与服务器状态**：账号权限弹窗列出 `mysql.user` 与 `SHOW GRANTS`，可新建账号、`GRANT / REVOKE`、改密码、删除账号；授权库填 `*` 时不再误当连接库。服务器页展示版本、运行时长、连接数、线程、查询量、慢查询、InnoDB 缓存等运行指标。
+- **SSH 隧道**：MySQL / Redis 连接可勾选“通过 SSH 隧道连接”，支持密码、私钥文件和私钥口令；每次连接临时开本地端口转发，操作结束立即关闭，不把跳板机常驻在后台。
+- **Redis / S3 真正的写操作**：Redis 支持新建 string / hash / list / set / zset、编辑值、改 TTL、重命名、删除；S3 支持上传对象、新建目录、下载到本机、删除对象 / 桶，桶和前缀导航保持不变。
+- **真实验收**：MariaDB 13306 上建表、`ALTER TABLE` 加字段 / 索引、CSV / SQL 导出、服务器状态；Redis 16379 db5 创建 / 改 TTL / 重命名；RustFS 19000 上传 / 建目录 / 下载 / 删桶。账号权限在独立 MariaDB 13308 上跑通新建、`GRANT SELECT ON *.*`、改密、`REVOKE`、删除。SSH 用本机 `ssh2` 测试服务分别跑通密码和私钥隧道，并在 Electron 连接设置里连回 13306。完整 `npm run test:ci` **22/22**；`test-db-ui` **27/27**、`test-infra-ui` **29/29**。
+
+![数据页：导入 SQL、导出 CSV / SQL 与可编辑行](docs/screenshots/db-data-advanced.png)
+
+![结构页：DDL、加改删字段与索引](docs/screenshots/db-structure-edit.png)
+
+![账号与权限：mysql.user、GRANT / REVOKE、改密与删除](docs/screenshots/db-accounts.png)
+
+![SSH 隧道：密码、私钥与私钥口令](docs/screenshots/db-ssh-tunnel.png)
+
+![Redis 写操作：新建 / 编辑 / TTL / 重命名](docs/screenshots/db-redis-write.png)
+
+![对象存储写操作：上传、建目录、下载与删桶](docs/screenshots/db-s3-write.png)
+
 ## MariaDB / Redis / 对象存储都能自定义（1.1.90）
 
 这一版把数据库工作台从“只能看应用内置的三套服务”改成**三类连接都能填外部地址与凭据**。内置的 MariaDB 13306、Redis 16379、RustFS 19000 只作为默认值，不再限制连接目标。

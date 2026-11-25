@@ -245,6 +245,59 @@ function registerIpc() {
   ipcMain.handle('iface:db:create-table', (e, payload) => dbAdmin.createTable((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:db:drop-table', (e, payload) => dbAdmin.dropTable((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:db:rename-table', (e, payload) => dbAdmin.renameTable((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:table-ddl', (e, payload) => dbAdmin.tableDdl((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:export', (e, payload) => dbAdmin.exportData((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:import-sql', (e, payload) => dbAdmin.importSql((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:alter-table', (e, payload) => dbAdmin.alterTable((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:users', (e, payload) => dbAdmin.listUsers((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:user-action', (e, payload) => dbAdmin.userAction((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:create-database', (e, payload) => dbAdmin.createDatabase((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:drop-database', (e, payload) => dbAdmin.dropDatabase((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:db:server-info', (e, payload) => dbAdmin.serverInfo((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:file:open-text', async (e, opts) => {
+    const o = opts || {};
+    const r = await dialog.showOpenDialog({
+      title: o.title || '打开文本文件',
+      properties: ['openFile'],
+      filters: o.filters || [{ name: 'SQL / 文本', extensions: ['sql', 'txt', 'csv', 'json'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    try {
+      const file = r.filePaths[0];
+      const st = fs.statSync(file);
+      if (st.size > 12 * 1024 * 1024) return { ok: false, error: '文件超过 12 MB', hint: '拆成小文件再打开' };
+      return { ok: true, path: file, name: path.basename(file), size: st.size, content: fs.readFileSync(file, 'utf8') };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:file:save-text', async (e, opts) => {
+    const o = opts || {};
+    const r = await dialog.showSaveDialog({
+      title: o.title || '保存文件',
+      defaultPath: path.join(store.defaultGeneratedRoot(), o.defaultName || 'export.txt'),
+      buttonLabel: '保存',
+      filters: o.filters || [{ name: '文本', extensions: ['txt'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    try {
+      fs.mkdirSync(path.dirname(r.filePath), { recursive: true });
+      fs.writeFileSync(r.filePath, String(o.content || ''), 'utf8');
+      return { ok: true, path: r.filePath, name: path.basename(r.filePath), size: fs.statSync(r.filePath).size };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('iface:file:save-base64', async (e, opts) => {
+    const o = opts || {};
+    const r = await dialog.showSaveDialog({
+      title: o.title || '保存文件',
+      defaultPath: path.join(store.defaultGeneratedRoot(), o.defaultName || 'download.bin'),
+      buttonLabel: '保存',
+    });
+    if (r.canceled || !r.filePath) return null;
+    try {
+      fs.mkdirSync(path.dirname(r.filePath), { recursive: true });
+      fs.writeFileSync(r.filePath, Buffer.from(String(o.contentBase64 || ''), 'base64'));
+      return { ok: true, path: r.filePath, name: path.basename(r.filePath), size: fs.statSync(r.filePath).size };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
   ipcMain.handle('iface:infra:connections', (e, project) => infraAdmin.allConnections(project || {}));
   ipcMain.handle('iface:infra:test', (e, payload) => infraAdmin.test((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:redis:overview', (e, payload) => infraAdmin.redisOverview((payload && payload.project) || {}, payload || {}));
@@ -252,12 +305,19 @@ function registerIpc() {
   ipcMain.handle('iface:redis:key', (e, payload) => infraAdmin.redisKey((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:redis:command', (e, payload) => infraAdmin.redisCommand((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:redis:delete', (e, payload) => infraAdmin.redisDelete((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:save', (e, payload) => infraAdmin.redisSaveKey((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:expire', (e, payload) => infraAdmin.redisExpire((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:redis:rename', (e, payload) => infraAdmin.redisRename((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:s3:buckets', (e, payload) => infraAdmin.s3Buckets((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:s3:objects', (e, payload) => infraAdmin.s3Objects((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:s3:stat', (e, payload) => infraAdmin.s3Stat((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:s3:url', (e, payload) => infraAdmin.s3Url((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:s3:delete', (e, payload) => infraAdmin.s3Delete((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:s3:create-bucket', (e, payload) => infraAdmin.s3CreateBucket((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:put', (e, payload) => infraAdmin.s3Put((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:get', (e, payload) => infraAdmin.s3Get((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:create-folder', (e, payload) => infraAdmin.s3CreateFolder((payload && payload.project) || {}, payload || {}));
+  ipcMain.handle('iface:s3:delete-bucket', (e, payload) => infraAdmin.s3DeleteBucket((payload && payload.project) || {}, payload || {}));
   ipcMain.handle('iface:blank', (e, opts) => spec.newIface((opts && opts.name) || '新接口', (opts && opts.categoryId) || 'biz', opts || {}));
   ipcMain.handle('iface:ident', (e, name, prefix) => spec.safeIdent(name, prefix || 'tbl'));
   ipcMain.handle('iface:tableImport', (e, file) => tableImport.parseFile(file));

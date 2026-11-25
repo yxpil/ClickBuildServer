@@ -5,6 +5,7 @@
 // 这是 HeidiSQL / Navicat 的“基本可用集”：先保证真实读写，不做只读展示。
 const mysql = require('mysql2/promise');
 const spec = require('./spec');
+const sshTunnel = require('./ssh-tunnel');
 const { normalizeCell } = require('./table-data');
 
 const DEFAULT_SIZE = 50;
@@ -45,6 +46,7 @@ function connectionsOf(project) {
     user: c.user || 'root',
     database: c.database || 'clickbuild',
     readonly: !!c.readonly,
+    ssh: sshTunnel.sshSummary(c),
   }));
 }
 
@@ -58,6 +60,9 @@ function resolveConn(project, connKey, database) {
     host: hit.host || '127.0.0.1', port: Number(hit.port || 3306),
     user: hit.user || 'root', database: hit.database || 'clickbuild',
     readonly: !!hit.readonly,
+    sshEnabled: !!hit.sshEnabled, sshHost: hit.sshHost || '', sshPort: Number(hit.sshPort || 22),
+    sshUser: hit.sshUser || '', sshPassword: hit.sshPassword || '', sshKeyPath: hit.sshKeyPath || '',
+    sshKey: hit.sshKey || '', sshPassphrase: hit.sshPassphrase || '',
   };
   const db = database === undefined || database === null ? conn.database : database;
   return { project: p, conn, password: hit.password || '', database: db };
@@ -88,9 +93,14 @@ function friendlyError(e, ctx) {
 
 async function open(ctx, opts) {
   const o = opts || {};
+  let tunnel = null;
+  if (ctx.conn.sshEnabled) {
+    tunnel = await sshTunnel.openTunnel(ctx.conn, ctx.conn.host, ctx.conn.port);
+    ctx.tunnel = tunnel;
+  }
   const c = await mysql.createConnection({
-    host: ctx.conn.host,
-    port: ctx.conn.port,
+    host: tunnel ? tunnel.host : ctx.conn.host,
+    port: tunnel ? tunnel.port : ctx.conn.port,
     user: ctx.conn.user,
     password: ctx.password || '',
     database: ctx.database || undefined,
@@ -127,6 +137,7 @@ async function withConn(project, opts, fn) {
     return friendlyError(e, ctx);
   } finally {
     if (conn) { try { await conn.end(); } catch (_) { /* 已断开 */ } }
+    if (ctx && ctx.tunnel) { try { ctx.tunnel.close(); } catch (_) { /* 已关闭 */ } }
   }
 }
 
@@ -512,8 +523,338 @@ async function renameTable(project, opts) {
   });
 }
 
+function safeFileName(name, ext) {
+  const base = String(name || 'export').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 80) || 'export';
+  return ext && !new RegExp(`\\.${ext}$`, 'i').test(base) ? `${base}.${ext}` : base;
+}
+function csvCell(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function stamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+async function tableDdl(project, opts) {
+  const o = opts || {};
+  const table = ident(o.table);
+  if (!table) throw new Error('表名不合法');
+  return withConn(project, o, async (conn, ctx) => {
+    const [rows] = await conn.query(`SHOW CREATE TABLE ${q(table)}`);
+    const row = (rows && rows[0]) || {};
+    return { ok: true, table, ddl: row['Create Table'] || row['Create View'] || '' };
+  });
+}
+
+async function exportData(project, opts) {
+  const o = opts || {};
+  const format = ['csv', 'sql', 'json'].includes(String(o.format || '').toLowerCase()) ? String(o.format).toLowerCase() : 'csv';
+  const limit = Math.max(1, Math.min(5000, Number(o.limit || 1000)));
+  const table = o.table ? ident(o.table) : '';
+  const sql = String(o.sql || '').trim();
+  if (!table && !sql) throw new Error('缺少表名或查询 SQL');
+  return withConn(project, o, async (conn, ctx) => {
+    let columns = [];
+    let rows = [];
+    let source = table;
+    let ddl = '';
+    if (table) {
+      const [cols] = await conn.query(`SHOW FULL COLUMNS FROM ${q(table)}`);
+      columns = cols.map((c) => c.Field);
+      const [data, fields] = await conn.query(`SELECT * FROM ${q(table)} LIMIT ${limit}`);
+      if (!columns.length && fields) columns = fields.map((f) => f.name);
+      rows = data;
+      if (format === 'sql') {
+        const [ddlRows] = await conn.query(`SHOW CREATE TABLE ${q(table)}`);
+        ddl = ((ddlRows && ddlRows[0]) || {})['Create Table'] || '';
+      }
+    } else {
+      const statements = splitSql(sql);
+      if (statements.length !== 1) throw new Error('导出查询只能包含一条 SELECT / SHOW 语句');
+      const [data, fields] = await conn.query(statements[0]);
+      if (!Array.isArray(data)) throw new Error('这条 SQL 没有结果集，不能导出');
+      rows = data;
+      columns = (fields || []).map((f) => f.name);
+      source = 'query';
+      if (format === 'sql') throw new Error('查询结果只支持 CSV / JSON 导出');
+    }
+    const trimmed = rows.slice(0, limit);
+    let content = '';
+    if (format === 'csv') {
+      content = '\ufeff' + [columns.map(csvCell).join(','), ...trimmed.map((r) => columns.map((c) => csvCell(r[c])).join(','))].join('\r\n');
+    } else if (format === 'json') {
+      content = JSON.stringify(trimmed.map((r) => {
+        const x = {};
+        for (const c of columns) x[c] = normalizeCell(r[c]);
+        return x;
+      }), null, 2);
+    } else {
+      const lines = [
+        `-- ClickBuild export ${new Date().toISOString()}`,
+        `-- source: ${ctx.conn.host}:${ctx.conn.port}/${ctx.database} · ${source}`,
+        'SET NAMES utf8mb4;',
+        'SET FOREIGN_KEY_CHECKS=0;',
+        `DROP TABLE IF EXISTS ${q(table)};`,
+        ddl ? `${ddl};` : '',
+      ];
+      const colSql = columns.map((c) => q(c)).join(', ');
+      for (const r of trimmed) {
+        lines.push(`INSERT INTO ${q(table)} (${colSql}) VALUES (${columns.map((c) => conn.escape(normalizeCell(r[c]))).join(', ')});`);
+      }
+      lines.push('SET FOREIGN_KEY_CHECKS=1;', '');
+      content = lines.filter((x) => x !== null && x !== undefined && x !== '').join('\n');
+    }
+    const ext = format === 'sql' ? 'sql' : format === 'json' ? 'json' : 'csv';
+    const name = `${safeFileName(table || `query-${stamp()}`, ext)}`;
+    return {
+      ok: true,
+      format, name, content, bytes: Buffer.byteLength(content),
+      rows: trimmed.length, columns, truncated: rows.length > limit,
+      source, table: table || '', database: ctx.database,
+    };
+  });
+}
+
+async function importSql(project, opts) {
+  const o = opts || {};
+  const text = String(o.sql || '');
+  if (!text.trim()) return { ok: false, code: 'EMPTY_SQL', error: 'SQL 文件是空的', hint: '换一个包含语句的文件' };
+  if (text.length > 12 * 1024 * 1024) return { ok: false, code: 'TOO_LARGE', error: 'SQL 文件超过 12 MB', hint: '拆成多个文件再导入' };
+  const statements = splitSql(text);
+  if (!statements.length) return { ok: false, code: 'EMPTY_SQL', error: '没有解析到可执行语句' };
+  if (statements.length > 5000) return { ok: false, code: 'TOO_MANY', error: `语句太多（${statements.length} 条）`, hint: '单个文件最多 5000 条语句，请拆分后导入' };
+  const started = Date.now();
+  return withConn(project, o, async (conn, ctx) => {
+    requireWritable(ctx);
+    const done = [];
+    let failed = null;
+    for (let i = 0; i < statements.length; i++) {
+      const sql = statements[i];
+      const t0 = Date.now();
+      try {
+        const [result, fields] = await conn.query(sql);
+        const rows = Array.isArray(result);
+        done.push({
+          index: i + 1, sql: sql.slice(0, 300), ok: true, elapsed: Date.now() - t0,
+          kind: rows ? 'rows' : 'command',
+          rows: rows ? result.length : 0,
+          affected: rows ? 0 : Number((result && result.affectedRows) || 0),
+        });
+      } catch (e) {
+        failed = { index: i + 1, sql: sql.slice(0, 300), error: e.message || String(e), code: e.code || '' };
+        done.push({ ...failed, ok: false, elapsed: Date.now() - t0 });
+        if (o.continueOnError !== true) break;
+      }
+    }
+    return {
+      ok: !failed, partial: !!failed && done.filter((x) => x.ok).length > 0,
+      total: statements.length, done: done.filter((x) => x.ok).length, failed,
+      statements: done, elapsed: Date.now() - started,
+      database: ctx.database,
+      hint: failed ? `第 ${failed.index} 条失败：${failed.error}` : '',
+    };
+  });
+}
+
+function grantObject(database, table) {
+  const db = String(database || '*');
+  const tb = String(table || '*');
+  if (db === '*') return '*.*';
+  const qd = ident(db);
+  if (!qd) throw new Error('数据库名不合法');
+  if (tb === '*') return `${q(db)}.*`;
+  const qt = ident(tb);
+  if (!qt) throw new Error('表名不合法');
+  return `${q(db)}.${q(tb)}`;
+}
+
+function accountSql(conn, user, host) {
+  const u = String(user || '').trim();
+  if (!u) throw new Error('用户名不能为空');
+  const h = String(host || '%').trim() || '%';
+  return `${conn.escape(u)}@${conn.escape(h)}`;
+}
+
+const GRANT_PRIVS = new Set([
+  'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'INDEX', 'REFERENCES',
+  'CREATE TEMPORARY TABLES', 'LOCK TABLES', 'EXECUTE', 'CREATE VIEW', 'SHOW VIEW',
+  'CREATE ROUTINE', 'ALTER ROUTINE', 'EVENT', 'TRIGGER', 'ALL PRIVILEGES',
+]);
+
+function normalizePrivileges(v) {
+  const list = (Array.isArray(v) ? v : String(v || '').split(','))
+    .map((x) => String(x || '').trim().toUpperCase().replace(/\s+/g, ' '))
+    .filter(Boolean);
+  if (!list.length) throw new Error('至少选择一项权限');
+  for (const p of list) if (!GRANT_PRIVS.has(p)) throw new Error(`不支持授权 ${p}`);
+  return [...new Set(list)].join(', ');
+}
+
+async function userAction(project, opts) {
+  const o = opts || {};
+  const action = String(o.action || '');
+  // GRANT/REVOKE 的目标库可能写的是 *，不能把它当成连接库名，否则会连到一个不存在的库。
+  const isGrant = action === 'grant' || action === 'revoke';
+  const grantTarget = isGrant ? grantObject(o.database, o.table) : null;
+  const grantPriv = isGrant ? normalizePrivileges(o.privileges) : null;
+  const connOpts = isGrant ? { ...o, database: null } : o;
+  return withConn(project, connOpts, async (conn, ctx) => {
+    requireWritable(ctx);
+    if (action === 'create') {
+      const account = accountSql(conn, o.user, o.host);
+      const password = String(o.password || '');
+      if (!password) throw new Error('新用户密码不能为空');
+      await conn.query(`CREATE USER ${account} IDENTIFIED BY ${conn.escape(password)}`);
+      return { ok: true, action, user: o.user, host: o.host || '%' };
+    }
+    if (action === 'drop') {
+      const account = accountSql(conn, o.user, o.host);
+      await conn.query(`DROP USER ${account}`);
+      return { ok: true, action, user: o.user, host: o.host || '%' };
+    }
+    if (action === 'password') {
+      const account = accountSql(conn, o.user, o.host);
+      const password = String(o.password || '');
+      if (!password) throw new Error('新密码不能为空');
+      await conn.query(`ALTER USER ${account} IDENTIFIED BY ${conn.escape(password)}`);
+      return { ok: true, action, user: o.user, host: o.host || '%' };
+    }
+    if (isGrant) {
+      const account = accountSql(conn, o.user, o.host);
+      await conn.query(`${action === 'grant' ? 'GRANT' : 'REVOKE'} ${grantPriv} ON ${grantTarget} ${action === 'grant' ? 'TO' : 'FROM'} ${account}`);
+      return { ok: true, action, user: o.user, host: o.host || '%', privileges: grantPriv, object: grantTarget };
+    }
+    throw new Error(`不支持的用户操作：${action}`);
+  });
+}
+
+async function listUsers(project, opts) {
+  const o = opts || {};
+  return withConn(project, o, async (conn, ctx) => {
+    const [rows] = await conn.query('SELECT User, Host FROM mysql.user ORDER BY User, Host');
+    const users = [];
+    for (const r of rows.slice(0, 200)) {
+      let grants = [];
+      try {
+        const [g] = await conn.query(`SHOW GRANTS FOR ${conn.escape(r.User)}@${conn.escape(r.Host)}`);
+        grants = g.map((x) => Object.values(x)[0]).filter(Boolean);
+      } catch (e) {
+        grants = [`读取失败：${e.message}`];
+      }
+      users.push({ user: r.User, host: r.Host, grants });
+    }
+    return { ok: true, users, count: rows.length };
+  });
+}
+
+async function createDatabase(project, opts) {
+  const o = opts || {};
+  const name = ident(o.name);
+  if (!name) throw new Error('数据库名不合法');
+  return withConn(project, { ...o, database: null }, async (conn, ctx) => {
+    requireWritable(ctx);
+    await conn.query(`CREATE DATABASE IF NOT EXISTS ${q(name)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    return { ok: true, name };
+  });
+}
+
+async function dropDatabase(project, opts) {
+  const o = opts || {};
+  const name = ident(o.name);
+  if (!name) throw new Error('数据库名不合法');
+  return withConn(project, { ...o, database: null }, async (conn, ctx) => {
+    requireWritable(ctx);
+    await conn.query(`DROP DATABASE ${q(name)}`);
+    return { ok: true, name };
+  });
+}
+
+async function serverInfo(project, opts) {
+  const o = opts || {};
+  return withConn(project, o, async (conn, ctx) => {
+    const started = Date.now();
+    let processlist = [];
+    let processError = '';
+    try {
+      const [rows] = await conn.query('SHOW FULL PROCESSLIST');
+      processlist = rows.map((r) => ({
+        id: r.Id, user: r.User, host: r.Host, db: r.db, command: r.Command,
+        time: Number(r.Time || 0), state: r.State || '', info: String(r.Info || '').slice(0, 300),
+      }));
+    } catch (e) {
+      processError = e.message;
+    }
+    const [vars] = await conn.query('SHOW GLOBAL VARIABLES');
+    const [status] = await conn.query('SHOW GLOBAL STATUS');
+    const wantedVars = ['version', 'version_comment', 'character_set_server', 'collation_server', 'max_connections', 'wait_timeout', 'innodb_buffer_pool_size', 'datadir'];
+    const wantedStatus = ['Uptime', 'Threads_connected', 'Threads_running', 'Queries', 'Slow_queries', 'Com_select', 'Com_insert', 'Com_update', 'Com_delete', 'Bytes_received', 'Bytes_sent', 'Innodb_buffer_pool_reads', 'Innodb_buffer_pool_read_requests'];
+    const varMap = Object.fromEntries(vars.map((r) => [r.Variable_name, r.Value]));
+    const statusMap = Object.fromEntries(status.map((r) => [r.Variable_name, Number.isFinite(Number(r.Value)) ? Number(r.Value) : r.Value]));
+    return {
+      ok: true, elapsed: Date.now() - started,
+      variables: wantedVars.filter((k) => k in varMap).map((k) => ({ name: k, value: String(varMap[k]) })),
+      status: wantedStatus.filter((k) => k in statusMap).map((k) => ({ name: k, value: statusMap[k] })),
+      processlist, processError,
+    };
+  });
+}
+
+async function alterTable(project, opts) {
+  const o = opts || {};
+  const table = ident(o.table);
+  if (!table) throw new Error('表名不合法');
+  const actions = Array.isArray(o.actions) ? o.actions : [];
+  if (!actions.length) throw new Error('没有要修改的结构');
+  return withConn(project, o, async (conn, ctx) => {
+    requireWritable(ctx);
+    const clauses = [];
+    for (const a of actions) {
+      const type = String(a.type || '');
+      if (type === 'add') {
+        const def = buildColumn({ ...a, type: a.dataType || a.columnType || a.typeName });
+        let pos = '';
+        if (a.first) pos = ' FIRST';
+        else if (a.after) pos = ` AFTER ${q(a.after)}`;
+        clauses.push(`ADD COLUMN ${def}${pos}`);
+      } else if (type === 'modify') {
+        const old = ident(a.name);
+        if (!old) throw new Error('要修改的字段名不合法');
+        const nextName = a.newName ? ident(a.newName) : old;
+        if (!nextName) throw new Error('新字段名不合法');
+        const def = buildColumn({ ...a, name: nextName, type: a.dataType || a.columnType || a.typeName });
+        clauses.push(`CHANGE COLUMN ${q(old)} ${def}`);
+      } else if (type === 'drop') {
+        const name = ident(a.name);
+        if (!name) throw new Error('要删除的字段名不合法');
+        clauses.push(`DROP COLUMN ${q(name)}`);
+      } else if (type === 'addIndex') {
+        const name = a.name ? ident(a.name) : '';
+        const cols = (Array.isArray(a.columns) ? a.columns : []).map(ident).filter(Boolean);
+        if (!cols.length) throw new Error('索引至少需要一列');
+        const prefix = a.unique ? 'ADD UNIQUE INDEX' : 'ADD INDEX';
+        clauses.push(`${prefix}${name ? ` ${q(name)}` : ''} (${cols.map(q).join(', ')})`);
+      } else if (type === 'dropIndex') {
+        const name = ident(a.name);
+        if (!name) throw new Error('索引名不合法');
+        clauses.push(`DROP INDEX ${q(name)}`);
+      } else if (type === 'comment') {
+        clauses.push(`COMMENT=${conn.escape(String(a.comment || ''))}`);
+      } else {
+        throw new Error(`不支持的结构修改：${type}`);
+      }
+    }
+    const sql = `ALTER TABLE ${q(table)} ${clauses.join(', ')}`;
+    const [result] = await conn.query(sql);
+    return { ok: true, table, sql, clauses, warningStatus: Number((result && result.warningStatus) || 0) };
+  });
+}
+
 module.exports = {
   connectionsOf, test, listDatabases, listTables, describe, selectRows,
   runSql, insertRow, updateRow, deleteRow, createTable, dropTable, renameTable,
   splitSql, normalizeCell,
+  tableDdl, exportData, importSql, alterTable, listUsers, userAction, createDatabase, dropDatabase, serverInfo,
 };
