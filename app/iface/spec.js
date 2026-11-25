@@ -9,7 +9,7 @@ const script = require('./script');
 const docs = require('./docs');
 
 // 工作任务的三种形态：只写前端、只写后端、前后端一起（默认）。
-const TASK_TYPES = ['frontend', 'backend', 'mixed'];
+const TASK_TYPES = ['frontend', 'backend', 'mixed', 'database'];
 
 const TYPES = [
   { key: 'bigint', sql: 'BIGINT', label: 'BIGINT 长整', input: 'int', group: 'number' },
@@ -749,14 +749,20 @@ function seedProject() {
 function starterProject(taskType) {
   const kind = TASK_TYPES.includes(taskType) ? taskType : 'mixed';
   const p = seedProject();
-  p.name = '新建工程';
+  p.name = kind === 'database' ? '数据库工程' : '新建工程';
   p.taskType = kind;
-  p.description = kind === 'frontend' ? '只前端任务 · 空白画布' : '自带账号权限接口的新工程';
+  p.description = kind === 'frontend' ? '只前端任务 · 空白画布'
+    : kind === 'database' ? '数据库工程 · 直接连接 MariaDB'
+      : '自带账号权限接口的新工程';
   p.categories = [{ id: 'base', name: '基础' }];
   p.functions = [];
   delete p.frontend;
   p.interfaces = [];
   if (kind === 'frontend') return p;
+  if (kind === 'database') {
+    p.dbProject = { conn: 'main', database: 'clickbuild', table: '' };
+    return p;
+  }
 
   const account = newIface('账号权限', 'base', { scenario: 'rbac' });
   account.comment = '新建工程自带：登录、注册、当前用户、退出；管理员可管理用户';
@@ -963,6 +969,11 @@ function normalizeProject(project) {
     name: p.name || '接口工程',
     description: p.description || '',
     taskType: TASK_TYPES.includes(p.taskType) ? p.taskType : 'mixed',
+    dbProject: p.dbProject && typeof p.dbProject === 'object' ? {
+      conn: String(p.dbProject.conn || 'main'),
+      database: String(p.dbProject.database || ''),
+      table: String(p.dbProject.table || ''),
+    } : null,
     categories,
     ioTypes: normalizeIoTypes(p.ioTypes),
     functions,

@@ -34,6 +34,14 @@ const S = {
     key: '', page: 1, size: 20, auto: true, timer: null, seq: 0,
     loading: false, result: null, error: null,
   },
+  db: {
+    ready: false, loading: false, connKey: '', database: '', table: '',
+    connections: [], databases: [], tables: [], columns: [], primary: [],
+    rows: [], total: 0, page: 1, size: 50, pages: 1,
+    tab: 'data', write: true, error: null, notice: '',
+    structure: null, sql: '', sqlResult: null, sqlError: null, sqlBusy: false,
+    busy: false, querySeq: 0, history: [],
+  },
 };
 
 const esc = (v) => String(v == null ? '' : v)
@@ -63,13 +71,15 @@ const TASK_ICONS = {
   backend: '<rect x="2.2" y="2.2" width="11.6" height="4.4" rx=".9"/><rect x="2.2" y="8.2" width="11.6" height="4.4" rx=".9"/><circle cx="4.7" cy="4.4" r=".65" fill="currentColor" stroke="none"/><circle cx="4.7" cy="10.4" r=".65" fill="currentColor" stroke="none"/><path d="M7.2 4.4h4.2M7.2 10.4h4.2"/>',
   frontend: '<rect x="1.8" y="2.6" width="12.4" height="8.6" rx="1"/><path d="M8 11.2v2.1M5.4 13.6h5.2"/>',
   mixed: '<rect x="1.6" y="3" width="9" height="6.5" rx="1"/><path d="M6.1 9.5v2M4.2 11.5h3.8"/><rect x="11.1" y="5.4" width="3.4" height="8" rx=".9"/><circle cx="12.8" cy="7.2" r=".55" fill="currentColor" stroke="none"/><path d="M12.1 9.4h1.3M12.1 10.8h1.3"/>',
+  database: '<ellipse cx="8" cy="3.4" rx="5.1" ry="1.9"/><path d="M2.9 3.4v4.4c0 1.05 2.28 1.9 5.1 1.9s5.1-.85 5.1-1.9V3.4"/><path d="M2.9 7.8v4.5c0 1.05 2.28 1.9 5.1 1.9s5.1-.85 5.1-1.9V7.8"/>',
 };
 const TASK_KINDS = {
   mixed: { label: '混合任务', short: '混', hint: '前后端一起写，默认自带账号登录接口' },
   backend: { label: '只后端任务', short: '后', hint: '只写接口、表结构和脚本，默认自带账号登录接口' },
   frontend: { label: '只前端任务', short: '前', hint: '只写页面，接口编辑收起，保持空白画布' },
+  database: { label: '数据库工程', short: '库', hint: '直接连 MariaDB，浏览和编辑表、跑 SQL，不生成接口与页面' },
 };
-const TASK_ORDER = ['mixed', 'backend', 'frontend'];
+const TASK_ORDER = ['mixed', 'backend', 'frontend', 'database'];
 function taskIcon(kind) {
   const key = TASK_ICONS[kind] ? kind : 'mixed';
   return `<svg class="task-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TASK_ICONS[key]}</svg>`;
@@ -1228,7 +1238,7 @@ function chooseTaskKind(title) {
     }).join('');
     modal(`<div class="p-5 w-[560px] max-w-[94vw]">
       <div class="text-[14px] font-semibold">${esc(title || '新建任务')}</div>
-      <div class="text-[11px] text-neutral-500 mt-1 mb-4">先定这次要写什么：只写页面、只写接口，还是两边一起。以后可以在标题栏改。后端与混合任务会自带账号权限接口（登录、注册、当前用户、退出）。</div>
+      <div class="text-[11px] text-neutral-500 mt-1 mb-4">先定这次要写什么：只写页面、只写接口、两边一起，或者只管理数据库。以后可以在标题栏改。后端与混合任务会自带账号权限接口（登录、注册、当前用户、退出）；数据库工程直接进库表工作台。</div>
       <div class="task-kind-grid">${cards}</div>
       <div class="flex justify-end mt-4"><button class="btn thin" id="tkCancel">取消</button></div>
     </div>`, (root) => {
@@ -1249,10 +1259,12 @@ async function newTaskFlow(kind) {
   }
   const p = await api.starter(chosen);
   p.taskType = chosen;
-  p.name = uniqueProjectName(chosen === 'frontend' ? '前端任务' : chosen === 'backend' ? '后端任务' : '混合任务');
+  p.name = uniqueProjectName(chosen === 'frontend' ? '前端任务' : chosen === 'backend' ? '后端任务' : chosen === 'database' ? '数据库工程' : '混合任务');
   p.description = chosen === 'frontend'
     ? `${TASK_KINDS[chosen].label} · 空白画布`
-    : `${TASK_KINDS[chosen].label} · 自带账号权限接口`;
+    : chosen === 'database'
+      ? `${TASK_KINDS[chosen].label} · 直接连接 MariaDB，浏览和编辑表、跑 SQL`
+      : `${TASK_KINDS[chosen].label} · 自带账号权限接口`;
   const r = await api.save(p);
   if (r && r.ok === false) return toast('新任务保存失败：' + (r.error || '未知错误'), 6000);
   const proj = (r && r.project) || p;
@@ -1267,13 +1279,18 @@ async function changeTaskKind(kind) {
     if (S.project) $('#taskKind').value = taskKindOf(S.project);
     return;
   }
-  if (!(await confirmBox('切换任务类型', `把「${S.project.name}」切成${TASK_KINDS[kind].label}？现有接口和数据不会删除，只是收起对应的入口。`))) {
+  if (!(await confirmBox('切换任务类型', `把「${S.project.name}」切成${TASK_KINDS[kind].label}？现有接口和数据不会删除，只是收起对应的入口。${kind === 'database' ? '数据库工程会直接打开库表工作台。' : ''}`))) {
     $('#taskKind').value = taskKindOf(S.project);
     return;
   }
   if (S.view === 'studio' && studioDirty) await saveStudioToProject('切换任务类型');
   const old = taskKindOf(S.project);
   S.project.taskType = kind;
+  if (kind === 'database' && !S.project.dbProject) {
+    const conn = (S.project.connections && S.project.connections.mysql && S.project.connections.mysql[0]) || {};
+    S.project.dbProject = { conn: conn.key || 'main', database: conn.database || 'clickbuild', table: '' };
+    S.db = initialDbState(S.project);
+  }
   if (!(await save(true))) {
     S.project.taskType = old;
     $('#taskKind').value = old;
@@ -1282,7 +1299,8 @@ async function changeTaskKind(kind) {
   tabSyncProject(S.project);
   applyTaskMode();
   if (kind === 'frontend') setView('studio');
-  else if (S.view === 'studio') setView('api');
+  else if (kind === 'database') setView('db');
+  else if (S.view !== 'api') setView('api');
   else render();
   renderTabs();
   toast(`已切到${TASK_KINDS[kind].label}`, 3000);
@@ -1310,17 +1328,23 @@ function applyTaskMode() {
   const icon = $('#taskKindIcon');
   if (icon) { icon.innerHTML = taskIcon(kind); icon.title = meta.label; }
   const select = $('#taskKind');
-  if (select) select.title = `${meta.label}：只前端 / 只后端 / 混合`;
+  if (select) select.title = `${meta.label}：混合 / 只后端 / 只前端 / 数据库工程`;
   const sub = $('#appSubtitle');
-  if (sub) sub.textContent = '接口工作台';
+  if (sub) sub.textContent = kind === 'database' ? '数据库工作台' : '接口工作台';
   const vs = $('#viewSwitch');
-  if (vs) vs.classList.toggle('hidden', kind !== 'mixed');
+  if (vs) vs.classList.toggle('hidden', kind === 'frontend');
+  const apiBtn = document.querySelector('#viewSwitch [data-view="api"]');
+  if (apiBtn) apiBtn.classList.toggle('hidden', kind === 'database');
+  const studioBtn = document.querySelector('#viewSwitch [data-view="studio"]');
+  if (studioBtn) studioBtn.classList.toggle('hidden', kind === 'backend' || kind === 'database');
+  const dbBtn = document.querySelector('#viewSwitch [data-view="db"]');
+  if (dbBtn) dbBtn.classList.toggle('hidden', kind === 'frontend');
   const search = $('#search');
-  if (search) search.classList.toggle('hidden', kind === 'frontend');
+  if (search) search.classList.toggle('hidden', kind === 'frontend' || kind === 'database');
   const gen = document.querySelector('[data-action="generate"]');
-  if (gen) gen.classList.toggle('hidden', kind === 'frontend');
+  if (gen) gen.classList.toggle('hidden', kind === 'frontend' || kind === 'database');
   const deploy = document.querySelector('[data-action="deployUpdate"]');
-  if (deploy) deploy.classList.toggle('hidden', kind === 'backend');
+  if (deploy) deploy.classList.toggle('hidden', kind === 'backend' || kind === 'database');
 }
 
 function renderRibbon() {
@@ -1330,12 +1354,19 @@ function renderRibbon() {
   const up = infra.filter((x) => x.running).length;
   const running = server && server.running;
   const kind = taskKindOf(S.project);
-  const backend = kind !== 'frontend';
+  const backend = kind !== 'frontend' && kind !== 'database';
   $('#ribbon').innerHTML = `
   <div class="ribbon-group"><div class="flex gap-1">
     ${rb('seed', 'new', '新建', '先保存当前工程，再新建一个任务')}
     ${rb('open', 'open', '打开', '打开已有工程，开成新标签')}
   </div><div class="lbl">工程</div></div>
+
+  ${kind === 'database' ? `<div class="ribbon-group"><div class="flex gap-1">
+    ${rb('dbRefresh', 'grid', '刷新', '重新读取连接、库、表和当前表数据')}
+    ${rb('dbNewTable', 'table', '新建表', '在当前库用字段表单建一张表')}
+    ${rb('dbSqlTab', 'sql', 'SQL', '切到 SQL 控制台，可执行查询与 DDL')}
+    ${rb('dbConn', 'iface', '连接', '新增或修改 MariaDB 连接')}
+  </div><div class="lbl">数据库</div></div>` : ''}
 
   ${backend ? `<div class="ribbon-group"><div class="flex gap-1">
     ${rb('newIface', 'iface', '新建接口', '在当前分类新建接口')}
@@ -1413,6 +1444,7 @@ function showMoreMenu() {
       <div class="more-grid">
         ${item('exportYxpn', '导出 .yxpn', '带前端与文档的工程包')}
         ${item('importYxpn', '导入 .yxpn', '打开已有工程包')}
+        ${item('deploySettings', '部署设置', '页面导航 / 翻页、淡入、响应式')}
         ${item('microExport', '导出微服务', '按接口或分类拆独立服务')}
         ${item('plugins', '插件', '启停插件与信任目录')}
       </div>
@@ -1623,26 +1655,34 @@ async function sampleResources(force) {
 function renderSide() {
   const svc = S.services;
   if (!svc) return;
+  const dbKind = taskKindOf(S.project) === 'database';
   const counts = {
     ifaces: S.project.interfaces.length,
     tables: S.project.interfaces.reduce((n, i) => n + i.tables.length, 0),
     routes: S.project.interfaces.reduce((n, i) => n + i.routes.length, 0),
     funcs: (S.project.functions || []).length,
   };
+  const db = S.db || {};
   const problems = S.problems || [];
   const infra = (svc.items || []).filter((x) => x.id !== 'server');
   const up = infra.filter((x) => x.running).length;
   const infraMem = infra.reduce((n, x) => n + resServiceMem(x.id), 0);
+  const dbStats = dbKind ? `
+    <div><b>${db.ready ? (db.databases || []).length : '—'}</b><span>库</span></div>
+    <div><b>${db.ready ? (db.tables || []).length : '—'}</b><span>表</span></div>
+    <div><b>${db.ready ? Number(db.total || 0).toLocaleString() : '—'}</b><span>当前表行</span></div>` : `
+    <div><b>${counts.ifaces}</b><span>接口</span></div>
+    <div><b>${counts.tables}</b><span>表</span></div>
+    <div><b>${counts.routes}</b><span>路由</span></div>`;
+  const dbCheck = !db.ready ? '<div class="side-check">正在连接 MariaDB…</div>'
+    : db.error ? `<div class="side-check bad">连接异常 · ${esc(String(db.error.hint || db.error.error || '').slice(0, 50))}</div>`
+      : `<div class="side-check ${db.write ? 'ok' : ''}">${db.write ? '连接正常 · 可写' : '连接正常 · 只读模式'}</div>`;
   $('#sideTop').innerHTML = `
   <div class="side-sect">
     <h4>项目概览</h4>
-    <div class="side-stats">
-      <div><b>${counts.ifaces}</b><span>接口</span></div>
-      <div><b>${counts.tables}</b><span>表</span></div>
-      <div><b>${counts.routes}</b><span>路由</span></div>
-    </div>
-    <div class="side-check ${problems.length ? 'bad' : 'ok'}">${problems.length ? `${problems.length} 项待处理` : '结构检查通过'}</div>
-    ${problems.length ? `<div class="text-[11px] space-y-1 mt-2">${problems.slice(0, 6).map((p) => `<div class="border-l-2 border-neutral-900 pl-2">${esc(p)}</div>`).join('')}${problems.length > 6 ? `<div class="text-neutral-500">还有 ${problems.length - 6} 条…</div>` : ''}</div>` : ''}
+    <div class="side-stats">${dbStats}</div>
+    ${dbKind ? dbCheck : `<div class="side-check ${problems.length ? 'bad' : 'ok'}">${problems.length ? `${problems.length} 项待处理` : '结构检查通过'}</div>`}
+    ${!dbKind && problems.length ? `<div class="text-[11px] space-y-1 mt-2">${problems.slice(0, 6).map((p) => `<div class="border-l-2 border-neutral-900 pl-2">${esc(p)}</div>`).join('')}${problems.length > 6 ? `<div class="text-neutral-500">还有 ${problems.length - 6} 条…</div>` : ''}</div>` : ''}
   </div>
 
   <div class="side-sect">
@@ -1661,6 +1701,10 @@ function renderSide() {
 
   <details class="side-sect side-details">
     <summary>工程详情</summary>
+    ${dbKind ? `<div class="side-kv"><span>当前连接</span><b>${esc((dbConn() || {}).label || '—')}</b></div>
+    <div class="side-kv"><span>当前库</span><b class="mono">${esc(db.database || '—')}</b></div>
+    <div class="side-kv"><span>当前表</span><b class="mono">${esc(db.table || '—')}</b></div>
+    <div class="side-kv"><span>主键</span><b class="mono">${esc((db.primary || []).join(' + ') || '无')}</b></div>` : ''}
     <div class="side-kv"><span>自定义函数</span><b>${counts.funcs}</b></div>
     <div class="side-kv"><span>生成目录</span><b class="mono break-all">${esc(S.genDir || '还没有生成')}</b></div>
   </details>`;
@@ -1763,7 +1807,686 @@ function openIface(id) {
   render();
 }
 
-/* ---------------- 接口编辑器 ---------------- */
+/* ---------------- 数据库工作台 ---------------- */
+// 与实时数据页共用同一套 db-admin：库表树、数据、结构、SQL；写操作不再藏着。
+function initialDbState(project) {
+  const conns = (project && project.connections && project.connections.mysql) || [];
+  const hint = (project && project.dbProject) || {};
+  const conn = conns.find((c) => c.key === hint.conn) || conns[0] || {};
+  return {
+    ready: false, loading: false, connKey: conn.key || '', database: hint.database || conn.database || '', table: hint.table || '',
+    connections: [], databases: [], tables: [], columns: [], primary: [],
+    rows: [], total: 0, page: 1, size: 50, pages: 1,
+    tab: 'data', write: true, error: null, notice: '',
+    structure: null, sql: '', sqlResult: null, sqlError: null, sqlBusy: false,
+    busy: false, querySeq: 0, history: [],
+  };
+}
+function dbCtx(extra) {
+  return { project: S.project, connKey: S.db.connKey, database: S.db.database, ...(extra || {}) };
+}
+function dbConn() {
+  return (S.db.connections || []).find((c) => c.key === S.db.connKey) || (S.db.connections || [])[0] || null;
+}
+function dbTableNames() {
+  return (S.db.tables || []).map((t) => t.name);
+}
+function dbHasTable(name) {
+  return dbTableNames().includes(name);
+}
+function dbPayload(extra) {
+  return dbCtx(extra);
+}
+function dbFriendly(r) {
+  return (r && (r.hint || r.error)) || '数据库操作失败';
+}
+function dbDraw() {
+  if (S.view === 'db') { renderDB(); renderSide(); }
+}
+function dbApplyTaskHint() {
+  const project = S.project || {};
+  const hint = project.dbProject || {};
+  if (hint.conn && !S.db.connKey) S.db.connKey = hint.conn;
+  if (hint.database && !S.db.database) S.db.database = hint.database;
+}
+async function ensureDB(force) {
+  dbApplyTaskHint();
+  if (!S.project) return;
+  if (S.db.loading) return;
+  if (S.db.ready && !force) return;
+  await dbReloadAll();
+}
+async function dbReloadAll() {
+  if (!S.project) return;
+  const seq = ++S.db.querySeq;
+  S.db.loading = true;
+  S.db.ready = false;
+  S.db.error = null;
+  try {
+    const conns = await api.dbConnections(S.project);
+    if (seq !== S.db.querySeq) return;
+    S.db.connections = Array.isArray(conns) ? conns : [];
+    if (!S.db.connections.some((c) => c.key === S.db.connKey)) {
+      S.db.connKey = (S.db.connections[0] || {}).key || '';
+      S.db.database = (S.db.connections[0] || {}).database || '';
+      S.db.table = '';
+    }
+    if (!S.db.connKey) {
+      S.db.error = { error: '工程没有 MariaDB 连接', hint: '先从 DB 左栏点“新连接”，填 host / port / user / password。' };
+      return;
+    }
+    const dr = await api.dbDatabases(dbCtx({ database: null }));
+    if (seq !== S.db.querySeq) return;
+    if (!dr || dr.ok === false) {
+      S.db.error = dr || { error: '读取数据库列表失败', hint: '检查 MariaDB 是否启动、连接账号是否有权限。' };
+      S.db.databases = [];
+      return;
+    }
+    S.db.databases = dr.databases || [];
+    if (!S.db.database || !S.db.databases.some((d) => d.name === S.db.database)) {
+      S.db.database = (S.db.databases.find((d) => !d.system) || S.db.databases[0] || {}).name || '';
+    }
+    if (!S.db.database) {
+      S.db.error = { error: '没有可用的数据库', hint: '先在连接设置里填一个数据库，或用 SQL 建库。' };
+      return;
+    }
+    const tr = await api.dbTables(dbCtx({ database: S.db.database }));
+    if (seq !== S.db.querySeq) return;
+    if (!tr || tr.ok === false) {
+      S.db.error = tr || { error: '读取表列表失败', hint: '检查当前账号对库的权限。' };
+      S.db.tables = [];
+      return;
+    }
+    S.db.tables = tr.tables || [];
+    if (!dbHasTable(S.db.table)) S.db.table = (S.db.tables[0] || {}).name || '';
+    if (S.db.table) await dbLoadTable(S.db.table, seq);
+    S.db.write = !(dbConn() || {}).readonly;
+  } catch (e) {
+    if (seq !== S.db.querySeq) return;
+    S.db.error = { error: String(e && e.message || e), hint: '数据库连接或读取失败，检查服务与连接配置。' };
+  } finally {
+    if (seq === S.db.querySeq) {
+      S.db.loading = false;
+      S.db.ready = true;
+      dbDraw();
+    }
+  }
+}
+async function dbLoadTable(name, seq) {
+  if (!name) return;
+  const s = seq || ++S.db.querySeq;
+  S.db.table = name;
+  S.db.page = 1;
+  S.db.rows = [];
+  S.db.columns = [];
+  S.db.primary = [];
+  S.db.structure = null;
+  S.db.error = null;
+  const [sr, ar] = await Promise.all([
+    api.dbSelect(dbPayload({ table: name, page: 1, size: S.db.size, orderDir: 'ASC' })),
+    api.dbDescribe(dbPayload({ table: name })),
+  ]);
+  if (s !== S.db.querySeq) return;
+  if (ar && ar.ok) S.db.structure = ar;
+  else S.db.structure = null;
+  if (sr && sr.ok) {
+    S.db.columns = sr.columns || [];
+    S.db.primary = sr.primary || [];
+    S.db.rows = sr.rows || [];
+    S.db.total = sr.total || 0;
+    S.db.page = sr.page || 1;
+    S.db.pages = sr.pages || 1;
+  } else {
+    S.db.error = sr || { error: '读取表数据失败', hint: '检查表是否存在、账号是否有 SELECT 权限。' };
+  }
+  S.db.sql = `SELECT * FROM \`${name}\` LIMIT 100;`;
+}
+async function dbOpenTable(name) {
+  if (!name) return;
+  S.db.tab = 'data';
+  S.db.table = name;
+  await dbLoadTable(name);
+  dbDraw();
+}
+async function dbReloadRows(opts) {
+  const o = opts || {};
+  if (!S.db.table || S.db.loading) return;
+  S.db.busy = true;
+  const seq = ++S.db.querySeq;
+  const r = await api.dbSelect(dbPayload({
+    table: S.db.table, page: o.page || S.db.page, size: o.size || S.db.size, orderDir: S.db.orderDir || 'ASC',
+  }));
+  if (seq !== S.db.querySeq) return;
+  S.db.busy = false;
+  if (r && r.ok) {
+    S.db.columns = r.columns || [];
+    S.db.primary = r.primary || [];
+    S.db.rows = r.rows || [];
+    S.db.total = r.total || 0;
+    S.db.page = r.page || 1;
+    S.db.pages = r.pages || 1;
+    S.db.error = null;
+  } else {
+    S.db.error = r || { error: '刷新失败', hint: '检查数据库连接。' };
+  }
+  dbDraw();
+}
+function dbCell(v) {
+  if (v === null || v === undefined) return '<span class="db-null">NULL</span>';
+  const s = String(v);
+  if (s === '') return '<span class="db-empty">""</span>';
+  return esc(s);
+}
+function dbErrorCard(err, retryAttr) {
+  if (!err) return '';
+  return `<div class="db-error"><div><b>数据库操作失败</b><div>${esc(err.hint || err.error || '未知错误')}</div>
+    ${retryAttr ? `<button class="btn thin mt-2" ${retryAttr}>重试</button>` : ''}</div></div>`;
+}
+function dbTableTree() {
+  const tables = S.db.tables || [];
+  if (!tables.length) return '<div class="db-tree-empty">这个库还没有表<br><span>用“新建表”或 SQL 建一张</span></div>';
+  return tables.map((t) => `<button class="db-table-row ${S.db.table === t.name ? 'on' : ''}" data-db-table="${esc(t.name)}" title="${esc(t.name)}${t.comment ? ' · ' + esc(t.comment) : ''}">
+    <span class="db-table-ico">${t.type === 'view' ? '视' : '表'}</span>
+    <span class="db-table-name">${esc(t.name)}</span>
+    <span class="db-table-rows">${t.rows ? Number(t.rows).toLocaleString() : '—'}</span>
+  </button>`).join('');
+}
+function dbTree() {
+  const conn = dbConn();
+  const connOptions = (S.db.connections || []).map((c) => `<option value="${esc(c.key)}" ${c.key === S.db.connKey ? 'selected' : ''}>${esc(c.label)} · ${esc(c.host)}:${esc(c.port)}</option>`).join('');
+  const dbOptions = (S.db.databases || []).map((d) => `<option value="${esc(d.name)}" ${d.name === S.db.database ? 'selected' : ''}>${esc(d.name)}${d.system ? ' · 系统' : ''}</option>`).join('');
+  return `<aside class="db-tree">
+    <div class="db-tree-title"><span>数据库</span><button class="db-ico-btn" data-db-newconn title="新建连接">＋</button><button class="db-ico-btn" data-db-conn title="连接设置">⚙</button></div>
+    <div class="db-tree-ctl">
+      <select id="dbConnSel" title="切换连接">${connOptions || '<option>暂无连接</option>'}</select>
+      <select id="dbDbSel" title="切换数据库">${dbOptions || '<option>暂无数据库</option>'}</select>
+      <div class="db-conn-meta">${conn ? `<span class="${conn.readonly ? 'ro' : 'rw'}">${conn.readonly ? '只读' : '可写'}</span><span>${esc(conn.user)}@${esc(conn.host)}:${esc(conn.port)}</span>` : '未配置连接'}</div>
+    </div>
+    <div class="db-tree-filter"><input id="dbTableFilter" placeholder="过滤表名"><button class="db-ico-btn" data-db-newtable title="新建表">＋</button><button class="db-ico-btn" data-db-reload title="刷新库表">↻</button></div>
+    <div class="db-tree-list" id="dbTreeList">${dbTableTree()}</div>
+    <div class="db-tree-foot">${S.db.tables.length} 张表 · ${S.db.connections.length} 个连接</div>
+  </aside>`;
+}
+function dbTabs() {
+  return `<div class="db-tabs">
+    <button class="dbtab ${S.db.tab === 'data' ? 'on' : ''}" data-db-tab="data">数据</button>
+    <button class="dbtab ${S.db.tab === 'structure' ? 'on' : ''}" data-db-tab="structure">结构</button>
+    <button class="dbtab ${S.db.tab === 'sql' ? 'on' : ''}" data-db-tab="sql">SQL 控制台</button>
+    <span class="db-tab-hint">${S.db.table ? esc(S.db.table) : '未选表'}</span>
+  </div>`;
+}
+function dbDataBody() {
+  if (!S.db.table) return `<div class="db-blank"><b>选择一张表</b><span>左侧库表树里点表名，或用 SQL 控制台直接建表。</span></div>`;
+  if (S.db.error && !S.db.rows.length) return dbErrorCard(S.db.error, 'data-db-refresh');
+  const cols = S.db.columns || [];
+  const primary = S.db.primary || [];
+  const hasPrimary = primary.length === 1;
+  const rows = S.db.rows || [];
+  const head = cols.map((c) => `<th class="${primary.includes(c.name) ? 'pk' : ''}" title="${esc(c.type)}"><span>${esc(c.name)}</span><i>${esc(c.type)}</i></th>`).join('');
+  const body = rows.map((r, i) => `<tr>
+    ${cols.map((c) => `<td class="${primary.includes(c.name) ? 'pk' : ''}" title="${esc(c.name)}">${dbCell(r[c.name])}</td>`).join('')}
+    <td class="db-row-actions"><button class="db-mini" data-db-edit="${i}" ${hasPrimary ? '' : 'disabled title="没有单列主键，不能安全按行改"'} title="编辑这一行">改</button><button class="db-mini danger" data-db-del="${i}" ${hasPrimary ? '' : 'disabled title="没有单列主键，不能安全按行删"'} title="删除这一行">删</button></td>
+  </tr>`).join('');
+  return `<div class="db-data-head">
+    <div class="db-count"><b>${S.db.total.toLocaleString()}</b> 行 <span>第 ${S.db.page} / ${S.db.pages} 页</span>${primary.length ? `<span class="db-pk">主键 ${esc(primary.join(' + '))}</span>` : '<span class="db-pk warn">无主键</span>'}</div>
+    <div class="db-actions">
+      <span class="db-write-pill ${S.db.write ? 'rw' : 'ro'}">${S.db.write ? '可写' : '只读'}</span>
+      <select id="dbPageSize">${[20, 50, 100, 200, 500].map((n) => `<option value="${n}" ${n === S.db.size ? 'selected' : ''}>${n} 行/页</option>`).join('')}</select>
+      <button class="btn thin" data-db-add ${S.db.write ? '' : 'disabled'}>新建行</button>
+      <button class="btn thin" data-db-refresh>刷新</button>
+    </div>
+  </div>
+  ${rows.length ? `<div class="db-grid-scroll"><table class="db-grid"><thead><tr>${head}<th class="db-act-head">操作</th></tr></thead><tbody>${body}</tbody></table></div>` : `<div class="db-blank"><b>表里没有数据</b><span>新建一行，或用 SQL INSERT 写入。</span><button class="btn thin mt-2" data-db-add ${S.db.write ? '' : 'disabled'}>新建行</button></div>`}
+  <div class="db-pager">
+    <button class="db-pager-btn" data-db-first ${S.db.page <= 1 ? 'disabled' : ''}>«</button>
+    <button class="db-pager-btn" data-db-prev ${S.db.page <= 1 ? 'disabled' : ''}>‹</button>
+    <span>${S.db.page} / ${S.db.pages}</span>
+    <button class="db-pager-btn" data-db-next ${S.db.page >= S.db.pages ? 'disabled' : ''}>›</button>
+    <button class="db-pager-btn" data-db-last ${S.db.page >= S.db.pages ? 'disabled' : ''}>»</button>
+    <span class="db-pager-size">${S.db.size} 行/页 · 共 ${S.db.total.toLocaleString()} 行</span>
+  </div>`;
+}
+function dbStructureBody() {
+  if (!S.db.table) return `<div class="db-blank"><b>选择一张表</b><span>左侧库表树里点表名。</span></div>`;
+  if (!S.db.structure) return `<div class="db-blank"><b>正在读取结构</b><span>如果一直停在这里，点刷新库表。</span></div>`;
+  const cols = S.db.structure.columns || [];
+  const indexes = S.db.structure.indexes || [];
+  return `<div class="db-struct-head">
+    <div><b>${esc(S.db.table)}</b><span>${cols.length} 列 · ${indexes.length} 个索引</span></div>
+    <div class="db-actions">
+      <button class="btn thin" data-db-rename>重命名表</button>
+      <button class="btn thin" data-db-drop>删除表</button>
+      <button class="btn thin" data-db-refresh-struct>刷新结构</button>
+    </div>
+  </div>
+  <div class="db-grid-scroll"><table class="db-grid db-struct">
+    <thead><tr><th>字段</th><th>类型</th><th>可空</th><th>键</th><th>默认</th><th>额外</th><th>注释</th></tr></thead>
+    <tbody>${cols.map((c) => `<tr>
+      <td class="${c.primary ? 'pk' : ''}"><b>${esc(c.name)}</b></td><td>${esc(c.type)}</td><td>${c.nullable ? 'YES' : 'NO'}</td>
+      <td>${c.primary ? '<span class="db-key">PRI</span>' : esc(c.key || '')}</td><td>${c.default === null ? '<span class="db-null">NULL</span>' : esc(c.default)}</td>
+      <td>${esc(c.extra || '')}</td><td>${esc(c.comment || '')}</td>
+    </tr>`).join('')}</tbody></table></div>
+  ${indexes.length ? `<div class="db-index-title">索引</div><div class="db-grid-scroll"><table class="db-grid db-struct"><thead><tr><th>名称</th><th>唯一</th><th>列</th></tr></thead><tbody>${indexes.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.unique ? 'YES' : 'NO'}</td><td>${esc(x.columns.join(', '))}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+}
+function dbSqlResultHtml() {
+  if (S.db.sqlError) return dbErrorCard(S.db.sqlError);
+  if (!S.db.sqlResult) return `<div class="db-sql-empty">SQL 结果会显示在这里。支持多句（用分号分隔），也支持建表、改表、DROP。</div>`;
+  const res = S.db.sqlResult;
+  if (res.ok === false) return dbErrorCard(res);
+  const sets = res.sets || [];
+  return `<div class="db-sql-sum">${res.statements} 条语句 · ${res.elapsed} ms</div>
+    ${sets.map((s, i) => `<div class="db-sql-set">
+      <div class="db-sql-sql">${esc(s.sql)}</div>
+      ${s.kind === 'rows' ? `<div class="db-sql-meta">${s.total} 行${s.truncated ? ' · 只显示前 1000 行' : ''} · ${s.elapsed} ms</div>
+        <div class="db-grid-scroll"><table class="db-grid"><thead><tr>${(s.columns || []).map((c) => `<th><span>${esc(c.name)}</span><i>${esc(c.type)}</i></th>`).join('')}</tr></thead><tbody>${(s.rows || []).map((r) => `<tr>${(s.columns || []).map((c) => `<td>${dbCell(r[c.name])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+          : `<div class="db-sql-meta">影响 ${s.affected} 行${s.insertId ? ` · 自增 ID ${s.insertId}` : ''} · ${s.elapsed} ms</div>`}
+    </div>`).join('')}`;
+}
+function dbSqlBody() {
+  const sql = S.db.sql || (S.db.table ? `SELECT * FROM \`${S.db.table}\` LIMIT 100;` : 'SHOW TABLES;');
+  return `<div class="db-sql-head">
+    <div><b>SQL 控制台</b><span>Ctrl+Enter 执行；写操作会直接落到当前库。</span></div>
+    <div class="db-actions"><button class="btn solid" data-db-run ${S.db.sqlBusy ? 'disabled' : ''}>${S.db.sqlBusy ? '执行中…' : '运行'}</button><button class="btn thin" data-db-sql-clear>清空</button></div>
+  </div>
+  <textarea id="dbSql" class="db-sql-input" spellcheck="false" placeholder="SELECT * FROM ...">${esc(sql)}</textarea>
+  <div id="dbSqlResult" class="db-sql-result">${dbSqlResultHtml()}</div>
+  ${(S.db.history || []).length ? `<div class="db-sql-history"><b>最近执行</b>${S.db.history.slice(0, 6).map((h, i) => `<button data-db-history="${i}" title="${esc(h)}">${esc(h.replace(/\s+/g, ' ').slice(0, 120))}</button>`).join('')}</div>` : ''}`;
+}
+function renderDB() {
+  const err = S.db.error;
+  const conn = dbConn();
+  $('#workspace').innerHTML = `<div class="db-shell">
+    ${dbTree()}
+    <section class="db-main">
+      <div class="db-top">
+        <div class="db-crumb"><span>${esc((conn && conn.label) || 'MariaDB')}</span><b>/</b><span>${esc(S.db.database || '未选库')}</span>${S.db.table ? `<b>/</b><strong>${esc(S.db.table)}</strong>` : ''}</div>
+        <div class="db-top-actions">
+          <label class="db-write-toggle" title="打开后允许 INSERT / UPDATE / DELETE；关掉会把这条连接标为只读"><input type="checkbox" id="dbWriteToggle" ${S.db.write ? 'checked' : ''}>允许写入</label>
+          <button class="btn thin" data-db-conn>连接设置</button>
+          <button class="btn thin" data-db-reload>刷新</button>
+        </div>
+      </div>
+      ${S.db.loading ? '<div class="db-loading"><span class="live-spin"></span>正在读取数据库…</div>' : ''}
+      ${err ? dbErrorCard(err, 'data-db-reload') : ''}
+      ${dbTabs()}
+      <div class="db-body">
+        ${S.db.tab === 'data' ? dbDataBody() : S.db.tab === 'structure' ? dbStructureBody() : dbSqlBody()}
+      </div>
+    </section>
+  </div>`;
+  bindDB();
+}
+function renderDBWorkspace() {
+  if (!S.project) return;
+  if (!S.db || !S.db.ready) {
+    $('#workspace').innerHTML = `<div class="db-shell db-first"><div class="db-blank"><b>正在连接数据库</b><span>读取连接、库表与表结构…</span></div></div>`;
+    if (!S.db.loading) ensureDB().then(() => { if (S.view === 'db') renderDB(); }).catch((e) => {
+      S.db.error = { error: String(e && e.message || e), hint: '连接数据库失败。' };
+      S.db.ready = true;
+      dbDraw();
+    });
+    return;
+  }
+  renderDB();
+}
+function bindDB() {
+  const shell = document.querySelector('.db-shell');
+  if (!shell) return;
+  const connSel = $('#dbConnSel');
+  if (connSel) connSel.onchange = async () => {
+    S.db.connKey = connSel.value;
+    S.db.database = ((S.db.connections || []).find((c) => c.key === S.db.connKey) || {}).database || '';
+    S.db.table = '';
+    await dbReloadAll();
+  };
+  const dbSel = $('#dbDbSel');
+  if (dbSel) dbSel.onchange = async () => {
+    S.db.database = dbSel.value;
+    S.db.table = '';
+    await dbReloadAll();
+  };
+  const filter = $('#dbTableFilter');
+  if (filter) filter.oninput = () => {
+    const q = filter.value.trim().toLowerCase();
+    document.querySelectorAll('.db-table-row').forEach((b) => {
+      b.classList.toggle('hidden', q && !String(b.dataset.dbTable || '').toLowerCase().includes(q));
+    });
+  };
+  const write = $('#dbWriteToggle');
+  if (write) write.onchange = () => {
+    S.db.write = !!write.checked;
+    const c = dbConn();
+    if (!c) return toast('当前没有可用连接，先新建连接', 3500);
+    c.readonly = !write.checked;
+    if (S.project && S.project.connections && Array.isArray(S.project.connections.mysql)) {
+      const hit = S.project.connections.mysql.find((x) => x.key === c.key);
+      if (hit) hit.readonly = !write.checked;
+      save(true);
+    }
+    dbDraw();
+    toast(write.checked ? '已取消只读，可以写入' : '已切换为只读', 2500);
+  };
+  const size = $('#dbPageSize');
+  if (size) size.onchange = () => { S.db.size = Number(size.value) || 50; dbReloadRows({ page: 1, size: S.db.size }); };
+  const sql = $('#dbSql');
+  if (sql) {
+    sql.oninput = () => { S.db.sql = sql.value; };
+    sql.onkeydown = (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runDbSql(); }
+    };
+  }
+  shell.addEventListener('click', async (e) => {
+    const t = e.target.closest('button');
+    if (!t || !shell.contains(t) || t.disabled) return;
+    if (t.hasAttribute('data-db-table')) { await dbOpenTable(t.dataset.dbTable); return; }
+    if (t.hasAttribute('data-db-tab')) {
+      S.db.tab = t.dataset.dbTab;
+      if ((S.db.tab === 'structure') && S.db.table && !S.db.structure) await dbLoadTable(S.db.table);
+      dbDraw();
+      return;
+    }
+    if (t.hasAttribute('data-db-refresh')) { await dbReloadRows(); return; }
+    if (t.hasAttribute('data-db-refresh-struct')) { if (S.db.table) await dbLoadTable(S.db.table); dbDraw(); return; }
+    if (t.hasAttribute('data-db-reload')) { await dbReloadAll(); return; }
+    if (t.hasAttribute('data-db-add')) { await showRowEditor('insert'); return; }
+    if (t.hasAttribute('data-db-edit')) { await showRowEditor('edit', S.db.rows[Number(t.dataset.dbEdit)]); return; }
+    if (t.hasAttribute('data-db-del')) { await deleteDbRow(S.db.rows[Number(t.dataset.dbDel)]); return; }
+    if (t.hasAttribute('data-db-first')) { await dbReloadRows({ page: 1 }); return; }
+    if (t.hasAttribute('data-db-prev')) { await dbReloadRows({ page: Math.max(1, S.db.page - 1) }); return; }
+    if (t.hasAttribute('data-db-next')) { await dbReloadRows({ page: Math.min(S.db.pages, S.db.page + 1) }); return; }
+    if (t.hasAttribute('data-db-last')) { await dbReloadRows({ page: S.db.pages }); return; }
+    if (t.hasAttribute('data-db-run')) { await runDbSql(); return; }
+    if (t.hasAttribute('data-db-sql-clear')) { S.db.sql = ''; S.db.sqlResult = null; S.db.sqlError = null; dbDraw(); return; }
+    if (t.hasAttribute('data-db-history')) { S.db.sql = S.db.history[Number(t.dataset.dbHistory)] || ''; dbDraw(); return; }
+    if (t.hasAttribute('data-db-newtable')) { showCreateTable(); return; }
+    if (t.hasAttribute('data-db-rename')) { renameDbTable(); return; }
+    if (t.hasAttribute('data-db-drop')) { dropDbTable(); return; }
+    if (t.hasAttribute('data-db-conn')) { showDbConnection(); return; }
+    if (t.hasAttribute('data-db-newconn')) { showDbConnection(null, true); return; }
+  });
+}
+async function runDbSql() {
+  if (S.db.sqlBusy) return;
+  const text = ($('#dbSql') || {}).value || S.db.sql || '';
+  if (!text.trim()) return toast('SQL 是空的');
+  const dangerous = /\b(DROP|TRUNCATE|DELETE|ALTER|UPDATE|REPLACE|CREATE\s+DATABASE)\b/i.test(text);
+  if (dangerous && !(await confirmBox('执行写操作', '这段 SQL 包含 DROP / TRUNCATE / DELETE / ALTER / UPDATE 等会改数据或结构的语句，确认在当前库执行？'))) return;
+  S.db.sql = text;
+  S.db.sqlBusy = true;
+  S.db.sqlError = null;
+  dbDraw();
+  try {
+    const r = await api.dbQuery(dbPayload({ sql: text }));
+    S.db.sqlResult = r || { ok: false, error: '执行失败' };
+    if (!r || r.ok === false) S.db.sqlError = r || { error: '执行失败', hint: '检查 SQL 语法与权限。' };
+    if (r && r.ok) {
+      S.db.history = [text, ...(S.db.history || []).filter((x) => x !== text)].slice(0, 12);
+      if (/\b(CREATE|DROP|ALTER|RENAME)\b/i.test(text)) {
+        S.db.structure = null;
+        await dbReloadAll();
+        return;
+      }
+      await dbReloadRows();
+      return;
+    }
+  } catch (e) {
+    S.db.sqlError = { error: String(e && e.message || e), hint: '执行 SQL 失败。' };
+  } finally {
+    S.db.sqlBusy = false;
+    dbDraw();
+  }
+}
+function dbNeedPrimary() {
+  const primary = S.db.primary || (S.db.structure && S.db.structure.primary) || [];
+  if (primary.length !== 1) {
+    toast('这张表没有单列主键，按行编辑不安全；请用 SQL 控制台改。', 5000);
+    return null;
+  }
+  return primary[0];
+}
+async function showRowEditor(mode, row) {
+  if (!S.db.table) return;
+  if (!S.db.structure) await dbLoadTable(S.db.table);
+  const cols = (S.db.structure && S.db.structure.columns) || [];
+  if (!cols.length) return toast('没有读到字段结构');
+  const key = mode === 'edit' ? dbNeedPrimary() : null;
+  if (mode === 'edit' && !key) return;
+  if (!S.db.write) return toast('现在是只读模式，先打开“允许写入”', 4500);
+  const fields = cols.filter((c) => !(mode === 'insert' && c.autoIncrement));
+  const fieldHtml = fields.map((c, i) => {
+    const val = mode === 'edit' && row ? row[c.name] : '';
+    const isPk = key === c.name;
+    const long = /text|json|blob/i.test(c.type);
+    return `<label class="db-field ${isPk ? 'pk' : ''}">
+      <span>${esc(c.name)} <i>${esc(c.type)}</i>${c.primary ? '<b>PK</b>' : ''}${c.nullable ? '<em>NULL</em>' : ''}</span>
+      ${long
+        ? `<textarea id="dbf_${i}" data-col="${esc(c.name)}" rows="2">${esc(val === null ? '' : val)}</textarea>`
+        : `<input id="dbf_${i}" data-col="${esc(c.name)}" value="${esc(val === null ? '' : val)}" ${isPk ? 'disabled' : ''} placeholder="${c.nullable ? 'NULL' : ''}">`}
+    </label>`;
+  }).join('');
+  const title = mode === 'edit' ? `编辑 ${S.db.table} · ${key}=${row[key]}` : `新增 ${S.db.table}`;
+  modal(`<div class="db-modal p-4">
+    <div class="text-[14px] font-semibold">${esc(title)}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">留空会写成 NULL；主键字段在编辑时不可改。</div>
+    <div class="db-form-grid">${fieldHtml}</div>
+    <div class="db-form-msg" id="dbFormMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="dbFormCancel">取消</button><button class="btn solid" id="dbFormSave">保存</button></div>
+  </div>`, (root) => {
+    root.querySelector('#dbFormCancel').onclick = closeModal;
+    const msg = root.querySelector('#dbFormMsg');
+    root.querySelector('#dbFormSave').onclick = async () => {
+      const btn = root.querySelector('#dbFormSave');
+      const values = {};
+      root.querySelectorAll('[data-col]').forEach((el) => { values[el.dataset.col] = el.value; });
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      msg.textContent = '';
+      const r = mode === 'edit'
+        ? await api.dbUpdate(dbPayload({ table: S.db.table, key, keyValue: row[key], values }))
+        : await api.dbInsert(dbPayload({ table: S.db.table, values }));
+      if (!r || r.ok === false) {
+        msg.textContent = dbFriendly(r);
+        btn.disabled = false;
+        btn.textContent = '保存';
+        return;
+      }
+      closeModal();
+      toast(mode === 'edit' ? `已更新 ${r.affected || 0} 行` : `已新增${r.insertId ? ` · ID ${r.insertId}` : ''}`, 3000);
+      await dbReloadRows();
+    };
+  });
+}
+async function deleteDbRow(row) {
+  const key = dbNeedPrimary();
+  if (!key || !row) return;
+  if (!S.db.write) return toast('现在是只读模式，先打开“允许写入”', 4500);
+  if (!(await confirmBox('删除这一行', `从 ${S.db.table} 删除 ${key}=${row[key]}？此操作不可撤销。`))) return;
+  const r = await api.dbDeleteRow(dbPayload({ table: S.db.table, key, keyValue: row[key] }));
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5500);
+  toast(`已删除 ${r.affected || 0} 行`, 3000);
+  await dbReloadRows();
+}
+function dbTypeRow(i, f) {
+  const types = ['INT', 'BIGINT', 'VARCHAR', 'TEXT', 'DECIMAL', 'DATETIME', 'DATE', 'TINYINT', 'JSON', 'BOOLEAN'];
+  const v = (f && f.type) || 'VARCHAR';
+  return `<div class="ct-row" data-ct-row="${i}">
+    <input data-ct="name" placeholder="字段名" value="${esc((f && f.name) || '')}">
+    <select data-ct="type">${types.map((t) => `<option ${t === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <input data-ct="length" class="ct-len" placeholder="长度" value="${esc((f && f.length) || '')}">
+    <label class="ct-check"><input type="checkbox" data-ct="primary" ${f && f.primary ? 'checked' : ''}>主键</label>
+    <label class="ct-check"><input type="checkbox" data-ct="auto" ${f && f.auto ? 'checked' : ''}>自增</label>
+    <label class="ct-check"><input type="checkbox" data-ct="nullable" ${f && f.nullable ? 'checked' : ''}>可空</label>
+    <input data-ct="default" placeholder="默认值" value="${esc((f && f.default) || '')}">
+    <button class="db-ico-btn danger" data-ct-del title="删掉这个字段">×</button>
+  </div>`;
+}
+function showCreateTable() {
+  let idx = 0;
+  const first = dbTypeRow(idx++, { name: 'id', type: 'BIGINT', primary: true, auto: true });
+  const second = dbTypeRow(idx++, { name: 'name', type: 'VARCHAR', length: '255' });
+  modal(`<div class="p-4 db-modal" style="width:820px;max-width:96vw">
+    <div class="text-[14px] font-semibold">新建表</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">在 ${esc(S.db.database)} 建表；建完会自动打开并刷新结构。</div>
+    <div class="ct-head"><input id="ctTable" placeholder="表名" class="ct-table-name"><input id="ctComment" placeholder="表注释（可选）"></div>
+    <div class="ct-fields" id="ctFields">${first}${second}</div>
+    <div class="flex gap-2 mt-2"><button class="btn thin" id="ctAdd">＋ 加字段</button><span class="text-[11px] text-neutral-500 self-center">类型支持 INT / BIGINT / VARCHAR / TEXT / DECIMAL / DATETIME / DATE / JSON</span></div>
+    <div class="db-form-msg" id="ctMsg"></div>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn thin" id="ctCancel">取消</button><button class="btn solid" id="ctSave">建表</button></div>
+  </div>`, (root) => {
+    const fields = root.querySelector('#ctFields');
+    root.querySelector('#ctAdd').onclick = () => { fields.insertAdjacentHTML('beforeend', dbTypeRow(idx++, { name: '', type: 'VARCHAR', length: '255' })); bindCtDel(root); };
+    const bindCtDel = (r) => r.querySelectorAll('[data-ct-del]').forEach((b) => { b.onclick = () => b.closest('.ct-row').remove(); });
+    bindCtDel(root);
+    root.querySelector('#ctCancel').onclick = closeModal;
+    root.querySelector('#ctSave').onclick = async () => {
+      const table = root.querySelector('#ctTable').value.trim();
+      const comment = root.querySelector('#ctComment').value.trim();
+      const rows = [...root.querySelectorAll('.ct-row')].map((r) => ({
+        name: r.querySelector('[data-ct="name"]').value.trim(),
+        type: r.querySelector('[data-ct="type"]').value,
+        length: r.querySelector('[data-ct="length"]').value.trim(),
+        primary: r.querySelector('[data-ct="primary"]').checked,
+        auto: r.querySelector('[data-ct="auto"]').checked,
+        nullable: r.querySelector('[data-ct="nullable"]').checked,
+        default: r.querySelector('[data-ct="default"]').value.trim(),
+      })).filter((x) => x.name);
+      const msg = root.querySelector('#ctMsg');
+      if (!table) { msg.textContent = '先填表名'; return; }
+      if (!rows.length) { msg.textContent = '至少要有一个字段'; return; }
+      msg.textContent = '';
+      const btn = root.querySelector('#ctSave');
+      btn.disabled = true; btn.textContent = '建表中…';
+      const payloadFields = rows.map((f) => ({
+        ...f,
+        type: f.type + (f.length && !/TEXT|JSON|BOOLEAN|DATE|DATETIME/.test(f.type) ? `(${f.length})` : ''),
+      }));
+      const r = await api.dbCreateTable(dbPayload({ table, comment, fields: payloadFields }));
+      if (!r || r.ok === false) {
+        msg.textContent = dbFriendly(r);
+        btn.disabled = false; btn.textContent = '建表';
+        return;
+      }
+      closeModal();
+      toast(`已建表 ${table}`, 3500);
+      await dbReloadAll();
+      S.db.table = table;
+      await dbOpenTable(table);
+    };
+  });
+}
+async function renameDbTable() {
+  if (!S.db.table) return;
+  const next = await ask('重命名表', S.db.table, '只改表名，不改数据。');
+  if (!next || next === S.db.table) return;
+  const r = await api.dbRenameTable(dbPayload({ table: S.db.table, next }));
+  if (!r || r.ok === false) return toast(dbFriendly(r), 5500);
+  const old = S.db.table;
+  S.db.table = next;
+  if (S.project.dbProject) S.project.dbProject.table = next;
+  toast(`已把 ${old} 重命名为 ${next}`, 3500);
+  await dbReloadAll();
+}
+async function dropDbTable() {
+  if (!S.db.table) return;
+  if (!(await confirmBox('删除表', `DROP TABLE ${S.db.table}？表结构和数据都会删除，不能撤销。`))) return;
+  const r = await api.dbDropTable(dbPayload({ table: S.db.table }));
+  if (!r || r.ok === false) return toast(dbFriendly(r), 6000);
+  S.db.table = '';
+  S.db.structure = null;
+  toast(`已删除表 ${r.table}`, 3500);
+  await dbReloadAll();
+}
+function showDbConnection(key, isNew) {
+  const list = (S.project.connections && S.project.connections.mysql) || [];
+  const hit = list.find((c) => c.key === key) || (isNew ? { key: '', label: '新连接', host: '127.0.0.1', port: 13306, user: 'root', password: '', database: 'clickbuild', readonly: false } : (dbConn() || {}));
+  const c = hit || {};
+  modal(`<div class="p-4 db-modal" style="width:680px;max-width:96vw">
+    <div class="text-[14px] font-semibold">${isNew ? '新建数据库连接' : '数据库连接设置'}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">连接保存在当前工程；密码只存在本机工程 JSON 里，不会写进生成的服务之外的地方。</div>
+    <div class="db-conn-form">
+      <label>连接键 <input id="dcKey" value="${esc(c.key || '')}" ${isNew ? '' : 'disabled'} placeholder="main"></label>
+      <label>显示名 <input id="dcLabel" value="${esc(c.label || '')}" placeholder="本机 MariaDB"></label>
+      <label>主机 <input id="dcHost" value="${esc(c.host || '127.0.0.1')}"></label>
+      <label>端口 <input id="dcPort" value="${esc(c.port || 13306)}"></label>
+      <label>用户 <input id="dcUser" value="${esc(c.user || 'root')}"></label>
+      <label>密码 <input id="dcPass" type="password" value="${esc(c.password || '')}"></label>
+      <label>默认库 <input id="dcDb" value="${esc(c.database || 'clickbuild')}" placeholder="clickbuild"></label>
+      <label class="ct-check conn-ro"><input type="checkbox" id="dcReadonly" ${c.readonly ? 'checked' : ''}>标记为只读</label>
+    </div>
+    <div class="db-form-msg" id="dcMsg"></div>
+    <div class="flex gap-2 mt-3"><button class="btn thin" id="dcTest">测试连接</button><span class="db-conn-test" id="dcTestOut"></span><div class="ml-auto flex gap-2"><button class="btn thin" id="dcCancel">取消</button><button class="btn solid" id="dcSave">保存</button></div></div>
+  </div>`, (root) => {
+    const read = () => ({
+      key: root.querySelector('#dcKey').value.trim(),
+      label: root.querySelector('#dcLabel').value.trim() || root.querySelector('#dcKey').value.trim() || 'MariaDB',
+      host: root.querySelector('#dcHost').value.trim() || '127.0.0.1',
+      port: Number(root.querySelector('#dcPort').value) || 3306,
+      user: root.querySelector('#dcUser').value.trim() || 'root',
+      password: root.querySelector('#dcPass').value,
+      database: root.querySelector('#dcDb').value.trim(),
+      readonly: root.querySelector('#dcReadonly').checked,
+    });
+    root.querySelector('#dcCancel').onclick = closeModal;
+    root.querySelector('#dcTest').onclick = async () => {
+      const msg = root.querySelector('#dcMsg');
+      const out = root.querySelector('#dcTestOut');
+      const v = read();
+      if (!v.key) { msg.textContent = '连接键不能为空'; return; }
+      out.textContent = '测试中…';
+      const temp = JSON.parse(JSON.stringify(S.project));
+      temp.connections = temp.connections || { mysql: [] };
+      const arr = temp.connections.mysql || [];
+      const i = arr.findIndex((x) => x.key === v.key);
+      if (i >= 0) arr[i] = v; else arr.push(v);
+      temp.connections.mysql = arr;
+      const r = await api.dbTest({ project: temp, connKey: v.key, database: v.database });
+      if (r && r.ok) { out.textContent = `连接成功 · ${r.version} · ${r.databases} 个库`; msg.textContent = ''; }
+      else { out.textContent = ''; msg.textContent = dbFriendly(r); }
+    };
+    root.querySelector('#dcSave').onclick = async () => {
+      const v = read();
+      const msg = root.querySelector('#dcMsg');
+      if (!v.key) { msg.textContent = '连接键不能为空'; return; }
+      const arr = S.project.connections && Array.isArray(S.project.connections.mysql) ? S.project.connections.mysql : [];
+      const i = arr.findIndex((x) => x.key === key);
+      if (isNew && arr.some((x) => x.key === v.key)) { msg.textContent = `连接键 ${v.key} 已存在`; return; }
+      if (i >= 0) arr[i] = v; else arr.push(v);
+      S.project.connections = S.project.connections || { mysql: [], redis: [], s3: [] };
+      S.project.connections.mysql = arr;
+      if (!S.project.dbProject) S.project.dbProject = { conn: v.key, database: v.database, table: '' };
+      S.project.dbProject.conn = v.key;
+      if (v.database) S.project.dbProject.database = v.database;
+      const ok = await save(true);
+      if (!ok) { msg.textContent = '工程保存失败'; return; }
+      closeModal();
+      S.db.connKey = v.key;
+      S.db.database = v.database || S.db.database;
+      S.db.table = '';
+      S.db.ready = false;
+      toast('连接已保存', 3000);
+      await dbReloadAll();
+    };
+  });
+}
+async function openLiveTableInDb(it, t) {
+  if (!it || !t) return;
+  const conn = liveConnOf(t);
+  if (!conn) return toast('这个表没有配置 MariaDB 连接', 5000);
+  S.db = initialDbState(S.project);
+  S.db.connKey = conn.key;
+  S.db.database = t.schema || conn.database || '';
+  S.db.table = t.name;
+  S.db.write = !conn.readonly;
+  S.db.ready = false;
+  if (S.project.dbProject) {
+    S.project.dbProject.conn = conn.key;
+    S.project.dbProject.database = S.db.database;
+    S.project.dbProject.table = t.name;
+  }
+  setView('db');
+}
+
+
 function renderEditor() {
   const it = activeIface();
   if (!it) { S.mode = 'grid'; return renderGrid(); }
@@ -2046,7 +2769,7 @@ function liveCell(v) {
 }
 
 function liveLoading() {
-  return `<div class="live-empty"><div class="live-empty-box"><b><span class="live-spin"></span>正在读取 MariaDB</b><span>只读查询，不会改动表里的数据。</span></div></div>`;
+  return `<div class="live-empty"><div class="live-empty-box"><b><span class="live-spin"></span>正在读取 MariaDB</b><span>读取当前接口表；编辑请点右上角“编辑这张表”。</span></div></div>`;
 }
 
 function liveEmpty(res) {
@@ -2069,17 +2792,20 @@ function liveErrorBox(err) {
 
 function liveGrid(res) {
   const cols = res.columns || [];
+  const primary = res.primary || [];
+  const editable = res.writable !== false && primary.length > 0;
   const numType = (t) => /^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real|year)/.test(String(t || '').toLowerCase());
-  const head = cols.map((c) => `<th class="${numType(c.type) ? 'n' : ''}" title="${esc(c.name)} · ${esc(c.type)}">${esc(c.name)}<span class="lt">${esc(c.type || '')}</span></th>`).join('');
+  const head = cols.map((c) => `<th class="${numType(c.type) ? 'n' : ''}" title="${esc(c.name)} · ${esc(c.type)}">${esc(c.name)}<span class="lt">${esc(c.type || '')}${primary.includes(c.name) ? ' · PK' : ''}</span></th>`).join('');
   const rows = res.rows || [];
   return `<div class="live-scroll" id="liveBody"><table class="live-grid">
-    <thead><tr><th class="rownum">#</th>${head}</tr></thead>
+    <thead><tr><th class="rownum">#</th>${head}<th class="live-ops">操作</th></tr></thead>
     <tbody>${rows.map((r, idx) => `<tr>
       <td class="rownum">${res.offset + idx + 1}</td>
       ${cols.map((c) => {
         const v = r[c.name];
         return `<td class="${numType(c.type) ? 'n' : ''}" title="${esc(c.name)}">${liveCell(v)}</td>`;
       }).join('')}
+      <td class="live-ops">${editable ? `<button class="live-row-btn" data-live-edit-row="${idx}" title="编辑这一行">改</button><button class="live-row-btn danger" data-live-del-row="${idx}" title="删除这一行">删</button>` : '<span class="live-ro">无主键</span>'}</td>
     </tr>`).join('')}</tbody>
   </table></div>`;
 }
@@ -2095,7 +2821,7 @@ function liveMetaHtml() {
       <span class="live-chip">${esc(res.tableName)}</span>
       <span class="live-chip ${res.storeMode && res.storeMode !== 'mysql' ? 'ro' : ''}">${esc(res.storeMode === 'mysql' ? '直连 MySQL' : storeLabel(res.storeMode))}</span>
       <span>共 <b>${res.total}</b> 行</span>
-      <span class="live-chip ro">只读</span>
+      <span class="live-chip ${res.writable && (res.primary || []).length ? 'rw' : 'ro'}">${res.writable && (res.primary || []).length ? '可编辑 · 按主键写回' : (res.writable === false ? '只读 · 连接已锁写' : '只读 · 缺主键')}</span>
       <span>查询 ${res.elapsed} ms</span>
       <span>${esc(String(res.queriedAt || '').slice(11, 19))} 更新</span>
       ${loading ? '<span class="live-spin"></span><span>刷新中</span>' : ''}`;
@@ -2143,7 +2869,7 @@ function tabData(it) {
   const key = liveKey(it, t);
   const store = storeOf(t);
   const sub = store.mode === 'mysql'
-    ? '直接读 MariaDB，只读，不走接口鉴权'
+    ? '直接读 MariaDB；双击“改”按主键写回，也可以新增和删除'
     : `MySQL 权威数据；${storeLabel(store.mode)} 层可能比这里更新`;
   if (S.data.key !== key) {
     S.data.key = key;
@@ -2151,6 +2877,8 @@ function tabData(it) {
     S.data.result = null;
     S.data.error = null;
   }
+  const writable = !!(S.data.result && S.data.result.ok && S.data.result.writable !== false && (S.data.result.primary || []).length);
+  const canInsert = !!(S.data.result && S.data.result.ok && S.data.result.writable !== false);
   return `<div class="live-pane">
     <div class="live-head">
       <div class="live-title"><span class="live-dot"></span>实时数据 <span class="live-sub">${esc(sub)}</span></div>
@@ -2158,6 +2886,8 @@ function tabData(it) {
         <select id="liveTable" title="切换表">${it.tables.map((x) => `<option value="${esc(x.key)}" ${x.key === t.key ? 'selected' : ''}>${esc(x.key)} · ${esc(x.name)}</option>`).join('')}</select>
         <select id="liveSize" title="每页行数">${[20, 50, 100].map((n) => `<option value="${n}" ${n === S.data.size ? 'selected' : ''}>${n} 行/页</option>`).join('')}</select>
         <label class="live-auto"><input id="liveAuto" type="checkbox" ${S.data.auto ? 'checked' : ''}>自动刷新 3s</label>
+        <button class="btn thin" data-live-add-row ${canInsert ? '' : 'disabled'}>新增一行</button>
+        <button class="btn thin" data-live-open-db title="在数据库工作台里管理整库">数据库工作台</button>
         <button class="btn thin" data-live-refresh>刷新</button>
       </div>
     </div>
@@ -2219,6 +2949,79 @@ async function loadLiveData(it, t, opts) {
   }
 }
 
+async function showLiveRowEditor(it, t, idx, mode) {
+  const res = S.data.result;
+  if (!res || !res.ok) return toast('先把这张表读出来再编辑', 3500);
+  const cols = res.columns || [];
+  const primary = res.primary || [];
+  const key = primary[0] || '';
+  const row = idx >= 0 ? (res.rows[idx] || {}) : {};
+  if (mode !== 'insert' && !key) return toast('这张表没有主键，不能按行改或删；可以新增一行，或去数据库工作台用 SQL 精确处理', 6000);
+  const isLong = (tp) => /^(text|mediumtext|longtext|json|blob|mediumblob|longblob)/i.test(String(tp || ''));
+  const fields = cols.map((c) => {
+    const isPk = primary.includes(c.name);
+    const v = row[c.name] == null ? '' : String(row[c.name]);
+    const dis = (mode === 'update' && isPk) ? 'disabled' : '';
+    const tag = isLong(c.type)
+      ? `<textarea class="ct-input" data-col="${esc(c.name)}" rows="3" ${dis}>${esc(v)}</textarea>`
+      : `<input class="ct-input" data-col="${esc(c.name)}" value="${esc(v)}" ${dis} placeholder="${isPk ? '主键' : '空值会写成 NULL'}">`;
+    return `<label class="lr-row"><span class="lr-name">${esc(c.name)}<i>${esc(c.type || '')}${isPk ? ' · PK' : ''}</i></span>${tag}</label>`;
+  }).join('');
+  modal(`<div class="p-4 w-[620px] max-w-[96vw]">
+    <div class="text-[14px] font-semibold">${mode === 'insert' ? '新增一行' : '编辑行'} · ${esc(t.name || res.tableName)}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">${mode === 'insert' ? '空字段不会写入，留给数据库默认值或自增。' : `按主键 ${esc(key)} = ${esc(String(row[key]))} 定位，只会改这一行。`}</div>
+    <div class="db-conn-form" style="grid-template-columns:1fr;max-height:52vh;overflow:auto">${fields}</div>
+    <div class="flex justify-between items-center gap-2 mt-4">
+      <div>${mode === 'update' ? '<button class="btn thin" id="lrDelete" style="color:#a65343">删除这一行</button>' : ''}</div>
+      <div class="flex gap-2"><button class="btn thin" id="lrCancel">取消</button><button class="btn solid" id="lrSave">保存</button></div>
+    </div>
+  </div>`, (root) => {
+    const read = () => {
+      const values = {};
+      root.querySelectorAll('[data-col]').forEach((el) => {
+        if (el.disabled) return;
+        values[el.dataset.col] = el.value;
+      });
+      return values;
+    };
+    const run = async (kind) => {
+      const payload = { project: S.project, ifaceId: it.id, tableKey: t.key, mode: kind, key, keyValue: row[key], values: read() };
+      if (kind === 'insert') {
+        const vals = payload.values;
+        Object.keys(vals).forEach((k) => { if (vals[k] === '') delete vals[k]; });
+      }
+      const r = await api.tableMutate(payload);
+      if (!r || !r.ok) return toast((r && (r.hint || r.error)) || '写入失败', 6500);
+      closeModal();
+      toast(kind === 'insert' ? '已新增 1 行' : kind === 'delete' ? '已删除 1 行' : `已更新 ${r.affectedRows || 0} 行`, 3000);
+      S.data.key = '';
+      await loadLiveData(it, t);
+    };
+    root.querySelector('#lrCancel').onclick = closeModal;
+    root.querySelector('#lrSave').onclick = () => run(mode).catch((e) => toast(e.message, 6000));
+    const del = root.querySelector('#lrDelete');
+    if (del) del.onclick = async () => {
+      if (!(await confirmBox('删除这一行', `确定删除 ${key} = ${row[key]} 这一行？删除后不能撤销。`))) return;
+      run('delete').catch((e) => toast(e.message, 6000));
+    };
+  });
+}
+
+async function deleteLiveRow(it, t, idx) {
+  const res = S.data.result;
+  if (!res || !res.ok) return;
+  const primary = res.primary || [];
+  const key = primary[0];
+  const row = (res.rows || [])[idx];
+  if (!key || !row) return toast('这张表缺主键，不能按行删除', 4500);
+  if (!(await confirmBox('删除这一行', `确定删除 ${key} = ${row[key]} 这一行？删除后不能撤销。`))) return;
+  const r = await api.tableMutate({ project: S.project, ifaceId: it.id, tableKey: t.key, mode: 'delete', key, keyValue: row[key], values: {} });
+  if (!r || !r.ok) return toast((r && (r.hint || r.error)) || '删除失败', 6500);
+  toast('已删除 1 行', 3000);
+  S.data.key = '';
+  await loadLiveData(it, t);
+}
+
 function bindData(it) {
   const t = tableOfIface(it, S.tableKey);
   if (!t) return;
@@ -2241,7 +3044,10 @@ function bindData(it) {
     const b = e.target.closest('button');
     if (!b || !pane.contains(b) || b.disabled) return;
     if (b.hasAttribute('data-live-refresh')) { reload(); return; }
-    if (b.hasAttribute('data-live-retry')) { S.data.auto = true; reload(); return; }
+    if (b.hasAttribute('data-live-add-row')) { showLiveRowEditor(it, t, -1, 'insert'); return; }
+    if (b.hasAttribute('data-live-edit-row')) { showLiveRowEditor(it, t, Number(b.dataset.liveEditRow), 'update'); return; }
+    if (b.hasAttribute('data-live-del-row')) { deleteLiveRow(it, t, Number(b.dataset.liveDelRow)).catch((e) => toast(e.message, 6000)); return; }
+    if (b.hasAttribute('data-live-open-db')) { openLiveTableInDb(it, t); return; }
     if (b.hasAttribute('data-live-start-mysql')) {
       b.disabled = true; b.textContent = '正在启动…';
       const r = await api.startService('mysql');
@@ -4535,6 +5341,68 @@ async function flushStudio(reason) {
   }
   return true;
 }
+async function showDeploySettings(thenDeploy) {
+  const fe = S.project && S.project.frontend;
+  if (!fe || !fe.project) return toast('当前工程没有 PageStudio 前端，没有可设置的部署导出选项', 4500);
+  if (studioLoaded && (studioDirty || studioSaveBusy)) {
+    const ok = await flushStudio('部署设置');
+    if (!ok) return toast('前端还没同步到当前工程，先处理同步失败', 5000);
+  }
+  const p = S.project.frontend.project;
+  const on = p.pageNav !== false;
+  const fade = p.pageFade !== false;
+  const resp = p.responsive !== false;
+  const stack = p.stackMobile !== false;
+  const ask = p.deployPrompt !== false;
+  modal(`<div class="p-4 w-[560px] max-w-[96vw]">
+    <div class="text-[14px] font-semibold">部署设置 · ${esc(S.project.frontend.name || '前端工程')}</div>
+    <div class="text-[11px] text-neutral-500 mt-1 mb-3">部署会重新导出一遍 HTML。这里关掉页面导航条，部署产物就不再出现翻页控件；导出 .yxpp 里的“导出 HTML”使用同一组设置。</div>
+    <div class="dp-list">
+      <label class="dp-row"><input type="checkbox" id="dpPageNav" ${on ? 'checked' : ''}><span><b>页面导航条 / 翻页控件</b><i>多页工程的顶部翻页条和方向键提示</i></span></label>
+      <label class="dp-row"><input type="checkbox" id="dpPageFade" ${fade ? 'checked' : ''}><span><b>页面切换淡入</b><i>切换页面时淡入，不需要动效可关</i></span></label>
+      <label class="dp-row"><input type="checkbox" id="dpResponsive" ${resp ? 'checked' : ''}><span><b>响应式导出</b><i>按视口等比缩放；关掉后固定画布尺寸</i></span></label>
+      <label class="dp-row"><input type="checkbox" id="dpStackMobile" ${stack ? 'checked' : ''}><span><b>窄屏旧版堆叠</b><i>没有响应式方案时的兜底</i></span></label>
+      <label class="dp-row dp-row-last"><input type="checkbox" id="dpAsk" ${ask ? 'checked' : ''}><span><b>以后部署前显示这个设置</b><i>不勾就按当前设置直接部署，之后可在“更多 → 部署设置”改</i></span></label>
+    </div>
+    <div class="text-[11px] text-neutral-500 mt-3">当前产物：${(p.pages || []).length} 页 · ${on ? '带导航条' : '无导航条'} · ${resp ? '响应式' : '固定尺寸'}</div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button class="btn thin" id="dpCancel">取消</button>
+      <button class="btn thin" id="dpJustSave">只保存设置</button>
+      <button class="btn solid" id="dpSave">${thenDeploy ? '保存并更新部署' : '保存设置'}</button>
+    </div>
+  </div>`, (root) => {
+    const read = () => ({
+      pageNav: root.querySelector('#dpPageNav').checked,
+      pageFade: root.querySelector('#dpPageFade').checked,
+      responsive: root.querySelector('#dpResponsive').checked,
+      stackMobile: root.querySelector('#dpStackMobile').checked,
+      deployPrompt: root.querySelector('#dpAsk').checked,
+    });
+    const write = async () => {
+      const v = read();
+      const proj = S.project.frontend.project;
+      proj.pageNav = v.pageNav;
+      proj.pageFade = v.pageFade;
+      proj.responsive = v.responsive;
+      proj.stackMobile = v.stackMobile;
+      proj.deployPrompt = v.deployPrompt;
+      const ok = await save(true);
+      if (!ok) return false;
+      postToStudio({ type: 'cbs:yxpp:deploy-options', options: v });
+      return true;
+    };
+    root.querySelector('#dpCancel').onclick = closeModal;
+    root.querySelector('#dpJustSave').onclick = async () => {
+      if (await write()) { closeModal(); toast('部署设置已保存', 3000); }
+    };
+    root.querySelector('#dpSave').onclick = async () => {
+      if (!(await write())) return;
+      closeModal();
+      if (thenDeploy) return deployUpdate(true);
+      toast('部署设置已保存', 3000);
+    };
+  });
+}
 let deployingUpdate = false;
 async function ensureInfra() {
   const infra = (S.services && S.services.items || []).filter((x) => x.id !== 'server');
@@ -4547,8 +5415,11 @@ async function ensureInfra() {
   S.services = await api.services();
   return failed;
 }
-async function deployUpdate() {
+async function deployUpdate(skipPrompt) {
   if (deployingUpdate) return toast('正在更新部署，请稍候');
+  if (!skipPrompt && S.project && S.project.frontend && S.project.frontend.project && S.project.frontend.project.deployPrompt !== false) {
+    return showDeploySettings(true);
+  }
   deployingUpdate = true;
   try {
     if (studioLoaded && (studioDirty || studioSaveBusy)) {
@@ -4636,6 +5507,11 @@ async function act(name, el) {
   const it = (S.project && Array.isArray(S.project.interfaces)) ? activeIface() : null;
   if (name === 'moreMenu') return showMoreMenu();
   if (name === 'save') return save();
+  if (name === 'dbRefresh') { setView('db'); return dbReloadAll(); }
+  if (name === 'dbNewTable') { setView('db'); if (!S.db.ready) await ensureDB(); return showCreateTable(); }
+  if (name === 'dbSqlTab') { setView('db'); if (!S.db.ready) await ensureDB(); S.db.tab = 'sql'; return dbDraw(); }
+  if (name === 'dbConn') { setView('db'); if (!S.db.ready) await ensureDB(); return showDbConnection(); }
+  if (name === 'deploySettings') return showDeploySettings(false);
   if (name === 'scriptGuide') return showScriptGuide();
   if (name === 'toggleAssist') {
     const a = $('#scriptAssist');
@@ -6125,7 +7001,7 @@ const THEME_PALETTES = [
 ];
 
 function taskColorDefaults() {
-  return { backend: '#2563eb', frontend: '#0f8a5f', mixed: '#b45309' };
+  return { backend: '#2563eb', frontend: '#0f8a5f', mixed: '#b45309', database: '#7c3aed' };
 }
 function taskColorValue(v, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : fallback;
@@ -6823,11 +7699,12 @@ function showTheme() {
         <span class="text-[12px] font-semibold">任务类型标签颜色</span>
         <button type="button" class="btn thin ml-auto" id="thTaskReset">恢复默认色</button>
       </div>
-      <div class="text-[11px] text-neutral-500 mb-2">只后端用服务器图标，只前端用显示器图标，混合任务用台式机图标。颜色会同时用在标签、图标底色和工程卡片。</div>
+      <div class="text-[11px] text-neutral-500 mb-2">只后端用服务器图标，只前端用显示器图标，混合任务用台式机图标，数据库工程用数据库图标。颜色会同时用在标签、图标底色和工程卡片。</div>
       <div class="task-color-grid">
         <label class="task-color-cell tk-backend"><span class="task-color-preview">${taskIcon('backend')}<b>只后端</b></span><input type="color" id="thTaskBackend" value="${esc(taskColorValue((t.taskColors || {}).backend, taskColorDefaults().backend))}"></label>
         <label class="task-color-cell tk-frontend"><span class="task-color-preview">${taskIcon('frontend')}<b>只前端</b></span><input type="color" id="thTaskFrontend" value="${esc(taskColorValue((t.taskColors || {}).frontend, taskColorDefaults().frontend))}"></label>
         <label class="task-color-cell tk-mixed"><span class="task-color-preview">${taskIcon('mixed')}<b>混合任务</b></span><input type="color" id="thTaskMixed" value="${esc(taskColorValue((t.taskColors || {}).mixed, taskColorDefaults().mixed))}"></label>
+        <label class="task-color-cell tk-database"><span class="task-color-preview">${taskIcon('database')}<b>数据库工程</b></span><input type="color" id="thTaskDatabase" value="${esc(taskColorValue((t.taskColors || {}).database, taskColorDefaults().database))}"></label>
       </div>
     </div>
     <div class="mt-3 text-[11px] text-neutral-500">深色模式会保留你选的强调色，页眉和页脚自动换成深色面板；生成的服务和前端页面不受影响。</div>
@@ -6851,6 +7728,7 @@ function showTheme() {
         backend: root.querySelector('#thTaskBackend').value,
         frontend: root.querySelector('#thTaskFrontend').value,
         mixed: root.querySelector('#thTaskMixed').value,
+        database: root.querySelector('#thTaskDatabase').value,
       },
     });
     root.querySelectorAll('#thMode button').forEach((b) => {
@@ -6874,6 +7752,7 @@ function showTheme() {
       root.querySelector('#thTaskBackend'),
       root.querySelector('#thTaskFrontend'),
       root.querySelector('#thTaskMixed'),
+      root.querySelector('#thTaskDatabase'),
     ];
     taskColorInputs.forEach((input) => { input.oninput = () => applyTheme(read()); });
     root.querySelector('#thTaskReset').onclick = () => {
@@ -6881,6 +7760,7 @@ function showTheme() {
       root.querySelector('#thTaskBackend').value = d.backend;
       root.querySelector('#thTaskFrontend').value = d.frontend;
       root.querySelector('#thTaskMixed').value = d.mixed;
+      root.querySelector('#thTaskDatabase').value = d.database;
       applyTheme(read());
       toast('任务类型标签颜色已恢复默认');
     };
@@ -7589,23 +8469,28 @@ async function importStudioYxpp() {
 }
 
 function setView(view) {
-  const next = view === 'studio' ? 'studio' : 'api';
+  const next = ['studio', 'db'].includes(view) ? view : 'api';
   const kind = taskKindOf(S.project);
-  if (next === 'studio' && kind === 'backend') {
-    toast('这是只后端任务，没有前端工坊；要写页面请先把任务类型改成混合', 5000);
+  if (next === 'studio' && (kind === 'backend' || kind === 'database')) {
+    toast(kind === 'database' ? '数据库工程没有前端工坊；要写页面请先把任务类型改成混合' : '这是只后端任务，没有前端工坊；要写页面请先把任务类型改成混合', 5000);
     return;
   }
-  if (next === 'api' && kind === 'frontend') {
-    toast('这是只前端任务，接口工作台已收起；要写接口请先把任务类型改成混合', 5000);
+  if (next === 'api' && (kind === 'frontend' || kind === 'database')) {
+    toast(kind === 'database' ? '数据库工程不显示接口工作台；库表、SQL 都在数据库视图里' : '这是只前端任务，接口工作台已收起；要写接口请先把任务类型改成混合', 5000);
     return;
   }
-  if (S.view === 'studio' && next === 'api' && studioDirty) saveStudioToProject('切换视图');
+  if (next === 'db' && kind === 'frontend') {
+    toast('这是只前端任务，数据库视图已收起；要管理数据库请先把任务类型改成混合或数据库工程', 5000);
+    return;
+  }
+  if (S.view === 'studio' && next !== 'studio' && studioDirty) saveStudioToProject('切换视图');
   S.view = next;
   const studio = S.view === 'studio';
-  if (studio) toggleResPop(false);
+  const db = S.view === 'db';
+  if (studio || db) toggleResPop(false);
   $('#ribbon').classList.toggle('hidden', studio);
   $('#workbenchMain').classList.toggle('hidden', studio);
-  $('#sheetbar').classList.toggle('hidden', studio);
+  $('#sheetbar').classList.toggle('hidden', studio || db);
   $('#studioPane').classList.toggle('hidden', !studio);
   $('#studioPane').classList.toggle('flex', studio);
   $$('#viewSwitch button').forEach((b) => b.classList.toggle('active', b.dataset.view === S.view));
@@ -7613,6 +8498,9 @@ function setView(view) {
     ensureStudio();
     refreshStudioState();
     if (studioReady) syncStudioFromProject(false);
+  } else if (db) {
+    renderDBWorkspace();
+    sampleResources();
   } else {
     render();
     sampleResources();
@@ -7927,12 +8815,14 @@ async function enterWorkspace(p, opts) {
   S.problems = (await api.validate(p)).errors || [];
   setSaveState('saved', S.problems.length ? `已保存 · ${S.problems.length} 问题` : '已保存');
   S.view = 'api';
+  S.db = initialDbState(S.project);
   S.studioProject = null; studioLoaded = false; studioDirty = false;
   if (!S.help) S.help = await api.help();
   tabSyncProject(S.project);
   renderTabs();
   applyTaskMode();
   if (taskKindOf(S.project) === 'frontend') setView('studio');
+  else if (taskKindOf(S.project) === 'database') setView('db');
   else setView('api');
   if (TABS.items.length > 1) renderTabs();
   return true;

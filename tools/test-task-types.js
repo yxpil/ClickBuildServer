@@ -19,10 +19,10 @@ const t = (name, cond, extra) => {
   if (cond) { ok++; console.log('  ✓ ' + name); } else { bad++; console.log('  ✗ ' + name + ' → ' + JSON.stringify(extra)); }
 };
 
-t('任务类型常量覆盖三种', spec.TASK_TYPES.join(',') === 'frontend,backend,mixed', spec.TASK_TYPES);
+t('任务类型常量覆盖四种', spec.TASK_TYPES.join(',') === 'frontend,backend,mixed,database', spec.TASK_TYPES);
 t('示例工程默认混合任务', spec.seedProject().taskType === 'mixed', spec.seedProject().taskType);
 
-for (const kind of ['frontend', 'backend', 'mixed']) {
+for (const kind of ['frontend', 'backend', 'mixed', 'database']) {
   const p = spec.normalizeProject({ ...spec.seedProject(), taskType: kind });
   t(`保存后保留 ${kind}`, p.taskType === kind, p.taskType);
 }
@@ -70,8 +70,12 @@ projects.save(back);
 t('只后端任务落盘后仍带账号接口', (projects.load('只后端任务').interfaces || []).length === 1, projects.load('只后端任务').interfaces);
 const mixed = spec.normalizeProject({ ...spec.seedProject(), name: '混合任务', taskType: 'mixed' });
 projects.save(mixed);
+const dbProj = spec.normalizeProject({ ...spec.starterProject('database'), name: '数据库任务' });
+projects.save(dbProj);
+t('数据库工程保留 dbProject', projects.load('数据库任务').dbProject && projects.load('数据库任务').dbProject.conn === 'main', projects.load('数据库任务').dbProject);
+t('数据库工程不生成接口', (projects.load('数据库任务').interfaces || []).length === 0, (projects.load('数据库任务').interfaces || []).length);
 const kinds = projects.list().map((x) => `${x.name}:${x.taskType}`);
-t('三种任务都能并存', ['只前端任务:frontend', '只后端任务:backend', '混合任务:mixed'].every((k) => kinds.includes(k)), kinds);
+t('四种任务都能并存', ['只前端任务:frontend', '只后端任务:backend', '混合任务:mixed', '数据库任务:database'].every((k) => kinds.includes(k)), kinds);
 
 console.log(`\n通过 ${ok} / ${ok + bad}${bad ? '，失败 ' + bad : '，全部通过'}`);
 process.exit(bad ? 1 : 0);

@@ -21824,6 +21824,16 @@ setupGlobalSearch();
       return;
     }
     if (d.type === 'cbs:yxpp:saved') { markSynced(d.at); return; }
+    if (d.type === 'cbs:yxpp:deploy-options') {
+      var o = d.options || {};
+      if (o.pageNav != null) S.proj.pageNav = !!o.pageNav;
+      if (o.pageFade != null) S.proj.pageFade = !!o.pageFade;
+      if (o.responsive != null) S.proj.responsive = !!o.responsive;
+      if (o.stackMobile != null) S.proj.stackMobile = !!o.stackMobile;
+      scheduleSave();
+      try { refreshExport(); } catch (e) {}
+      return;
+    }
     if (d.type === 'cbs:yxpp:error') { markError(d.message); return; }
     if (d.type === 'cbs:yxpp:flush') { saveProjectNow(); return; }
   });

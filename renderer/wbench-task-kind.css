@@ -22,6 +22,11 @@
   --tk-soft: var(--cb-task-mixed-soft, rgba(180, 83, 9, .09));
   --tk-line: var(--cb-task-mixed-line, rgba(180, 83, 9, .26));
 }
+.tk-database {
+  --tk-color: var(--cb-task-database, #7c3aed);
+  --tk-soft: var(--cb-task-database-soft, rgba(124, 58, 237, .09));
+  --tk-line: var(--cb-task-database-line, rgba(124, 58, 237, .26));
+}
 
 /* 顶栏当前任务类型：图标 + 原生下拉 */
 .task-kind-pick {
@@ -113,7 +118,7 @@
 /* 主题弹窗里的三类颜色 */
 .task-color-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 8px;
 }
 .task-color-cell {
