@@ -7,6 +7,7 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const dark = fs.readFileSync(path.join(root, 'renderer', 'wbench-dark.css'), 'utf8');
+const dbcss = fs.readFileSync(path.join(root, 'renderer', 'wbench-db.css'), 'utf8');
 const bench = fs.readFileSync(path.join(root, 'renderer', 'wbench.js'), 'utf8');
 const results = [];
 const check = (name, ok, extra = '') => {
@@ -22,6 +23,8 @@ check('接口类型表不再使用硬编码浅色边框', !bench.includes('style
 check('接口类型表两张表都套 help-table-frame', (bench.match(/class="help-table-frame"/g) || []).length >= 2);
 check('深色主题颜色选择器不再白底', /html\.cb-dark\s+input\[type="color"\]\s*\{[^}]*background:\s*#10161d/.test(dark));
 check('深色主题颜色选择器声明 color-scheme dark', /html\.cb-dark\s+input\[type="color"\]\s*\{[^}]*color-scheme:\s*dark/.test(dark));
+check('深色数据页主键格不是白底白字', /html\.cb-dark\s+\.db-grid\s+tbody\s+td\.pk\s*\{[^}]*background:\s*#182534[^}]*color:\s*#dbe7f5/.test(dbcss));
+check('深色数据页偶数行主键格有深色背景', /html\.cb-dark\s+\.db-grid\s+tbody\s+tr:nth-child\(even\)\s+td\.pk\s*\{[^}]*background:\s*#1a2837/.test(dbcss));
 
 const failed = results.filter((x) => !x.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

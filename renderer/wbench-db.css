@@ -271,7 +271,9 @@ html.cb-dark .ct-head input, html.cb-dark .ct-row input, html.cb-dark .ct-row se
 html.cb-dark .db-mini, html.cb-dark .db-pager-btn, html.cb-dark .db-sql-history button { background: #10161d; color: #e7ecf3; }
 html.cb-dark .db-table-ico { background: #1d2732; color: #c9d3df; }
 html.cb-dark .db-grid thead th { background: #1a222c; color: #e7ecf3; }
+html.cb-dark .db-grid tbody td.pk { background: #182534; color: #dbe7f5; }
 html.cb-dark .db-grid tbody tr:nth-child(even) td { background: rgba(255,255,255,.018); }
+html.cb-dark .db-grid tbody tr:nth-child(even) td.pk { background: #1a2837; }
 html.cb-dark .db-grid tbody tr:hover td { background: #1f2c3d; }
 html.cb-dark .db-row-actions, html.cb-dark .db-act-head { background: #151b23 !important; }
 html.cb-dark .db-sql-sql { background: #1a222c; color: #b8c4d1; }
